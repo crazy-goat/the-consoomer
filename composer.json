@@ -10,6 +10,10 @@
     },
     "require-dev": {
         "symfony/console": "^7.2",
-        "symfony/dependency-injection": "^7.2"
+        "symfony/dependency-injection": "^7.2",
+        "friendsofphp/php-cs-fixer": "^3.75"
+    },
+    "scripts": {
+        "phpcsfixer":  "vendor/bin/php-cs-fixer fix src --rules=@Symfony"
     }
 }

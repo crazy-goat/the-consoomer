@@ -25,11 +25,10 @@ class AmqpReceiver implements ReceiverInterface
 
     public function __construct(
         private readonly AMQPStreamConnection $connection,
-        private readonly SerializerInterface  $serializer,
-        private readonly array                $options,
-        ?LoggerInterface                      $logger = null
-    )
-    {
+        private readonly SerializerInterface $serializer,
+        private readonly array $options,
+        ?LoggerInterface $logger = null,
+    ) {
         $this->logger = $logger ?? new NullLogger();
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
@@ -50,7 +49,6 @@ class AmqpReceiver implements ReceiverInterface
                 $this->message = $envelope->with(new RawMessageStamp($message));
             },
         );
-
     }
 
     public function get(): iterable
@@ -63,15 +61,19 @@ class AmqpReceiver implements ReceiverInterface
                 $this->channel->wait(null, false, $timeout);
                 yield $this->message ?? throw new AMQPNoDataException();
             } catch (AMQPTimeoutException|AMQPNoDataException) {
-                $this->logger->debug('Waited '.$timeout.'s to receive message. No message received. Sending heartbeat.');
+                $this->logger->debug(
+                    sprintf('Waited %ss to receive message. No message received. Sending heartbeat.', $timeout)
+                );
                 $this->ackPending();
 
                 $this->channel->getConnection()->checkHeartBeat();
+
                 return [];
             }
         }
 
         $this->ackPending();
+
         return [];
     }
 
@@ -96,7 +98,8 @@ class AmqpReceiver implements ReceiverInterface
         $stamp->amqpMessage->nack();
     }
 
-    public function ackPending(): void {
+    public function ackPending(): void
+    {
         $this->lastUnacked?->ack(true);
         $this->lastUnacked = null;
         $this->unacked = 0;
@@ -107,7 +110,7 @@ class AmqpReceiver implements ReceiverInterface
         $this->lastUnacked = $message;
         ++$this->unacked;
 
-        if ($this->unacked % $this->maxUnackedMessages === 0) {
+        if (0 === $this->unacked % $this->maxUnackedMessages) {
             $this->ackPending();
         }
     }

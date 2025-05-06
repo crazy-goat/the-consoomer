@@ -8,7 +8,6 @@ class AmqpStamp implements NonSendableStampInterface
 {
     public function __construct(
         public readonly string $routingKey = '',
-    )
-    {
+    ) {
     }
 }

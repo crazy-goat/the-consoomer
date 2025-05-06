@@ -5,3 +5,4 @@
 /examples/symfony/var/
 /examples/symfony/vendor/
 
+/.php-cs-fixer.cache
