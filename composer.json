@@ -16,6 +16,7 @@
     },
     "scripts": {
         "phpcsfixer":  "vendor/bin/php-cs-fixer fix src --rules=@Symfony",
-        "rector": "vendor/bin/rector process"
+        "rector": "vendor/bin/rector process",
+        "run-rabbitmq": "docker run --rm -p 15672:15672 -p 5672:5672 --hostname my-rabbit --name some-rabbit rabbitmq:4.1-management-alpine"
     }
 }

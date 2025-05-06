@@ -2,6 +2,8 @@ framework:
     messenger:
         transports:
             the-consoomer:
+                dsn: '%env(CONSOOMER_TRANSPORT_DSN)%'
+            basic:
                 dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
 
         routing:
