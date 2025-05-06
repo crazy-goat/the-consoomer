@@ -21,7 +21,7 @@ class AmqpReceiver implements ReceiverInterface
     private ?AMQPMessage $lastUnacked = null;
     private ?Envelope $message = null;
     private ?AMQPChannel $channel = null;
-    private LoggerInterface $logger;
+    private readonly LoggerInterface $logger;
 
     public function __construct(
         private readonly AMQPStreamConnection $connection,
@@ -44,7 +44,7 @@ class AmqpReceiver implements ReceiverInterface
         $this->channel->basic_qos(null, $this->prefetchCount, null);
         $this->channel->basic_consume(
             queue: $this->options['queue'] ?? throw new \RuntimeException('Queue name not defined'),
-            callback: function (AMQPMessage $message) {
+            callback: function (AMQPMessage $message): void {
                 $envelope = $this->serializer->decode(['body' => $message->getBody()]);
                 $this->message = $envelope->with(new RawMessageStamp($message));
             },

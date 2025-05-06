@@ -13,7 +13,7 @@ class RawMessageHandler
     {
     }
 
-    public function __invoke(RawMessage $message)
+    public function __invoke(RawMessage $message): void
     {
         $this->logger->debug($message->content);
     }

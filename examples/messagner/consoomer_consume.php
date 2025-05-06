@@ -12,7 +12,7 @@ include __DIR__ . '/common.php';
 
 class MyMessageHandler
 {
-    public function __invoke(MyMessage $message)
+    public function __invoke(MyMessage $message): void
     {
         printf("message: %s\n", $message->content);
     }

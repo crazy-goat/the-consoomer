@@ -33,7 +33,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
 
     private function parsePath(mixed $oath): array
     {
-        $items = explode('/', trim($oath, " \n\r\t\v\0/"));
+        $items = explode('/', trim((string) $oath, " \n\r\t\v\0/"));
 
         return ['vhost' => urldecode($items[0] ?? '/'), 'exchange' => urldecode($items[1] ?? '')];
     }
