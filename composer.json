@@ -1,0 +1,15 @@
+{
+    "autoload":{
+        "psr-4": {
+            "CrazyGoat\\TheConsoomer\\": "src/"
+        }
+    },
+    "require": {
+        "php-amqplib/php-amqplib": "^3.7",
+        "symfony/messenger": "^7.2"
+    },
+    "require-dev": {
+        "symfony/console": "^7.2",
+        "symfony/dependency-injection": "^7.2"
+    }
+}

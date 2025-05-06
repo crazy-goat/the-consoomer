@@ -1,0 +1,8 @@
+framework:
+    messenger:
+        transports:
+            the-consoomer:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+
+        routing:
+            App\VO\RawMessage: the-consoomer
