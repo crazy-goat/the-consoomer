@@ -2,6 +2,8 @@
 
 namespace CrazyGoat\TheConsoomer;
 
+use Bunny\Channel;
+use Bunny\Client;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -11,19 +13,19 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class AmqpSender implements SenderInterface
 {
-    private ?AMQPChannel $channel = null;
+    private ?Channel $channel = null;
 
-    public function __construct(private readonly AMQPStreamConnection $connection, private readonly SerializerInterface $serializer, private readonly array $options)
+    public function __construct(private readonly Client $connection, private readonly SerializerInterface $serializer, private readonly array $options)
     {
     }
 
     private function connect(): void
     {
-        if ($this->channel instanceof AMQPChannel) {
+        if ($this->channel instanceof Channel) {
             return;
         }
 
-        $this->channel = $this->connection->channel();
+        $this->channel = $this->connection->connect()->channel();
     }
 
     public function send(Envelope $envelope): Envelope
@@ -34,8 +36,9 @@ class AmqpSender implements SenderInterface
 
         $data = $this->serializer->encode($envelope);
 
-        $this->channel->basic_publish(
-            new AMQPMessage($data['body'], $data['headers'] ?? []),
+        $this->channel->publish(
+            $data['body'],
+            $data['headers'] ?? [],
             $this->options['exchange'] ?? '',
             $this->options['routing_key'] ?? $stamp?->routingKey ?? '',
         );

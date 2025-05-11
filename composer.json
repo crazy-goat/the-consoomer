@@ -6,7 +6,8 @@
     },
     "require": {
         "php-amqplib/php-amqplib": "^3.7",
-        "symfony/messenger": "^7.2"
+        "symfony/messenger": "^7.2",
+        "bunny/bunny": "^0.5.5"
     },
     "require-dev": {
         "symfony/console": "^7.2",
