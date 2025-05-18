@@ -1,6 +1,6 @@
 <?php
 
-namespace CrazyGoat\TheConsoomer;
+namespace CrazyGoat\TheConsoomer\Library\PhpAmqpLib;
 
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
@@ -13,11 +13,10 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class AmqpReceiver implements ReceiverInterface
+class Receiver implements ReceiverInterface
 {
     private int $unacked = 0;
-    private int $maxUnackedMessages = 1;
-    private int $prefetchCount = 1;
+    private int $maxUnackedMessages = 100;
     private ?AMQPMessage $lastUnacked = null;
     private ?Envelope $message = null;
     private ?AMQPChannel $channel = null;
@@ -41,7 +40,7 @@ class AmqpReceiver implements ReceiverInterface
 
         $this->channel = $this->connection->channel();
 
-        $this->channel->basic_qos(null, $this->prefetchCount, null);
+        $this->channel->basic_qos(0, $this->maxUnackedMessages, null);
         $this->channel->basic_consume(
             queue: $this->options['queue'] ?? throw new \RuntimeException('Queue name not defined'),
             callback: function (AMQPMessage $message): void {

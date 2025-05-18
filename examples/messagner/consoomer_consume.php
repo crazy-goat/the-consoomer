@@ -14,7 +14,7 @@ class MyMessageHandler
 {
     public function __invoke(MyMessage $message): void
     {
-        printf("message: %s\n", $message->content);
+//        printf("message: %s\n", $message->content);
     }
 }
 

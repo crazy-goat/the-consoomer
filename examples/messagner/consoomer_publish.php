@@ -25,4 +25,6 @@ $bus = new MessageBus([
     new SendMessageMiddleware($senders),
 ]);
 
-$bus->dispatch(new Envelope(new MyMessage('some-content'),[new AmqpStamp('test')]));
+foreach (range(1, intval($argv[1] ?? 1)) as $i) {
+    $bus->dispatch(new Envelope(new MyMessage('hello'), [new AmqpStamp('test')]));
+}

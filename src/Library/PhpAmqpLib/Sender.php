@@ -1,7 +1,8 @@
 <?php
 
-namespace CrazyGoat\TheConsoomer;
+namespace CrazyGoat\TheConsoomer\Library\PhpAmqpLib;
 
+use CrazyGoat\TheConsoomer\AmqpStamp;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
@@ -9,7 +10,7 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class AmqpSender implements SenderInterface
+class Sender implements SenderInterface
 {
     private ?AMQPChannel $channel = null;
 
