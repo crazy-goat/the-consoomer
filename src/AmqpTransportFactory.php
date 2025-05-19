@@ -2,6 +2,7 @@
 
 namespace CrazyGoat\TheConsoomer;
 
+use Bunny\Client;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -22,8 +23,17 @@ class AmqpTransportFactory implements TransportFactoryInterface
         $options = [...$options, ...$this->parsePath($info['path'] ?? ''), ...$query];
 
         $connection = new AMQPStreamConnection($info['host'], $info['port'], $info['user'], $info['pass'], $options['vhost']);
+        $connection = [
+            'host' => $info['host'],
+            'port' => $info['port'],
+            'vhost' => $options['vhost'],
+            'user' => $info['user'],
+            'password' =>  $info['pass'],
+        ];
 
-        return new AmqpTransport(new AmqpReceiver($connection, $serializer, $options, $this->logger), new AmqpSender($connection, $serializer, $options));
+        $bunny = new Client($connection);
+
+        return new AmqpTransport(new AmqpReceiver($bunny, $serializer, $options, $this->logger), new AmqpSender($bunny, $serializer, $options));
     }
 
     public function supports(string $dsn, array $options): bool
@@ -33,7 +43,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
 
     private function parsePath(mixed $oath): array
     {
-        $items = explode('/', trim((string) $oath, " \n\r\t\v\0/"));
+        $items = explode('/', trim((string)$oath, " \n\r\t\v\0/"));
 
         return ['vhost' => urldecode($items[0] ?? '/'), 'exchange' => urldecode($items[1] ?? '')];
     }

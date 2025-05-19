@@ -24,5 +24,6 @@ $senders = new SendersLocator([MyMessage::class => ['consoomer']], $container);
 $bus = new MessageBus([
     new SendMessageMiddleware($senders),
 ]);
-
-$bus->dispatch(new Envelope(new MyMessage('some-content'),[new AmqpStamp('test')]));
+foreach (range(0, 1_000_000) as $i) {
+    $bus->dispatch(new Envelope(new MyMessage('some-content'), [new AmqpStamp('test')]));
+}
