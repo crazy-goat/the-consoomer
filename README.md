@@ -1,8 +1,11 @@
-# the-consoomer
+# The Consoomer
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Symfony Messenger AMQP transport that uses `consume` instead of `get`.
 
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![alt text](docs/theconsoomer.webp)
+
+
 
 ---
 
