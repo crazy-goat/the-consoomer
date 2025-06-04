@@ -1,9 +1,8 @@
 <?php
 
-namespace CrazyGoat\TheConsoomer;
+namespace CrazyGoat\TheConsoomer\Library\Bunny;
 
 use Bunny\Channel;
-use Bunny\ChannelInterface;
 use Bunny\Client;
 use Bunny\Message;
 use Psr\Log\LoggerInterface;
@@ -12,11 +11,10 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class AmqpReceiver implements ReceiverInterface
+class Receiver implements ReceiverInterface
 {
     private int $unacked = 0;
-    private int $maxUnackedMessages = 1;
-    private int $prefetchCount = 1000;
+    private int $maxUnackedMessages = 100;
     private ?Message $lastUnacked = null;
     private array $messages = [];
     private ?Channel $channel = null;
@@ -40,7 +38,7 @@ class AmqpReceiver implements ReceiverInterface
         }
 
         $this->channel = $this->connection->connect()->channel();
-        $this->channel->qos(0, $this->prefetchCount);
+        $this->channel->qos(0, $this->maxUnackedMessages);
 
         $this->channel->consume(
             function (Message $message, Channel $channel, Client $client): void {

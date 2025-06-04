@@ -7,8 +7,6 @@
         "php": ">=8.2",
         "ext-ctype": "*",
         "ext-iconv": "*",
-        "php-amqplib/php-amqplib": "^3.7",
-        "symfony/amqp-messenger": "7.2.*",
         "symfony/console": "7.2.*",
         "symfony/dotenv": "7.2.*",
         "symfony/flex": "^2",
@@ -66,5 +64,8 @@
             "allow-contrib": false,
             "require": "7.2.*"
         }
+    },
+    "require-dev": {
+        "php-amqplib/php-amqplib": "^3.7"
     }
 }

@@ -1,17 +1,15 @@
 <?php
 
-namespace CrazyGoat\TheConsoomer;
+namespace CrazyGoat\TheConsoomer\Library\Bunny;
 
 use Bunny\Channel;
 use Bunny\Client;
-use PhpAmqpLib\Channel\AMQPChannel;
-use PhpAmqpLib\Connection\AMQPStreamConnection;
-use PhpAmqpLib\Message\AMQPMessage;
+use CrazyGoat\TheConsoomer\AmqpStamp;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class AmqpSender implements SenderInterface
+class Sender implements SenderInterface
 {
     private ?Channel $channel = null;
 
