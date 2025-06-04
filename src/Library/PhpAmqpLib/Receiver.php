@@ -2,11 +2,10 @@
 
 namespace CrazyGoat\TheConsoomer\Library\PhpAmqpLib;
 
-use PhpAmqpLib\Channel\AMQPChannel;
-use PhpAmqpLib\Connection\AMQPStreamConnection;
-use PhpAmqpLib\Exception\AMQPNoDataException;
-use PhpAmqpLib\Exception\AMQPTimeoutException;
-use PhpAmqpLib\Message\AMQPMessage;
+use Bunny\Channel;
+use Bunny\ChannelInterface;
+use Bunny\Client;
+use Bunny\Message;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Symfony\Component\Messenger\Envelope;
@@ -23,22 +22,24 @@ class Receiver implements ReceiverInterface
     private readonly LoggerInterface $logger;
 
     public function __construct(
-        private readonly AMQPStreamConnection $connection,
+        private readonly Client              $connection,
         private readonly SerializerInterface $serializer,
-        private readonly array $options,
-        ?LoggerInterface $logger = null,
-    ) {
+        private readonly array               $options,
+        ?LoggerInterface                     $logger = null,
+    )
+    {
         $this->logger = $logger ?? new NullLogger();
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
 
     private function connect(): void
     {
-        if ($this->channel instanceof AMQPChannel) {
+        if ($this->channel instanceof Channel) {
             return;
         }
 
-        $this->channel = $this->connection->channel();
+        $this->channel = $this->connection->connect()->channel();
+        $this->channel->qos(0, $this->prefetchCount);
 
         $this->channel->basic_qos(0, $this->maxUnackedMessages, null);
         $this->channel->basic_consume(
@@ -47,6 +48,7 @@ class Receiver implements ReceiverInterface
                 $envelope = $this->serializer->decode(['body' => $message->getBody()]);
                 $this->message = $envelope->with(new RawMessageStamp($message));
             },
+            $this->options['queue'] ?? throw new \RuntimeException('Queue name not defined'),
         );
     }
 
@@ -54,26 +56,10 @@ class Receiver implements ReceiverInterface
     {
         $timeout = $this->options['timeout'] ?? 1.0;
         $this->connect();
+        $this->messages = [];
 
-        while ($this->channel->is_consuming()) {
-            try {
-                $this->channel->wait(null, false, $timeout);
-                yield $this->message ?? throw new AMQPNoDataException();
-            } catch (AMQPTimeoutException|AMQPNoDataException) {
-                $this->logger->debug(
-                    sprintf('Waited %ss to receive message. No message received. Sending heartbeat.', $timeout)
-                );
-                $this->ackPending();
-
-                $this->channel->getConnection()->checkHeartBeat();
-
-                return [];
-            }
-        }
-
-        $this->ackPending();
-
-        return [];
+        $this->connection->run($timeout);
+        yield from $this->messages;
     }
 
     public function ack(Envelope $envelope): void
@@ -94,17 +80,20 @@ class Receiver implements ReceiverInterface
         }
 
         $this->ackPending();
-        $stamp->amqpMessage->nack();
+        $this->channel->nack($stamp->amqpMessage, true);
     }
 
     public function ackPending(): void
     {
-        $this->lastUnacked?->ack(true);
+        if ($this->lastUnacked === null) {
+            return;
+        }
+        $this->channel->ack($this->lastUnacked, true);
         $this->lastUnacked = null;
         $this->unacked = 0;
     }
 
-    private function ackMessage(AMQPMessage $message): void
+    private function ackMessage(Message $message): void
     {
         $this->lastUnacked = $message;
         ++$this->unacked;
