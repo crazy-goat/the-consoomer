@@ -28,3 +28,4 @@ $bus = new MessageBus([
 foreach (range(1, intval($argv[1] ?? 1)) as $i) {
     $bus->dispatch(new Envelope(new MyMessage('hello'), [new AmqpStamp('test')]));
 }
+$bus->dispatch(new Envelope(new MyMessage('exit'), [new AmqpStamp('test')]));

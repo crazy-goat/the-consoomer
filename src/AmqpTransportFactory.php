@@ -2,9 +2,12 @@
 
 namespace CrazyGoat\TheConsoomer;
 
-use CrazyGoat\TheConsoomer\Library\AmqpExtension\Receiver;
+use Bunny\Client;
+use CrazyGoat\TheConsoomer\Library\AmqpExtension\Receiver as AmqpExtensionReceiver;
+use CrazyGoat\TheConsoomer\Library\Bunny\Receiver as BunnyReceiver;
+use CrazyGoat\TheConsoomer\Library\Bunny\Sender as BunnySender;
 use CrazyGoat\TheConsoomer\Library\PhpAmqpLib\Receiver as PhpAmqpLibReceiver;
-use CrazyGoat\TheConsoomer\Library\AmqpExtension\Sender;
+use CrazyGoat\TheConsoomer\Library\AmqpExtension\Sender as AmqpExtensionSender;
 use CrazyGoat\TheConsoomer\Library\PhpAmqpLib\Sender as PhpAmqpLibSender;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use Psr\Log\LoggerInterface;
@@ -31,8 +34,13 @@ class AmqpTransportFactory implements TransportFactoryInterface
     private function createConnection(array $info, array $options, SerializerInterface $serializer): array
     {
         if (extension_loaded('amqp')) {
+            $this->logger->info('Using amqp extension');
             return $this->createAmqpExtensionConnection($info, $options, $serializer);
-        } else if (class_exists(AMQPStreamConnection::class)) {
+        } elseif (class_exists(Client::class)) {
+            $this->logger->info('Using bunny library');
+            return $this->createBunnyConnection($info, $options, $serializer);
+        } elseif (class_exists(AMQPStreamConnection::class)) {
+            $this->logger->info('Using php-amqp library');
             return $this->createPhpAmqpLibConnection($info, $options, $serializer);
         };
 
@@ -57,7 +65,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
         return [new PhpAmqpLibReceiver($connection, $serializer, $options, $this->logger), new PhpAmqpLibSender($connection, $serializer, $options)];
     }
 
-    private function createAmqpExtensionConnection(array $info, array $options, SerializerInterface $serializer)
+    private function createAmqpExtensionConnection(array $info, array $options, SerializerInterface $serializer): array
     {
         $connection = new \AMQPConnection();
         $connection->setHost($info['host']);
@@ -65,12 +73,24 @@ class AmqpTransportFactory implements TransportFactoryInterface
         $connection->setVhost($options['vhost']);
         $connection->setLogin($info['user']);
         $connection->setPassword($info['pass']);
-        $connection->setReadTimeout($options['timeout'] ?? 1.0);
+        $connection->setReadTimeout($options['timeout'] ?? 0.1);
         $connection->connect();
 
         return [
-            new Receiver($connection, $serializer, $options, $this->logger),
-            new Sender($connection,$serializer, $options),
+            new AmqpExtensionReceiver($connection, $serializer, $options, $this->logger),
+            new AmqpExtensionSender($connection,$serializer, $options),
         ];
+    }
+
+    private function createBunnyConnection(array $info, array $options, SerializerInterface $serializer): array
+    {
+        $bunny = new Client([
+            'host' => $info['host'],
+            'port' => $info['port'],
+            'vhost' => $options['vhost'],
+            'user' => $info['user'],
+            'password' =>  $info['pass'],
+        ]);
+        return [new BunnyReceiver($bunny, $serializer, $options, $this->logger), new BunnySender($bunny, $serializer, $options)];
     }
 }
