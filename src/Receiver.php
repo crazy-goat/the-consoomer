@@ -2,8 +2,6 @@
 
 namespace CrazyGoat\TheConsoomer;
 
-use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -34,6 +32,7 @@ class Receiver implements ReceiverInterface
         $this->callback = function (\AMQPEnvelope $message): false {
             $envelope = $this->serializer->decode(['body' => $message->getBody()]);
             $this->message = $envelope->with(new RawMessageStamp($message));
+
             return false;
         };
 
@@ -52,12 +51,12 @@ class Receiver implements ReceiverInterface
         try {
             $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());
         } catch (\AMQPQueueException $exception) {
-            if ($exception->getMessage() !== 'Consumer timeout exceed') {
+            if ('Consumer timeout exceed' !== $exception->getMessage()) {
                 throw $exception;
             }
         }
 
-        return $this->message instanceof \Symfony\Component\Messenger\Envelope ? [$this->message] : [];
+        return $this->message instanceof Envelope ? [$this->message] : [];
     }
 
     public function ack(Envelope $envelope): void

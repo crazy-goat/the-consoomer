@@ -74,7 +74,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
 
     private static function parsePath(mixed $path): array
     {
-        $items = explode('/', trim((string)$path, " \n\r\t\v\0/"));
+        $items = explode('/', trim((string) $path, " \n\r\t\v\0/"));
 
         return ['vhost' => urldecode($items[0] ?? '/'), 'exchange' => urldecode($items[1] ?? '')];
     }
