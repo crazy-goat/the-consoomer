@@ -1,13 +1,14 @@
 <?php
 
-namespace CrazyGoat\TheConsoomer\Library\Bunny;
+declare(strict_types=1);
 
-use Bunny\Message;
+namespace CrazyGoat\TheConsoomer;
+
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
 class RawMessageStamp implements NonSendableStampInterface
 {
-    public function __construct(public readonly Message $amqpMessage)
+    public function __construct(public readonly \AMQPEnvelope $amqpMessage)
     {
     }
 }

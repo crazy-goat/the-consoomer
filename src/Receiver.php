@@ -1,9 +1,7 @@
 <?php
 
-namespace CrazyGoat\TheConsoomer\Library\AmqpExtension;
+namespace CrazyGoat\TheConsoomer;
 
-use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -14,7 +12,6 @@ class Receiver implements ReceiverInterface
     private int $maxUnackedMessages = 100;
     private ?\AMQPEnvelope $lastUnacked = null;
     private ?Envelope $message = null;
-    private readonly LoggerInterface $logger;
     private ?\AMQPQueue $queue = null;
     private \Closure $callback;
 
@@ -22,9 +19,7 @@ class Receiver implements ReceiverInterface
         private readonly \AMQPConnection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
-        ?LoggerInterface $logger = null,
     ) {
-        $this->logger = $logger ?? new NullLogger();
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
 
@@ -34,17 +29,18 @@ class Receiver implements ReceiverInterface
             return;
         }
 
-        $this->callback = function (\AMQPEnvelope $message) {
+        $this->callback = function (\AMQPEnvelope $message): false {
             $envelope = $this->serializer->decode(['body' => $message->getBody()]);
             $this->message = $envelope->with(new RawMessageStamp($message));
+
             return false;
         };
 
-        $cahnnel = new \AMQPChannel($this->connection);
-        $cahnnel->qos(0, $this->maxUnackedMessages);
-        $this->queue = new \AMQPQueue($cahnnel);
+        $channel = new \AMQPChannel($this->connection);
+        $channel->qos(0, $this->maxUnackedMessages);
+        $this->queue = new \AMQPQueue($channel);
         $this->queue->setName($this->options['queue']);
-        //setup consumer, consume happens in get() function
+        // setup consumer, consume happens in get() function
         $this->queue->consume();
     }
 
@@ -55,12 +51,12 @@ class Receiver implements ReceiverInterface
         try {
             $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());
         } catch (\AMQPQueueException $exception) {
-            if ($exception->getMessage() !== 'Consumer timeout exceed') {
-                throw $e;
+            if ('Consumer timeout exceed' !== $exception->getMessage()) {
+                throw $exception;
             }
         }
 
-        return $this->message !== null ? [$this->message] : [];
+        return $this->message instanceof Envelope ? [$this->message] : [];
     }
 
     public function ack(Envelope $envelope): void
