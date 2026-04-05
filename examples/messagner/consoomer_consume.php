@@ -1,7 +1,6 @@
 <?php
 
-use CrazyGoat\TheConsoomer\AmqpTransportFactory;
-use Psr\Log\NullLogger;
+use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Exception\StopWorkerException;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
@@ -27,7 +26,7 @@ class MyMessageHandler
 }
 
 $dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/?queue=test';
-$transport = (new AmqpTransportFactory(new NullLogger()))->createTransport($dsn, [], new PhpSerializer());
+$transport = AmqpTransport::create($dsn, [], new PhpSerializer());
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(

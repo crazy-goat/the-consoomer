@@ -2,7 +2,6 @@
 
 namespace CrazyGoat\TheConsoomer;
 
-use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
@@ -46,10 +45,15 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
 
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
     {
+        return self::create($dsn, $options, $serializer);
+    }
+
+    public static function create(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
+    {
         $info = parse_url($dsn);
         $query = [];
         parse_str($info['query'] ?? '', $query);
-        $mergedOptions = [...$options, ...$this->parsePath($info['path'] ?? ''), ...$query];
+        $mergedOptions = [...$options, ...self::parsePath($info['path'] ?? ''), ...$query];
 
         $connection = new \AMQPConnection();
         $connection->setHost($info['host']);
@@ -68,7 +72,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         );
     }
 
-    private function parsePath(mixed $path): array
+    private static function parsePath(mixed $path): array
     {
         $items = explode('/', trim((string)$path, " \n\r\t\v\0/"));
 

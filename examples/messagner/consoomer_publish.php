@@ -1,8 +1,7 @@
 <?php
 
 use CrazyGoat\TheConsoomer\AmqpStamp;
-use CrazyGoat\TheConsoomer\AmqpTransportFactory;
-use Psr\Log\NullLogger;
+use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\DependencyInjection\Container;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBus;
@@ -14,10 +13,7 @@ include __DIR__ . '/../../vendor/autoload.php';
 include __DIR__ . '/common.php';
 
 $dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f';
-$transport = new AmqpTransportFactory(new NullLogger());
-
-$container = new Container();
-$container->set('consoomer', $transport->createTransport($dsn, [], new PhpSerializer()));
+$transport = AmqpTransport::create($dsn, [], new PhpSerializer());
 
 $senders = new SendersLocator([MyMessage::class => ['consoomer']], $container);
 
