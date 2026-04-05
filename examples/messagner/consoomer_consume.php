@@ -44,7 +44,7 @@ $worker = new \Symfony\Component\Messenger\Worker(
 $stopwatch->start('consomer');
 try {
     $worker->run(['sleep' => 0]);
-} catch (\Throwable $exception) {
+} catch (\Throwable) {
     echo "Job finished." . PHP_EOL;
 }
 

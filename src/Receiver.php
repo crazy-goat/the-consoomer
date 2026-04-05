@@ -14,7 +14,6 @@ class Receiver implements ReceiverInterface
     private int $maxUnackedMessages = 100;
     private ?\AMQPEnvelope $lastUnacked = null;
     private ?Envelope $message = null;
-    private readonly LoggerInterface $logger;
     private ?\AMQPQueue $queue = null;
     private \Closure $callback;
 
@@ -22,9 +21,7 @@ class Receiver implements ReceiverInterface
         private readonly \AMQPConnection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
-        ?LoggerInterface $logger = null,
     ) {
-        $this->logger = $logger ?? new NullLogger();
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
 
@@ -34,7 +31,7 @@ class Receiver implements ReceiverInterface
             return;
         }
 
-        $this->callback = function (\AMQPEnvelope $message) {
+        $this->callback = function (\AMQPEnvelope $message): false {
             $envelope = $this->serializer->decode(['body' => $message->getBody()]);
             $this->message = $envelope->with(new RawMessageStamp($message));
             return false;
@@ -60,7 +57,7 @@ class Receiver implements ReceiverInterface
             }
         }
 
-        return $this->message !== null ? [$this->message] : [];
+        return $this->message instanceof \Symfony\Component\Messenger\Envelope ? [$this->message] : [];
     }
 
     public function ack(Envelope $envelope): void
