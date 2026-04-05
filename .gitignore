@@ -1,4 +1,5 @@
 /.idea
+/.worktrees
 /vendor/
 /composer.lock
 
