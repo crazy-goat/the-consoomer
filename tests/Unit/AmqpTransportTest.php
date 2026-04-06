@@ -18,11 +18,13 @@ class AmqpTransportTest extends TestCase
 {
     private ReceiverInterface&MockObject $receiver;
     private SenderInterface&MockObject $sender;
+    private SerializerInterface&MockObject $serializer;
 
     protected function setUp(): void
     {
         $this->receiver = $this->createMock(ReceiverInterface::class);
         $this->sender = $this->createMock(SenderInterface::class);
+        $this->serializer = $this->createMock(SerializerInterface::class);
     }
 
     public function testSupportsReturnsTrueForAmqpConsoomerDsn(): void
@@ -58,6 +60,16 @@ class AmqpTransportTest extends TestCase
         $transport = new AmqpTransport($this->receiver, $this->sender);
 
         $this->assertFalse($transport->supports('rabbitmq://localhost', []));
+    }
+
+    public function testSupportsAmqpsScheme(): void
+    {
+        $transport = new AmqpTransport(
+            $this->createMock(ReceiverInterface::class),
+            $this->createMock(SenderInterface::class),
+        );
+
+        $this->assertTrue($transport->supports('amqps://localhost/%2f/exchange', []));
     }
 
     public function testGetDelegatesToReceiver(): void
@@ -194,5 +206,51 @@ class AmqpTransportTest extends TestCase
         $this->assertInstanceOf(InfrastructureSetup::class, $receiverSetup);
         $this->assertInstanceOf(InfrastructureSetup::class, $senderSetup);
         $this->assertSame($receiverSetup, $senderSetup);
+    }
+
+    public function testCreateWithAmqpsScheme(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->willReturn($connection);
+
+        $factory
+            ->expects($this->once())
+            ->method('configureSsl')
+            ->with(
+                $connection,
+                $this->callback(function (array $options) {
+                    $this->assertTrue($options['ssl'] ?? false);
+                    $this->assertSame(5671, $options['port']);
+                    return true;
+                })
+            );
+
+        $connection
+            ->expects($this->once())
+            ->method('setHost')
+            ->with('localhost');
+
+        $connection
+            ->expects($this->once())
+            ->method('setPort')
+            ->with(5671);
+
+        $connection
+            ->expects($this->once())
+            ->method('connect');
+
+        $transport = AmqpTransport::create(
+            'amqps://guest:guest@localhost/%2f/my_exchange',
+            ['exchange' => 'my_exchange', 'queue' => 'my_queue'],
+            $this->serializer,
+            $factory,
+        );
+
+        $this->assertInstanceOf(AmqpTransport::class, $transport);
     }
 }

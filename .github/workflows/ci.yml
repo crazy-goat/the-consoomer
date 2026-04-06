@@ -52,6 +52,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Start RabbitMQ SSL container
+        run: |
+          docker run -d --name rabbitmq-ssl \
+            -p 5671:5671 \
+            -v ${{ github.workspace }}/docker/rabbitmq/ssl:/etc/rabbitmq/ssl:ro \
+            --entrypoint sh \
+            rabbitmq:4.1-management-alpine \
+            -c "cp /etc/rabbitmq/ssl/rabbitmq.conf /etc/rabbitmq/rabbitmq.conf && rabbitmq-server"
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -70,8 +79,8 @@ jobs:
       - name: Wait for RabbitMQ
         run: |
           for i in {1..30}; do
-            if nc -z localhost 5672 2>/dev/null; then
-              echo "RabbitMQ is ready"
+            if nc -z localhost 5672 2>/dev/null && nc -z localhost 5671 2>/dev/null; then
+              echo "RabbitMQ is ready (both standard and SSL)"
               exit 0
             fi
             echo "Waiting for RabbitMQ... ($i/30)"
@@ -85,9 +94,11 @@ jobs:
         env:
           RABBITMQ_HOST: localhost
           RABBITMQ_PORT: 5672
+          RABBITMQ_SSL_PORT: 5671
           RABBITMQ_USER: guest
           RABBITMQ_PASSWORD: guest
           RABBITMQ_VHOST: /
+          RABBITMQ_SSL_CA_CERT: ${{ github.workspace }}/tests/E2E/ssl/ca_certificate.pem
 
   ci:
     runs-on: ubuntu-latest

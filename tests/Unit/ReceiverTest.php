@@ -46,7 +46,7 @@ class ReceiverTest extends TestCase
 
         try {
             $receiver->get();
-        } catch (\AMQPException $e) {
+        } catch (\AMQPException) {
             // Expected - queue not fully mocked, but setup was called
         }
     }
