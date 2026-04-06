@@ -51,31 +51,23 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
 
     public static function create(string $dsn, array $options, SerializerInterface $serializer, ?AmqpFactoryInterface $factory = null): TransportInterface
     {
-        $info = parse_url($dsn);
-        $query = [];
-        parse_str($info['query'] ?? '', $query);
-        $mergedOptions = [...$options, ...self::parsePath($info['path'] ?? ''), ...$query];
+        $dsnParser = new DsnParser();
+        $parsedDsn = $dsnParser->parse($dsn);
+        $mergedOptions = [...$options, ...$parsedDsn];
 
         $factory ??= new AmqpFactory();
         $connection = $factory->createConnection();
-        $connection->setHost($info['host']);
-        $connection->setPort($info['port']);
-        $connection->setVhost($mergedOptions['vhost']);
-        $connection->setLogin($info['user']);
-        $connection->setPassword($info['pass']);
-        $connection->setReadTimeout((float) ($mergedOptions['timeout'] ?? 0.1));
+        $connection->setHost($parsedDsn['host']);
+        $connection->setPort($parsedDsn['port']);
+        $connection->setVhost($parsedDsn['vhost']);
+        $connection->setLogin($parsedDsn['user']);
+        $connection->setPassword($parsedDsn['password']);
+        $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? 0.1));
         $connection->connect();
 
         return new self(
             new Receiver($factory, $connection, $serializer, $mergedOptions),
             new Sender($factory, $connection, $serializer, $mergedOptions),
         );
-    }
-
-    private static function parsePath(mixed $path): array
-    {
-        $items = explode('/', trim((string) $path, " \n\r\t\v\0/"));
-
-        return ['vhost' => urldecode($items[0] ?? '/'), 'exchange' => urldecode($items[1] ?? '')];
     }
 }
