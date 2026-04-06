@@ -182,12 +182,12 @@ if ($this->isSslEnabled()) {
 - [x] Set default port 5671 for amqps://
 - [x] Add `hasCaCertConfigured()` validation
 - [x] Add certificate file validation
-- [ ] Add logging
-- [ ] Add metrics
-- [ ] Add unit tests with mocked AMQP objects
+- [x] Add unit tests with mocked AMQP objects
+- [ ] Add logging (optional - requires Symfony logger)
+- [ ] Add metrics (optional - requires monitoring setup)
 - [ ] Add integration tests with Docker
 - [ ] Add E2E tests with full message flow
-- [ ] Add documentation
+- [x] Add documentation
 
 ## Dependencies
 
