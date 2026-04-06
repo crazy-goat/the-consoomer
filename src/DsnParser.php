@@ -9,6 +9,9 @@ class DsnParser
     public function parse(string $dsn): array
     {
         $info = parse_url($dsn);
+        if ($info === false) {
+            throw new \InvalidArgumentException('Malformed DSN: ' . $dsn);
+        }
         $query = [];
         parse_str($info['query'] ?? '', $query);
 
@@ -84,10 +87,7 @@ class DsnParser
 
     private function normalizeQueueArgumentValue(mixed $value): mixed
     {
-        if (is_numeric($value)) {
-            return (int) $value;
-        }
-        return $value;
+        return $this->normalizeValue($value);
     }
 
     public function validateOptions(array $options): bool
@@ -97,7 +97,10 @@ class DsnParser
         }
 
         if (isset($options['exchange_type'])) {
-            $validTypes = ['direct', 'fanout', 'topic', 'headers'];
+            $validTypes = array_map(
+                fn(\CrazyGoat\TheConsoomer\Enum\ExchangeType $type) => $type->value,
+                \CrazyGoat\TheConsoomer\Enum\ExchangeType::cases(),
+            );
             if (!in_array($options['exchange_type'], $validTypes, true)) {
                 return false;
             }
