@@ -26,6 +26,13 @@ class DsnParser
             'exchange' => $pathOptions['exchange'],
         ];
 
+        if ($info['scheme'] ?? '' === 'amqps') {
+            $result['ssl'] = true;
+            if (!isset($info['port'])) {
+                $result['port'] = 5671;
+            }
+        }
+
         foreach ($query as $key => $value) {
             if (str_starts_with((string) $key, 'queue_arguments[')) {
                 continue;

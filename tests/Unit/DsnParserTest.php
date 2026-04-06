@@ -131,4 +131,25 @@ class DsnParserTest extends TestCase
         $this->assertEquals('topic', \CrazyGoat\TheConsoomer\Enum\ExchangeType::TOPIC->value);
         $this->assertEquals('headers', \CrazyGoat\TheConsoomer\Enum\ExchangeType::HEADERS->value);
     }
+
+    public function testParsesAmqpsScheme(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange');
+
+        $this->assertEquals('localhost', $result['host']);
+        $this->assertEquals(5671, $result['port']);
+        $this->assertTrue($result['ssl']);
+        $this->assertEquals('/', $result['vhost']);
+        $this->assertEquals('my_exchange', $result['exchange']);
+    }
+
+    public function testAmqpsSchemeWithCustomPort(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps://guest:guest@localhost:5673/%2f/my_exchange');
+
+        $this->assertEquals(5673, $result['port']);
+        $this->assertTrue($result['ssl']);
+    }
 }
