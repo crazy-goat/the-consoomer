@@ -32,6 +32,21 @@ class AmqpFactory implements AmqpFactoryInterface
             return;
         }
 
+        $certFiles = [
+            'ssl_cert' => $options['ssl_cert'] ?? '',
+            'ssl_key' => $options['ssl_key'] ?? '',
+            'ssl_cacert' => $options['ssl_cacert'] ?? '',
+        ];
+
+        foreach ($certFiles as $type => $path) {
+            if ($path !== '' && !file_exists($path)) {
+                throw new \InvalidArgumentException("SSL {$type} file not found: {$path}");
+            }
+            if ($path !== '' && !is_readable($path)) {
+                throw new \InvalidArgumentException("SSL {$type} file not readable: {$path}");
+            }
+        }
+
         if (!empty($options['ssl_cert'])) {
             $connection->setCert($options['ssl_cert']);
         }

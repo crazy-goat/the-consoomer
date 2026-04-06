@@ -65,4 +65,18 @@ class AmqpFactoryTest extends TestCase
             'ssl_verify' => true,
         ]);
     }
+
+    public function testConfigureSslThrowsForMissingCertFile(): void
+    {
+        $factory = new AmqpFactory();
+        $connection = new \AMQPConnection();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('SSL ssl_cert file not found');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_cert' => '/nonexistent/cert.pem',
+        ]);
+    }
 }
