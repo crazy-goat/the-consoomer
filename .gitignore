@@ -7,3 +7,5 @@
 /examples/symfony/vendor/
 
 /.php-cs-fixer.cache
+
+.env.test.local
