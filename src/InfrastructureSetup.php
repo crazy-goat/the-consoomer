@@ -35,12 +35,12 @@ class InfrastructureSetup
             default => AMQP_EX_TYPE_DIRECT,
         };
         $exchange->setType($type);
-        $exchange->setFlags(AMQP_DURABLE);
+        $exchange->setFlags(AMQP_DURABLE | ($this->options['exchange_flags'] ?? 0));
         $exchange->declareExchange();
 
         $queue = $this->factory->createQueue($channel);
         $queue->setName($this->options['queue']);
-        $queue->setFlags(AMQP_DURABLE);
+        $queue->setFlags(AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
         $queue->declareQueue();
 
         $routingKey = $this->options['routing_key'] ?? '';
