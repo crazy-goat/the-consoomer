@@ -164,12 +164,12 @@ if ($this->isSslEnabled()) {
 
 ### Implementation Checklist
 
-- [ ] Add `amqps://` scheme detection in supports()
-- [ ] Add SSL options to Connection class
-- [ ] Configure AMQPConnection SSL settings
-- [ ] Set default port 5671 for amqps://
-- [ ] Add `hasCaCertConfigured()` validation
-- [ ] Add certificate file validation
+- [x] Add `amqps://` scheme detection in supports()
+- [x] Add SSL options to Connection class
+- [x] Configure AMQPConnection SSL settings
+- [x] Set default port 5671 for amqps://
+- [x] Add `hasCaCertConfigured()` validation
+- [x] Add certificate file validation
 - [ ] Add logging
 - [ ] Add metrics
 - [ ] Add unit tests with mocked AMQP objects
