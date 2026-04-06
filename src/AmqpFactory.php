@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use Psr\Log\LoggerInterface;
+
 class AmqpFactory implements AmqpFactoryInterface
 {
     public function createConnection(): \AMQPConnection
@@ -26,11 +28,13 @@ class AmqpFactory implements AmqpFactoryInterface
         return new \AMQPExchange($channel);
     }
 
-    public function configureSsl(\AMQPConnection $connection, array $options): void
+    public function configureSsl(\AMQPConnection $connection, array $options, ?LoggerInterface $logger = null): void
     {
         if (empty($options['ssl'])) {
             return;
         }
+
+        $logger?->info('SSL/TLS enabled for connection');
 
         $certFiles = [
             'ssl_cert' => $options['ssl_cert'] ?? '',
@@ -49,16 +53,22 @@ class AmqpFactory implements AmqpFactoryInterface
 
         if (!empty($options['ssl_cert'])) {
             $connection->setCert($options['ssl_cert']);
+            $logger?->debug('Using SSL certificate: {cert}', ['cert' => $options['ssl_cert']]);
         }
         if (!empty($options['ssl_key'])) {
             $connection->setKey($options['ssl_key']);
+            $logger?->debug('Using SSL key: {key}', ['key' => $options['ssl_key']]);
         }
         if (!empty($options['ssl_cacert'])) {
             $connection->setCaCert($options['ssl_cacert']);
+            $logger?->debug('Using SSL CA certificate: {cacert}', ['cacert' => $options['ssl_cacert']]);
         }
         if (isset($options['ssl_verify'])) {
             $connection->setVerify($options['ssl_verify']);
+            $logger?->debug('SSL verify: {verify}', ['verify' => $options['ssl_verify'] ? 'enabled' : 'disabled']);
         }
+
+        $logger?->info('SSL handshake configured successfully');
     }
 
     public function hasCaCertConfigured(array $options): bool

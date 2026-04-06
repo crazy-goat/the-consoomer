@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
@@ -49,7 +50,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         return self::create($dsn, $options, $serializer);
     }
 
-    public static function create(string $dsn, array $options, SerializerInterface $serializer, ?AmqpFactoryInterface $factory = null): TransportInterface
+    public static function create(string $dsn, array $options, SerializerInterface $serializer, ?AmqpFactoryInterface $factory = null, ?LoggerInterface $logger = null): TransportInterface
     {
         $dsnParser = new DsnParser();
         $parsedDsn = $dsnParser->parse($dsn);
@@ -64,7 +65,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $connection->setPassword($parsedDsn['password']);
         $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? 0.1));
 
-        $factory->configureSsl($connection, $mergedOptions);
+        $factory->configureSsl($connection, $mergedOptions, $logger);
 
         $connection->connect();
 
