@@ -22,6 +22,7 @@ class Receiver implements ReceiverInterface
         private readonly \AMQPConnection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
+        private readonly InfrastructureSetup $setup,
     ) {
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
@@ -49,6 +50,7 @@ class Receiver implements ReceiverInterface
 
     public function get(): iterable
     {
+        $this->setup->setup();
         $this->connect();
 
         try {
