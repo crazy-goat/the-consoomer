@@ -70,6 +70,36 @@ Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=tes
 | `max_unacked_messages` | Prefetch count / batch size | 100 |
 | `timeout` | Consumer timeout in seconds | 0.1 |
 
+## Testing
+
+### Run tests
+
+```bash
+# All tests
+composer test
+
+# Unit tests only
+composer test-unit
+
+# E2E tests (requires RabbitMQ)
+composer test-e2e-full
+```
+
+### E2E tests
+
+E2E tests require RabbitMQ. The `test-e2e-full` script automatically:
+1. Starts RabbitMQ via Docker
+2. Waits for RabbitMQ to be ready
+3. Runs E2E tests
+4. Stops RabbitMQ
+
+### Code quality
+
+```bash
+# Run rector + php-cs-fixer
+composer lint
+```
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
