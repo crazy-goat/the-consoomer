@@ -38,11 +38,14 @@ class InfrastructureSetup
 class Sender {
     public function __construct(
         private readonly InfrastructureSetup $setup,
+        private readonly array $options,
         // ...
     ) {}
     
     public function send(Envelope $envelope): Envelope {
-        $this->setup->setup();  // Lazy setup on first send
+        if ($this->options['auto_setup'] ?? true) {
+            $this->setup->setup();
+        }
         // ... publish
     }
 }
@@ -51,11 +54,14 @@ class Sender {
 class Receiver {
     public function __construct(
         private readonly InfrastructureSetup $setup,
+        private readonly array $options,
         // ...
     ) {}
     
     public function get(): iterable {
-        $this->setup->setup();  // Lazy setup on first get
+        if ($this->options['auto_setup'] ?? true) {
+            $this->setup->setup();
+        }
         // ... consume
     }
 }
@@ -77,12 +83,20 @@ public function setup(): void
     // Exchange
     $exchange = $this->factory->createExchange($channel);
     $exchange->setName($this->options['exchange'] ?? '');
-    $exchange->setType(AMQP_EX_TYPE_DIRECT);
+    $type = match ($this->options['exchange_type'] ?? 'direct') {
+        'fanout' => AMQP_EX_TYPE_FANOUT,
+        'topic' => AMQP_EX_TYPE_TOPIC,
+        'headers' => AMQP_EX_TYPE_HEADERS,
+        default => AMQP_EX_TYPE_DIRECT,
+    };
+    $exchange->setType($type);
+    $exchange->setFlags(AMQP_DURABLE);
     $exchange->declareExchange();
     
     // Queue
     $queue = $this->factory->createQueue($channel);
     $queue->setName($this->options['queue'] ?? '');
+    $queue->setFlags(AMQP_DURABLE);
     $queue->declareQueue();
     
     // Binding
@@ -93,18 +107,6 @@ public function setup(): void
 }
 ```
 
-### Caching
-
-- Private `bool $setupPerformed = false`
-- Check before any setup work
-- Set to `true` after successful setup
-
-### Error Handling
-
-- Fail loud - throw exceptions from AMQP library
-- No retry logic in setup
-- User handles exception
-
 ### Options
 
 | Option | Type | Default |
@@ -113,6 +115,7 @@ public function setup(): void
 | `queue` | string | '' |
 | `routing_key` | string | '' |
 | `auto_setup` | bool | true |
+| `exchange_type` | string | 'direct' |
 
 ## Changes to Existing Classes
 

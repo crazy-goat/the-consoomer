@@ -50,7 +50,9 @@ class Receiver implements ReceiverInterface
 
     public function get(): iterable
     {
-        $this->setup->setup();
+        if ($this->options['auto_setup'] ?? true) {
+            $this->setup->setup();
+        }
         $this->connect();
 
         try {

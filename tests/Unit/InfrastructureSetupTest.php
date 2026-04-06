@@ -51,8 +51,6 @@ class InfrastructureSetupTest extends TestCase
 
         $setup->setup();
         $setup->setup();
-
-        $this->assertTrue(true, 'Setup should be idempotent - calling it twice should not cause duplicate operations');
     }
 
     public function testSetupCreatesExchangeAndQueueWithCorrectParameters(): void
@@ -115,7 +113,5 @@ class InfrastructureSetupTest extends TestCase
 
         $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
         $setup->setup();
-
-        $this->assertTrue(true, 'Exchange and queue should be created with correct parameters');
     }
 }
