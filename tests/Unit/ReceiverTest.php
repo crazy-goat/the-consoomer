@@ -258,7 +258,7 @@ class ReceiverTest extends TestCase
         $queueProperty->setValue($receiver, $this->queue);
 
         $callbackProperty = $reflection->getProperty('callback');
-        $callbackProperty->setValue($receiver, fn (\AMQPEnvelope $message): false => false);
+        $callbackProperty->setValue($receiver, fn(\AMQPEnvelope $message): false => false);
 
         return $receiver;
     }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
 use PHPUnit\Framework\TestCase as BaseTestCase;

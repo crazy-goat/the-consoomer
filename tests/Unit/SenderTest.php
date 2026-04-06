@@ -46,7 +46,7 @@ class SenderTest extends TestCase
                 '{"message":"test"}',
                 '',
                 null,
-                ['content-type' => 'application/json']
+                ['content-type' => 'application/json'],
             );
 
         $sender = $this->createSender($options);
@@ -79,7 +79,7 @@ class SenderTest extends TestCase
                 '{"message":"test"}',
                 $routingKey,
                 null,
-                []
+                [],
             );
 
         $sender = $this->createSender($options);
@@ -113,7 +113,7 @@ class SenderTest extends TestCase
                 '{"message":"test"}',
                 'options.routing.key',
                 null,
-                []
+                [],
             );
 
         $sender = $this->createSender($options);
@@ -140,7 +140,7 @@ class SenderTest extends TestCase
                 '{"message":"test"}',
                 '',
                 null,
-                []
+                [],
             );
 
         $sender = $this->createSender($options);
