@@ -171,6 +171,41 @@ class SenderTest extends TestCase
         $sender->send($envelope2);
     }
 
+    public function testSendUsesFactoryToCreateChannelAndExchange(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createChannel')
+            ->with($this->connection)
+            ->willReturn($channel);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createExchange')
+            ->with($channel)
+            ->willReturn($this->exchange);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('setName')
+            ->with('test_exchange');
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish');
+
+        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options);
+        $sender->send(new Envelope(new \stdClass()));
+    }
+
     private function createSender(array $options): Sender
     {
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options);

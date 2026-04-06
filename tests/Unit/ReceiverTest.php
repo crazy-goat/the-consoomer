@@ -252,6 +252,54 @@ class ReceiverTest extends TestCase
         $this->assertNull($queueProperty->getValue($receiver));
     }
 
+    public function testConnectUsesFactoryToCreateChannelAndQueue(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 10];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $channel
+            ->expects($this->once())
+            ->method('qos')
+            ->with(0, 10);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('setName')
+            ->with('test_queue');
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createChannel')
+            ->with($this->connection)
+            ->willReturn($channel);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createQueue')
+            ->with($channel)
+            ->willReturn($this->queue);
+
+        $firstCall = true;
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('consume')
+            ->willReturnCallback(function () use (&$firstCall): void {
+                if ($firstCall) {
+                    $firstCall = false;
+                    return;
+                }
+                throw new \AMQPQueueException('Consumer timeout exceed');
+            });
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
+        $receiver->get();
+    }
+
     private function createReceiverWithQueue(array $options): Receiver
     {
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
