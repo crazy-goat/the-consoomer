@@ -27,7 +27,7 @@ class SenderTest extends TestCase
     public function testSendPublishesToExchange(): void
     {
         $options = ['exchange' => 'test_exchange'];
-        
+
         $envelope = new Envelope(new \stdClass());
 
         $this->serializer
@@ -60,7 +60,7 @@ class SenderTest extends TestCase
         $options = ['exchange' => 'test_exchange'];
         $routingKey = 'my.routing.key';
         $stamp = new AmqpStamp($routingKey);
-        
+
         $envelope = new Envelope(new \stdClass(), [$stamp]);
 
         $this->serializer
@@ -95,7 +95,7 @@ class SenderTest extends TestCase
             'routing_key' => 'options.routing.key',
         ];
         $stamp = new AmqpStamp('stamp.routing.key');
-        
+
         $envelope = new Envelope(new \stdClass(), [$stamp]);
 
         $this->serializer
@@ -123,7 +123,7 @@ class SenderTest extends TestCase
     public function testSendUsesEmptyRoutingKeyWhenNotProvided(): void
     {
         $options = ['exchange' => 'test_exchange'];
-        
+
         $envelope = new Envelope(new \stdClass());
 
         $this->serializer
@@ -171,7 +171,7 @@ class SenderTest extends TestCase
     private function createSender(array $options): Sender
     {
         $sender = new Sender($this->connection, $this->serializer, $options);
-        
+
         $reflection = new \ReflectionClass(Sender::class);
         $exchangeProperty = $reflection->getProperty('exchange');
         $exchangeProperty->setAccessible(true);

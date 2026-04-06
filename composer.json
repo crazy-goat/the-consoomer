@@ -20,8 +20,12 @@
         "phpunit/phpunit": "^10"
     },
     "scripts": {
-        "phpcsfixer":  "vendor/bin/php-cs-fixer fix src --rules=@Symfony",
         "rector": "vendor/bin/rector process",
+        "phpcsfixer": "vendor/bin/php-cs-fixer fix",
+        "lint": [
+            "@rector",
+            "@phpcsfixer"
+        ],
         "run-rabbitmq": "docker run --rm -p 15672:15672 -p 5672:5672 --hostname my-rabbit --name some-rabbit rabbitmq:4.1-management-alpine",
         "test": "phpunit",
         "test-unit": "phpunit --testsuite unit",
