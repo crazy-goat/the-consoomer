@@ -51,9 +51,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer install --prefer-dist --no-progress --no-update
-          composer require symfony/messenger:^${{ matrix.symfony }} symfony/console:^${{ matrix.symfony }} symfony/dependency-injection:^${{ matrix.symfony }} --no-update
-          composer update --prefer-dist --no-progress
+          composer require symfony/messenger:^${{ matrix.symfony }} symfony/console:^${{ matrix.symfony }} symfony/dependency-injection:^${{ matrix.symfony }} --no-interaction
+          composer install --prefer-dist --no-progress
 
       - name: Run unit tests
         run: composer test-unit
@@ -94,9 +93,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer install --prefer-dist --no-progress --no-update
-          composer require symfony/messenger:^${{ matrix.symfony }} symfony/console:^${{ matrix.symfony }} symfony/dependency-injection:^${{ matrix.symfony }} --no-update
-          composer update --prefer-dist --no-progress
+          composer require symfony/messenger:^${{ matrix.symfony }} symfony/console:^${{ matrix.symfony }} symfony/dependency-injection:^${{ matrix.symfony }} --no-interaction
+          composer install --prefer-dist --no-progress
 
       - name: Wait for RabbitMQ
         run: |
