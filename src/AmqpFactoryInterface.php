@@ -15,4 +15,6 @@ interface AmqpFactoryInterface
     public function createExchange(\AMQPChannel $channel): \AMQPExchange;
 
     public function configureSsl(\AMQPConnection $connection, array $options): void;
+
+    public function hasCaCertConfigured(array $options): bool;
 }

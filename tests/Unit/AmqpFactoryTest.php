@@ -86,4 +86,21 @@ class AmqpFactoryTest extends TestCase
             'ssl_cert' => '/nonexistent/cert.pem',
         ]);
     }
+
+    public function testHasCaCertConfiguredReturnsTrueWhenCaCertSet(): void
+    {
+        $factory = new AmqpFactory();
+        $this->assertTrue($factory->hasCaCertConfigured([
+            'ssl_cacert' => '/path/to/ca.pem',
+        ]));
+    }
+
+    public function testHasCaCertConfiguredReturnsFalseWhenCaCertNotSet(): void
+    {
+        $factory = new AmqpFactory();
+        $this->assertFalse($factory->hasCaCertConfigured([
+            'ssl_cert' => '/path/to/cert.pem',
+            'ssl_key' => '/path/to/key.pem',
+        ]));
+    }
 }

@@ -60,4 +60,9 @@ class AmqpFactory implements AmqpFactoryInterface
             $connection->setVerify($options['ssl_verify']);
         }
     }
+
+    public function hasCaCertConfigured(array $options): bool
+    {
+        return !empty($options['ssl_cacert']);
+    }
 }
