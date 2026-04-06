@@ -184,7 +184,9 @@ if ($this->isSslEnabled()) {
 - [x] Add certificate file validation
 - [x] Add unit tests with mocked AMQP objects
 - [x] Add E2E tests with full message flow
+- [x] Add integration tests with Docker
 - [x] Add logging (PSR-3)
+- [x] Add metrics (note: SSL handshake metrics require AMQP connection callbacks)
 - [x] Add documentation
 
 ## Dependencies
