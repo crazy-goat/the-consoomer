@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
+use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\AmqpStamp;
 use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -13,12 +14,14 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class SenderTest extends TestCase
 {
+    private AmqpFactory&MockObject $factory;
     private \AMQPConnection&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPExchange&MockObject $exchange;
 
     protected function setUp(): void
     {
+        $this->factory = $this->createMock(AmqpFactory::class);
         $this->connection = $this->createMock(\AMQPConnection::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->exchange = $this->createMock(\AMQPExchange::class);
@@ -170,7 +173,7 @@ class SenderTest extends TestCase
 
     private function createSender(array $options): Sender
     {
-        $sender = new Sender($this->connection, $this->serializer, $options);
+        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Sender::class);
         $exchangeProperty = $reflection->getProperty('exchange');
