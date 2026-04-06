@@ -45,25 +45,32 @@ class AmqpFactoryTest extends TestCase
 
         $connection = $this->createMock(\AMQPConnection::class);
         $connection->expects($this->once())
-            ->method('setCert')
-            ->with('/path/to/cert.pem');
+            ->method('setCert');
         $connection->expects($this->once())
-            ->method('setKey')
-            ->with('/path/to/key.pem');
+            ->method('setKey');
         $connection->expects($this->once())
-            ->method('setCaCert')
-            ->with('/path/to/ca.pem');
+            ->method('setCaCert');
         $connection->expects($this->once())
-            ->method('setVerify')
-            ->with(true);
+            ->method('setVerify');
 
-        $factory->configureSsl($connection, [
-            'ssl' => true,
-            'ssl_cert' => '/path/to/cert.pem',
-            'ssl_key' => '/path/to/key.pem',
-            'ssl_cacert' => '/path/to/ca.pem',
-            'ssl_verify' => true,
-        ]);
+        $tempDir = sys_get_temp_dir();
+        $certFile = tempnam($tempDir, 'cert');
+        $keyFile = tempnam($tempDir, 'key');
+        $caFile = tempnam($tempDir, 'ca');
+
+        try {
+            $factory->configureSsl($connection, [
+                'ssl' => true,
+                'ssl_cert' => $certFile,
+                'ssl_key' => $keyFile,
+                'ssl_cacert' => $caFile,
+                'ssl_verify' => true,
+            ]);
+        } finally {
+            unlink($certFile);
+            unlink($keyFile);
+            unlink($caFile);
+        }
     }
 
     public function testConfigureSslThrowsForMissingCertFile(): void
