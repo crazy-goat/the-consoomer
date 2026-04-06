@@ -63,6 +63,9 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $connection->setLogin($parsedDsn['user']);
         $connection->setPassword($parsedDsn['password']);
         $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? 0.1));
+
+        $factory->configureSsl($connection, $mergedOptions);
+
         $connection->connect();
 
         $setup = new InfrastructureSetup($factory, $connection, $mergedOptions);
