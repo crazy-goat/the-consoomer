@@ -28,18 +28,31 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
 
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+        symfony: ['6.4', '7.4', '8.0']
+        exclude:
+          - php: '8.2'
+            symfony: '8.0'
+          - php: '8.3'
+            symfony: '8.0'
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: ${{ matrix.php }}
           extensions: amqp
           coverage: xdebug
 
       - name: Install dependencies
-        run: composer install --prefer-dist --no-progress
+        run: |
+          composer require symfony/messenger:^${{ matrix.symfony }} symfony/console:^${{ matrix.symfony }} symfony/dependency-injection:^${{ matrix.symfony }} --no-interaction
+          composer install --prefer-dist --no-progress
 
       - name: Run unit tests
         run: composer test-unit
@@ -47,6 +60,17 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: lint
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+        symfony: ['6.4', '7.4', '8.0']
+        exclude:
+          - php: '8.2'
+            symfony: '8.0'
+          - php: '8.3'
+            symfony: '8.0'
 
     services:
       rabbitmq:
@@ -64,11 +88,13 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: ${{ matrix.php }}
           extensions: amqp
 
       - name: Install dependencies
-        run: composer install --prefer-dist --no-progress
+        run: |
+          composer require symfony/messenger:^${{ matrix.symfony }} symfony/console:^${{ matrix.symfony }} symfony/dependency-injection:^${{ matrix.symfony }} --no-interaction
+          composer install --prefer-dist --no-progress
 
       - name: Wait for RabbitMQ
         run: |
@@ -91,3 +117,17 @@ jobs:
           RABBITMQ_USER: guest
           RABBITMQ_PASSWORD: guest
           RABBITMQ_VHOST: /
+
+  ci:
+    runs-on: ubuntu-latest
+    needs: [lint, test, e2e]
+    if: always()
+
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ needs.test.result }}" != "success" ]] || [[ "${{ needs.e2e.result }}" != "success" ]]; then
+            echo "Some jobs failed"
+            exit 1
+          fi
+          echo "All jobs passed"
