@@ -43,7 +43,7 @@ class Receiver implements ReceiverInterface
         $channel = $this->factory->createChannel($this->connection);
         $channel->qos(0, $this->maxUnackedMessages);
         $this->queue = $this->factory->createQueue($channel);
-        $this->queue->setName($this->options['queue']);
+        $this->queue->setName($this->options['queue'] ?? '');
         // setup consumer, consume happens in get() function
         $this->queue->consume();
     }
