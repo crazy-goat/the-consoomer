@@ -42,15 +42,17 @@ class SslTransportTest extends TestCase
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
-            'amqps://%s:%s@%s:%d/%s/%s',
+            'amqps://%s:%s@%s:%d/%s/%s?ssl_cacert=%s',
             $user,
             $password,
             $host,
             $port,
             urlencode($vhost),
-            self::EXCHANGE_NAME
+            self::EXCHANGE_NAME,
+            urlencode($caCert)
         );
 
         $serializer = new PhpSerializer();
@@ -70,15 +72,17 @@ class SslTransportTest extends TestCase
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true',
+            'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_cacert=%s',
             $user,
             $password,
             $host,
             $port,
             urlencode($vhost),
-            self::EXCHANGE_NAME
+            self::EXCHANGE_NAME,
+            urlencode($caCert)
         );
 
         $this->expectNotToPerformAssertions();
@@ -97,16 +101,18 @@ class SslTransportTest extends TestCase
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
-            'amqps://%s:%s@%s:%d/%s/%s?queue=%s',
+            'amqps://%s:%s@%s:%d/%s/%s?queue=%s&ssl_cacert=%s',
             $user,
             $password,
             $host,
             $port,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            self::QUEUE_NAME
+            self::QUEUE_NAME,
+            urlencode($caCert)
         );
 
         $serializer = new PhpSerializer();
@@ -143,27 +149,18 @@ class SslTransportTest extends TestCase
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
 
-        $tempDir = sys_get_temp_dir();
-        $certFile = tempnam($tempDir, 'cert_');
-        $keyFile = tempnam($tempDir, 'key_');
-        $caFile = tempnam($tempDir, 'ca_');
-
-        file_put_contents($certFile, 'dummy cert');
-        file_put_contents($keyFile, 'dummy key');
-        file_put_contents($caFile, 'dummy ca');
+        $caCert = __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
 
         try {
             $dsn = sprintf(
-                'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_cert=%s&ssl_key=%s&ssl_cacert=%s',
+                'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_cacert=%s',
                 $user,
                 $password,
                 $host,
                 $port,
                 urlencode($vhost),
                 self::EXCHANGE_NAME,
-                urlencode($certFile),
-                urlencode($keyFile),
-                urlencode($caFile)
+                urlencode($caCert)
             );
 
             $serializer = new PhpSerializer();
@@ -175,28 +172,33 @@ class SslTransportTest extends TestCase
 
             $this->assertInstanceOf(AmqpTransport::class, $transport);
         } finally {
-            @unlink($certFile);
-            @unlink($keyFile);
-            @unlink($caFile);
         }
     }
 
     public function testSslVerifyOption(): void
     {
         $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
+        $sslPort = getenv('RABBITMQ_SSL_PORT');
+        
+        if (!$sslPort) {
+            $this->markTestSkipped('RABBITMQ_SSL_PORT not set - no SSL RabbitMQ available');
+        }
+        
+        $port = (int) $sslPort;
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_verify=false',
+            'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_verify=false&ssl_cacert=%s',
             $user,
             $password,
             $host,
             $port,
             urlencode($vhost),
-            self::EXCHANGE_NAME
+            self::EXCHANGE_NAME,
+            urlencode($caCert)
         );
 
         $serializer = new PhpSerializer();
