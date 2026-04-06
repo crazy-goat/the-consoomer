@@ -7,8 +7,6 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 use CrazyGoat\TheConsoomer\AmqpFactoryInterface;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
-use CrazyGoat\TheConsoomer\Receiver;
-use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Messenger\Envelope;
@@ -174,7 +172,7 @@ class AmqpTransportTest extends TestCase
             'amqp-consoomer://guest:guest@localhost:5672/vhost',
             ['queue' => 'test-queue', 'exchange' => 'test-exchange'],
             $serializer,
-            $factory
+            $factory,
         );
 
         $reflection = new \ReflectionClass($transport);

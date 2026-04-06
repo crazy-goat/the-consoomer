@@ -12,7 +12,8 @@ class InfrastructureSetup
         private readonly AmqpFactoryInterface $factory,
         private readonly \AMQPConnection $connection,
         private readonly array $options,
-    ) {}
+    ) {
+    }
 
     public function setup(): void
     {
