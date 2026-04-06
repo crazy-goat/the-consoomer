@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CrazyGoat\TheConsoomer;
 
 use Psr\Log\NullLogger;
@@ -61,7 +63,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $connection->setVhost($mergedOptions['vhost']);
         $connection->setLogin($info['user']);
         $connection->setPassword($info['pass']);
-        $connection->setReadTimeout($mergedOptions['timeout'] ?? 0.1);
+        $connection->setReadTimeout((float) ($mergedOptions['timeout'] ?? 0.1));
         $connection->connect();
 
         $logger = new NullLogger();

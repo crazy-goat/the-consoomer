@@ -174,7 +174,6 @@ class SenderTest extends TestCase
 
         $reflection = new \ReflectionClass(Sender::class);
         $exchangeProperty = $reflection->getProperty('exchange');
-        $exchangeProperty->setAccessible(true);
         $exchangeProperty->setValue($sender, $this->exchange);
 
         return $sender;

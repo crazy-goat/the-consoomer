@@ -1,4 +1,15 @@
 {
+    "name": "crazy-goat/the-consoomer",
+    "description": "Symfony Messenger AMQP transport using consume instead of get",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["symfony", "messenger", "amqp", "rabbitmq", "transport"],
+    "authors": [
+        {
+            "name": "Piotr Hałas",
+            "email": "piotr.halas@crazy-goat.com"
+        }
+    ],
     "autoload":{
         "psr-4": {
             "CrazyGoat\\TheConsoomer\\": "src/"
@@ -10,11 +21,13 @@
         }
     },
     "require": {
-        "symfony/messenger": "^7.2"
+        "php": "^8.2",
+        "ext-amqp": "*",
+        "symfony/messenger": "^6.4 || ^7.4 || ^8.0"
     },
     "require-dev": {
-        "symfony/console": "^7.2",
-        "symfony/dependency-injection": "^7.2",
+        "symfony/console": "^6.4 || ^7.4 || ^8.0",
+        "symfony/dependency-injection": "^6.4 || ^7.4 || ^8.0",
         "friendsofphp/php-cs-fixer": "^3.75",
         "rector/rector": "^2.0",
         "phpunit/phpunit": "^10"

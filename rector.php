@@ -1,18 +1,13 @@
 <?php
 
 use Rector\Config\RectorConfig;
-use Rector\Set\ValueObject\SetList;
-use Rector\Symfony\Set\SymfonySetList;
-use Rector\TypeDeclaration\Rector\Property\TypedPropertyFromStrictConstructorRector;
 
 return RectorConfig::configure()
     ->withPaths([
         __DIR__ . '/src',
-        __DIR__ . '/examples',
+        __DIR__ . '/tests',
     ])
-    // register single rule
-    ->withPhpSets(php84: true)
-    // here we can define, what prepared sets of rules will be applied
+    ->withPhpSets(php82: true)
     ->withPreparedSets(
         deadCode: true,
         codeQuality: true,
