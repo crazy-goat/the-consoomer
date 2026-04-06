@@ -2,6 +2,7 @@
 /.worktrees
 /vendor/
 /composer.lock
+/var/
 
 /examples/symfony/var/
 /examples/symfony/vendor/
