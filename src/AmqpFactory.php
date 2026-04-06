@@ -25,4 +25,24 @@ class AmqpFactory implements AmqpFactoryInterface
     {
         return new \AMQPExchange($channel);
     }
+
+    public function configureSsl(\AMQPConnection $connection, array $options): void
+    {
+        if (empty($options['ssl'])) {
+            return;
+        }
+
+        if (!empty($options['ssl_cert'])) {
+            $connection->setCert($options['ssl_cert']);
+        }
+        if (!empty($options['ssl_key'])) {
+            $connection->setKey($options['ssl_key']);
+        }
+        if (!empty($options['ssl_cacert'])) {
+            $connection->setCaCert($options['ssl_cacert']);
+        }
+        if (isset($options['ssl_verify'])) {
+            $connection->setVerify($options['ssl_verify']);
+        }
+    }
 }

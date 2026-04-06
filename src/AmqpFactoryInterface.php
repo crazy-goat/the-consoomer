@@ -13,4 +13,6 @@ interface AmqpFactoryInterface
     public function createQueue(\AMQPChannel $channel): \AMQPQueue;
 
     public function createExchange(\AMQPChannel $channel): \AMQPExchange;
+
+    public function configureSsl(\AMQPConnection $connection, array $options): void;
 }
