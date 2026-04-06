@@ -41,7 +41,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
 
     public function supports(string $dsn, array $options): bool
     {
-        return str_starts_with($dsn, 'amqp-consoomer://');
+        return str_starts_with($dsn, 'amqp-consoomer://') || str_starts_with($dsn, 'amqps://');
     }
 
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface

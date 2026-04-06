@@ -60,6 +60,16 @@ class AmqpTransportTest extends TestCase
         $this->assertFalse($transport->supports('rabbitmq://localhost', []));
     }
 
+    public function testSupportsAmqpsScheme(): void
+    {
+        $transport = new AmqpTransport(
+            $this->createMock(ReceiverInterface::class),
+            $this->createMock(SenderInterface::class)
+        );
+        
+        $this->assertTrue($transport->supports('amqps://localhost/%2f/exchange', []));
+    }
+
     public function testGetDelegatesToReceiver(): void
     {
         $envelope = new Envelope(new \stdClass());
