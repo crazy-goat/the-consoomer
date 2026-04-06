@@ -65,9 +65,11 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? 0.1));
         $connection->connect();
 
+        $setup = new InfrastructureSetup($factory, $connection, $mergedOptions);
+
         return new self(
-            new Receiver($factory, $connection, $serializer, $mergedOptions),
-            new Sender($factory, $connection, $serializer, $mergedOptions),
+            new Receiver($factory, $connection, $serializer, $mergedOptions, $setup),
+            new Sender($factory, $connection, $serializer, $mergedOptions, $setup),
         );
     }
 }
