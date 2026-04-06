@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
+use CrazyGoat\TheConsoomer\AmqpFactoryInterface;
 use CrazyGoat\TheConsoomer\AmqpTransport;
+use CrazyGoat\TheConsoomer\InfrastructureSetup;
+use CrazyGoat\TheConsoomer\Receiver;
+use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
+use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class AmqpTransportTest extends TestCase
 {
@@ -148,5 +153,48 @@ class AmqpTransportTest extends TestCase
         $result = $transport->send($envelope);
 
         $this->assertSame($envelope, $result);
+    }
+
+    public function testCreatePassesInfrastructureSetupToReceiverAndSender(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+        $serializer = $this->createMock(SerializerInterface::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->willReturn($connection);
+
+        $connection
+            ->expects($this->once())
+            ->method('connect');
+
+        $transport = AmqpTransport::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost',
+            ['queue' => 'test-queue', 'exchange' => 'test-exchange'],
+            $serializer,
+            $factory
+        );
+
+        $reflection = new \ReflectionClass($transport);
+        $receiverProperty = $reflection->getProperty('receiver');
+        $senderProperty = $reflection->getProperty('sender');
+
+        $receiver = $receiverProperty->getValue($transport);
+        $sender = $senderProperty->getValue($transport);
+
+        $receiverReflection = new \ReflectionClass($receiver);
+        $senderReflection = new \ReflectionClass($sender);
+
+        $receiverSetupProperty = $receiverReflection->getProperty('setup');
+        $senderSetupProperty = $senderReflection->getProperty('setup');
+
+        $receiverSetup = $receiverSetupProperty->getValue($receiver);
+        $senderSetup = $senderSetupProperty->getValue($sender);
+
+        $this->assertInstanceOf(InfrastructureSetup::class, $receiverSetup);
+        $this->assertInstanceOf(InfrastructureSetup::class, $senderSetup);
+        $this->assertSame($receiverSetup, $senderSetup);
     }
 }
