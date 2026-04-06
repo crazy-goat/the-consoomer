@@ -63,7 +63,7 @@ class SslTransportTest extends TestCase
     public function testAmqpConsoomerWithSslOption(): void
     {
         $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
+        $sslPort = intval(getenv('RABBITMQ_SSL_PORT') ?: 5671);
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
@@ -74,13 +74,20 @@ class SslTransportTest extends TestCase
             $user,
             $password,
             $host,
-            $port,
+            $sslPort,
             urlencode($vhost),
             self::EXCHANGE_NAME,
             urlencode($caCert)
         );
 
-        $this->expectNotToPerformAssertions();
+        $serializer = new PhpSerializer();
+        $transport = AmqpTransport::create(
+            $dsn,
+            ['queue' => self::QUEUE_NAME],
+            $serializer
+        );
+
+        $this->assertInstanceOf(AmqpTransport::class, $transport);
     }
 
     public function testPublishConsumeWithAmqpsScheme(): void

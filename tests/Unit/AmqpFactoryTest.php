@@ -103,4 +103,39 @@ class AmqpFactoryTest extends TestCase
             'ssl_key' => '/path/to/key.pem',
         ]));
     }
+
+    public function testConfigureSslWithVerifyFalse(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(false);
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+        ]);
+    }
+
+    public function testConfigureSslDoesNothingWhenSslDisabled(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->never())
+            ->method('setCert');
+        $connection->expects($this->never())
+            ->method('setKey');
+        $connection->expects($this->never())
+            ->method('setCaCert');
+        $connection->expects($this->never())
+            ->method('setVerify');
+
+        $factory->configureSsl($connection, [
+            'ssl' => false,
+            'ssl_cert' => '/path/to/cert.pem',
+        ]);
+    }
 }
