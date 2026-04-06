@@ -13,6 +13,9 @@ class InfrastructureSetup
         private readonly \AMQPConnection $connection,
         private readonly array $options,
     ) {
+        if (!isset($options['exchange']) || !isset($options['queue'])) {
+            throw new \InvalidArgumentException('exchange and queue options are required');
+        }
     }
 
     public function setup(): void
@@ -24,7 +27,7 @@ class InfrastructureSetup
         $channel = $this->factory->createChannel($this->connection);
 
         $exchange = $this->factory->createExchange($channel);
-        $exchange->setName($this->options['exchange'] ?? '');
+        $exchange->setName($this->options['exchange']);
         $type = match ($this->options['exchange_type'] ?? 'direct') {
             'fanout' => AMQP_EX_TYPE_FANOUT,
             'topic' => AMQP_EX_TYPE_TOPIC,
@@ -36,7 +39,7 @@ class InfrastructureSetup
         $exchange->declareExchange();
 
         $queue = $this->factory->createQueue($channel);
-        $queue->setName($this->options['queue'] ?? '');
+        $queue->setName($this->options['queue']);
         $queue->setFlags(AMQP_DURABLE);
         $queue->declareQueue();
 
