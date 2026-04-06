@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
+use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -13,12 +14,14 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class ReceiverTest extends TestCase
 {
+    private AmqpFactory&MockObject $factory;
     private \AMQPConnection&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPQueue&MockObject $queue;
 
     protected function setUp(): void
     {
+        $this->factory = $this->createMock(AmqpFactory::class);
         $this->connection = $this->createMock(\AMQPConnection::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->queue = $this->createMock(\AMQPQueue::class);
@@ -33,7 +36,7 @@ class ReceiverTest extends TestCase
         $this->queue
             ->expects($this->once())
             ->method('consume')
-            ->willThrowException(new \AMQPQueueException('Consumer timeout exceed'));
+            ->willThrowException(new \AMQPException('Consumer timeout exceed'));
 
         $this->queue
             ->method('getConsumerTag')
@@ -61,7 +64,7 @@ class ReceiverTest extends TestCase
             ->with(['body' => '{"data":"test"}'])
             ->willReturn($messageEnvelope);
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Receiver::class);
         $queueProperty = $reflection->getProperty('queue');
@@ -100,7 +103,7 @@ class ReceiverTest extends TestCase
     {
         $options = ['queue' => 'test_queue'];
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $envelope = new Envelope(new \stdClass());
 
@@ -114,7 +117,7 @@ class ReceiverTest extends TestCase
     {
         $options = ['queue' => 'test_queue'];
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $envelope = new Envelope(new \stdClass());
 
@@ -172,7 +175,7 @@ class ReceiverTest extends TestCase
     {
         $options = ['queue' => 'test_queue'];
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
@@ -184,7 +187,7 @@ class ReceiverTest extends TestCase
     {
         $options = ['queue' => 'test_queue', 'max_unacked_messages' => 50];
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
@@ -196,7 +199,7 @@ class ReceiverTest extends TestCase
     {
         $options = ['queue' => 'test_queue', 'max_unacked_messages' => 0];
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
@@ -208,7 +211,7 @@ class ReceiverTest extends TestCase
     {
         $options = ['queue' => 'test_queue', 'max_unacked_messages' => -10];
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
@@ -225,13 +228,13 @@ class ReceiverTest extends TestCase
         $this->queue
             ->expects($this->once())
             ->method('consume')
-            ->willThrowException(new \AMQPQueueException('Some other error'));
+            ->willThrowException(new \AMQPException('Some other error'));
 
         $this->queue
             ->method('getConsumerTag')
             ->willReturn('test_tag');
 
-        $this->expectException(\AMQPQueueException::class);
+        $this->expectException(\AMQPException::class);
         $this->expectExceptionMessage('Some other error');
 
         $receiver->get();
@@ -241,7 +244,7 @@ class ReceiverTest extends TestCase
     {
         $options = ['queue' => 'test_queue'];
 
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Receiver::class);
         $queueProperty = $reflection->getProperty('queue');
@@ -249,9 +252,57 @@ class ReceiverTest extends TestCase
         $this->assertNull($queueProperty->getValue($receiver));
     }
 
+    public function testConnectUsesFactoryToCreateChannelAndQueue(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 10];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $channel
+            ->expects($this->once())
+            ->method('qos')
+            ->with(0, 10);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('setName')
+            ->with('test_queue');
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createChannel')
+            ->with($this->connection)
+            ->willReturn($channel);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createQueue')
+            ->with($channel)
+            ->willReturn($this->queue);
+
+        $firstCall = true;
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('consume')
+            ->willReturnCallback(function () use (&$firstCall): void {
+                if ($firstCall) {
+                    $firstCall = false;
+                    return;
+                }
+                throw new \AMQPException('Consumer timeout exceed');
+            });
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
+        $receiver->get();
+    }
+
     private function createReceiverWithQueue(array $options): Receiver
     {
-        $receiver = new Receiver($this->connection, $this->serializer, $options);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
 
         $reflection = new \ReflectionClass(Receiver::class);
         $queueProperty = $reflection->getProperty('queue');

@@ -18,6 +18,7 @@ class Receiver implements ReceiverInterface
     private \Closure $callback;
 
     public function __construct(
+        private readonly AmqpFactoryInterface $factory,
         private readonly \AMQPConnection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
@@ -38,9 +39,9 @@ class Receiver implements ReceiverInterface
             return false;
         };
 
-        $channel = new \AMQPChannel($this->connection);
+        $channel = $this->factory->createChannel($this->connection);
         $channel->qos(0, $this->maxUnackedMessages);
-        $this->queue = new \AMQPQueue($channel);
+        $this->queue = $this->factory->createQueue($channel);
         $this->queue->setName($this->options['queue']);
         // setup consumer, consume happens in get() function
         $this->queue->consume();
@@ -52,7 +53,7 @@ class Receiver implements ReceiverInterface
 
         try {
             $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());
-        } catch (\AMQPQueueException $exception) {
+        } catch (\AMQPException $exception) {
             if ('Consumer timeout exceed' !== $exception->getMessage()) {
                 throw $exception;
             }

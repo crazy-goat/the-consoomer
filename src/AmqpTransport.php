@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
-use Psr\Log\NullLogger;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
@@ -50,14 +49,15 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         return self::create($dsn, $options, $serializer);
     }
 
-    public static function create(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
+    public static function create(string $dsn, array $options, SerializerInterface $serializer, ?AmqpFactoryInterface $factory = null): TransportInterface
     {
         $info = parse_url($dsn);
         $query = [];
         parse_str($info['query'] ?? '', $query);
         $mergedOptions = [...$options, ...self::parsePath($info['path'] ?? ''), ...$query];
 
-        $connection = new \AMQPConnection();
+        $factory ??= new AmqpFactory();
+        $connection = $factory->createConnection();
         $connection->setHost($info['host']);
         $connection->setPort($info['port']);
         $connection->setVhost($mergedOptions['vhost']);
@@ -66,11 +66,9 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $connection->setReadTimeout((float) ($mergedOptions['timeout'] ?? 0.1));
         $connection->connect();
 
-        $logger = new NullLogger();
-
         return new self(
-            new Receiver($connection, $serializer, $mergedOptions, $logger),
-            new Sender($connection, $serializer, $mergedOptions),
+            new Receiver($factory, $connection, $serializer, $mergedOptions),
+            new Sender($factory, $connection, $serializer, $mergedOptions),
         );
     }
 
