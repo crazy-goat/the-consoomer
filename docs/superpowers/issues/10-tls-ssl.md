@@ -18,15 +18,27 @@
 
 ## Current State in the-consoomer
 
-❌ **Not implemented.** No SSL support.
+✅ **Implemented.** SSL support added.
 
-Current code in `AmqpTransport::create()`:
+DSN support:
+```php
+// amqps:// - auto SSL, port 5671
+amqps://user:pass@rabbitmq.example.com:5671/%2f/exchange
+
+// amqp-consoomer z opcjami SSL
+amqp-consoomer://user:pass@host:5672/vhost/exchange?ssl=true&ssl_cert=/path/to/cert.pem&ssl_key=/path/to/key.pem&ssl_cacert=/path/to/ca.pem&ssl_verify=true
+```
+
+Implementation in `AmqpTransport::create()`:
 ```php
 $connection = new \AMQPConnection();
 $connection->setHost($info['host']);
 $connection->setPort($info['port']);
 // ... connection setup
-// No SSL configuration
+
+// SSL configuration via factory
+$factory->configureSsl($connection, $mergedOptions);
+$connection->connect();
 ```
 
 ## Implementation Notes
