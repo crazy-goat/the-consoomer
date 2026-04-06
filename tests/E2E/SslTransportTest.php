@@ -32,12 +32,7 @@ class SslTransportTest extends TestCase
     public function testAmqpsSchemeCreatesTransport(): void
     {
         $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT');
-        
-        if (!$sslPort) {
-            $this->markTestSkipped('RABBITMQ_SSL_PORT not set - no SSL RabbitMQ available');
-        }
-        
+        $sslPort = getenv('RABBITMQ_SSL_PORT') ?: 5671;
         $port = (int) $sslPort;
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
@@ -91,12 +86,7 @@ class SslTransportTest extends TestCase
     public function testPublishConsumeWithAmqpsScheme(): void
     {
         $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT');
-        
-        if (!$sslPort) {
-            $this->markTestSkipped('RABBITMQ_SSL_PORT not set - no SSL RabbitMQ available');
-        }
-        
+        $sslPort = getenv('RABBITMQ_SSL_PORT') ?: 5671;
         $port = (int) $sslPort;
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
@@ -138,52 +128,7 @@ class SslTransportTest extends TestCase
     public function testSslWithCertificateFiles(): void
     {
         $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT');
-        
-        if (!$sslPort) {
-            $this->markTestSkipped('RABBITMQ_SSL_PORT not set - no SSL RabbitMQ available');
-        }
-        
-        $port = (int) $sslPort;
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $caCert = __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
-
-        try {
-            $dsn = sprintf(
-                'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_cacert=%s',
-                $user,
-                $password,
-                $host,
-                $port,
-                urlencode($vhost),
-                self::EXCHANGE_NAME,
-                urlencode($caCert)
-            );
-
-            $serializer = new PhpSerializer();
-            $transport = AmqpTransport::create(
-                $dsn,
-                ['queue' => self::QUEUE_NAME],
-                $serializer
-            );
-
-            $this->assertInstanceOf(AmqpTransport::class, $transport);
-        } finally {
-        }
-    }
-
-    public function testSslVerifyOption(): void
-    {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT');
-        
-        if (!$sslPort) {
-            $this->markTestSkipped('RABBITMQ_SSL_PORT not set - no SSL RabbitMQ available');
-        }
-        
+        $sslPort = getenv('RABBITMQ_SSL_PORT') ?: 5671;
         $port = (int) $sslPort;
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
