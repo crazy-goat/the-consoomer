@@ -37,7 +37,7 @@ class SslTransportTest extends TestCase
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
             'amqps://%s:%s@%s:%d/%s/%s?ssl_cacert=%s',
@@ -67,7 +67,7 @@ class SslTransportTest extends TestCase
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
             'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_cacert=%s',
@@ -91,7 +91,7 @@ class SslTransportTest extends TestCase
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
             'amqps://%s:%s@%s:%d/%s/%s?queue=%s&ssl_cacert=%s',
@@ -133,7 +133,7 @@ class SslTransportTest extends TestCase
         $user = getenv('RABBITMQ_USER') ?: 'guest';
         $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
         $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/../../docker/rabbitmq/ssl/ca_certificate.pem';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
             'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_verify=false&ssl_cacert=%s',
