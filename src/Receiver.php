@@ -88,11 +88,13 @@ class Receiver implements ReceiverInterface
             throw new \RuntimeException('No raw message stamp');
         }
 
-        $this->ackPending();
-
-        if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
-            $this->retry->withRetry(fn() => $this->queue->reject($stamp->amqpMessage->getDeliveryTag()));
+        if ($this->retry !== null) {
+            $this->retry->withRetry(function () use ($stamp) {
+                $this->ackPending();
+                $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+            });
         } else {
+            $this->ackPending();
             $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
         }
     }

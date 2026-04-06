@@ -19,6 +19,18 @@ class ConnectionRetryTest extends TestCase
         $this->assertEquals('success', $result);
     }
 
+    public function testRetryCountZeroThrowsRuntimeException(): void
+    {
+        $retry = new ConnectionRetry(retryCount: 0, retryDelay: 1000);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Operation failed with no retries configured');
+
+        $retry->withRetry(function (): void {
+            throw new \AMQPConnectionException('Connection failed');
+        });
+    }
+
     public function testRetryOnConnectionException(): void
     {
         $attempt = 0;
