@@ -25,11 +25,19 @@ class InfrastructureSetup
 
         $exchange = $this->factory->createExchange($channel);
         $exchange->setName($this->options['exchange'] ?? '');
-        $exchange->setType(AMQP_EX_TYPE_DIRECT);
+        $type = match ($this->options['exchange_type'] ?? 'direct') {
+            'fanout' => AMQP_EX_TYPE_FANOUT,
+            'topic' => AMQP_EX_TYPE_TOPIC,
+            'headers' => AMQP_EX_TYPE_HEADERS,
+            default => AMQP_EX_TYPE_DIRECT,
+        };
+        $exchange->setType($type);
+        $exchange->setFlags(AMQP_DURABLE);
         $exchange->declareExchange();
 
         $queue = $this->factory->createQueue($channel);
         $queue->setName($this->options['queue'] ?? '');
+        $queue->setFlags(AMQP_DURABLE);
         $queue->declareQueue();
 
         $routingKey = $this->options['routing_key'] ?? '';
