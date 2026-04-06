@@ -16,14 +16,12 @@ class ReceiverTest extends TestCase
     private \AMQPConnection&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPQueue&MockObject $queue;
-    private \AMQPChannel&MockObject $channel;
 
     protected function setUp(): void
     {
         $this->connection = $this->createMock(\AMQPConnection::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->queue = $this->createMock(\AMQPQueue::class);
-        $this->channel = $this->createMock(\AMQPChannel::class);
     }
 
     public function testGetReturnsEmptyArrayWhenNoMessage(): void
@@ -67,18 +65,14 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $queueProperty = $reflection->getProperty('queue');
-        $queueProperty->setAccessible(true);
         $queueProperty->setValue($receiver, $this->queue);
 
         $callbackProperty = $reflection->getProperty('callback');
-        $callbackProperty->setAccessible(true);
         $callbackProperty->setValue($receiver, function (\AMQPEnvelope $message) use ($receiver, $reflection): false {
             $serializer = $reflection->getProperty('serializer');
-            $serializer->setAccessible(true);
 
             $envelope = $serializer->getValue($receiver)->decode(['body' => $message->getBody()]);
             $messageProperty = $reflection->getProperty('message');
-            $messageProperty->setAccessible(true);
             $messageProperty->setValue($receiver, $envelope->with(new RawMessageStamp($message)));
 
             return false;
@@ -87,7 +81,7 @@ class ReceiverTest extends TestCase
         $this->queue
             ->expects($this->once())
             ->method('consume')
-            ->willReturnCallback(function ($callback) use ($amqpEnvelope) {
+            ->willReturnCallback(function ($callback) use ($amqpEnvelope): void {
                 $callback($amqpEnvelope);
             });
 
@@ -182,7 +176,6 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
-        $maxUnackedProperty->setAccessible(true);
 
         $this->assertSame(100, $maxUnackedProperty->getValue($receiver));
     }
@@ -195,7 +188,6 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
-        $maxUnackedProperty->setAccessible(true);
 
         $this->assertSame(50, $maxUnackedProperty->getValue($receiver));
     }
@@ -208,7 +200,6 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
-        $maxUnackedProperty->setAccessible(true);
 
         $this->assertSame(1, $maxUnackedProperty->getValue($receiver));
     }
@@ -221,7 +212,6 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
-        $maxUnackedProperty->setAccessible(true);
 
         $this->assertSame(1, $maxUnackedProperty->getValue($receiver));
     }
@@ -255,7 +245,6 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $queueProperty = $reflection->getProperty('queue');
-        $queueProperty->setAccessible(true);
 
         $this->assertNull($queueProperty->getValue($receiver));
     }
@@ -266,14 +255,10 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $queueProperty = $reflection->getProperty('queue');
-        $queueProperty->setAccessible(true);
         $queueProperty->setValue($receiver, $this->queue);
 
         $callbackProperty = $reflection->getProperty('callback');
-        $callbackProperty->setAccessible(true);
-        $callbackProperty->setValue($receiver, function (\AMQPEnvelope $message): false {
-            return false;
-        });
+        $callbackProperty->setValue($receiver, fn (\AMQPEnvelope $message): false => false);
 
         return $receiver;
     }
