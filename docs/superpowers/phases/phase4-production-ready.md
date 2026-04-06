@@ -16,7 +16,7 @@ This phase adds production-ready features for reliability, performance, and oper
 ## Dependencies
 
 ```
-Phase 1 (Foundation)
+Phase 1 (Foundation & DX)
 └── Phase 2 (Core Messaging)
     └── Phase 4 (Production Ready)
         ├── Persistent Connections (#12) ────────────┐
@@ -28,10 +28,14 @@ Phase 1 (Foundation)
 ## Rationale
 
 These features are essential for production deployments:
-- Persistent Connections reduce connection overhead in high-throughput scenarios
-- Publisher Confirms guarantee message delivery for critical transactions
-- Message Count enables monitoring and scaling decisions
-- Queue Purge is essential for development/testing workflows
+
+**Persistent Connections (#12)** reduce connection overhead in high-throughput scenarios using `pconnect()`.
+
+**Publisher Confirms (#13)** guarantee message delivery for critical transactions - waits for broker confirmation.
+
+**Message Count (#15)** enables monitoring and scaling decisions - returns approximate number of messages in queues.
+
+**Queue Purge (#16)** is essential for development/testing workflows - removes all messages from queues.
 
 ## Features Overview
 

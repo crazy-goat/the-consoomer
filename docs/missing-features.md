@@ -317,19 +317,19 @@ All features are organized into phases. See [Implementation Roadmap](./docs/supe
 ### Phase 0: Test Infrastructure ✅
 - Test infrastructure (PHPUnit, Docker, E2E tests)
 
-### [Phase 1: Foundation](./docs/superpowers/phases/phase1-foundation.md) 🚧
+### [Phase 1: Foundation & DX](./docs/superpowers/phases/phase1-foundation.md) 🚧
 - #18 Factory Pattern
+- #19 Full DSN Parsing
+- #1 Auto-Setup
 - #14 Connection Retry
 - #11 Heartbeat
 - #10 TLS/SSL
 
 ### [Phase 2: Core Messaging](./docs/superpowers/phases/phase2-core-messaging.md) 📋
-- #1 Auto-Setup
 - #7 Full AmqpStamp
 - #9 Received Message Metadata
-- #17 Transport Setup/Close
-- #19 Full DSN Parsing
 - #20 Default Publish Routing Key
+- #17 Transport Setup/Close
 
 ### [Phase 3: Advanced Routing](./docs/superpowers/phases/phase3-advanced-routing.md) 📋
 - #2 Delayed Messages
@@ -351,27 +351,27 @@ All features are organized into phases. See [Implementation Roadmap](./docs/supe
 
 ## Summary Table
 
-| Feature | Business Value | Symfony Implementation | the-consoomer |
-|---------|---------------|------------------------|---------------|
-| Auto-Setup | No manual RabbitMQ config | `Connection::setup()` | ❌ |
-| Delayed Messages | Scheduling without external tools | `Connection::publishWithDelay()` | ❌ |
-| Retry Routing | Prevents message loss | `AmqpStamp::isRetryAttempt()` | ❌ |
-| Multiple Queues | Single worker, multiple queues | `QueueReceiverInterface` | ❌ |
-| Queue Bindings | Flexible routing | `binding_keys` option | ❌ |
-| Exchange Bindings | Complex routing topologies | `exchange[bindings]` | ❌ |
-| Full AmqpStamp | Fine-grained message control | `$flags`, `$attributes` | ⚠️ Basic |
-| Message Priority | Critical messages first | `AmqpPriorityStamp` | ❌ |
-| Received Metadata | Debugging, auditing | `AmqpReceivedStamp` | ⚠️ Basic |
-| TLS/SSL | Security compliance | `amqps://`, cert options | ❌ |
-| Heartbeat | Connection reliability | `heartbeat` option | ❌ |
-| Persistent Connections | Performance | `persistent` option | ❌ |
-| Publisher Confirms | Message guarantee | `confirm_timeout` | ❌ |
-| Connection Retry | Resilience | `withConnectionExceptionRetry()` | ❌ |
-| Message Count | Monitoring, scaling | `MessageCountAwareInterface` | ❌ |
-| Queue Purge | Development/testing | `purgeQueues()` | ❌ |
-| Setup/Close | Resource control | Interfaces | ❌ |
-| Factory Pattern | Testability | `AmqpFactory` | ❌ |
-| Full DSN Parsing | Configuration simplicity | `fromDsn()` | ⚠️ Basic |
-| Default Routing Key | Simplified publishing | `default_publish_routing_key` | ⚠️ Basic |
+| Feature | Business Value | Symfony Implementation | the-consoomer | Phase |
+|---------|---------------|------------------------|---------------|-------|
+| Auto-Setup | No manual RabbitMQ config | `Connection::setup()` | ❌ | 1 |
+| Delayed Messages | Scheduling without external tools | `Connection::publishWithDelay()` | ❌ | 3 |
+| Retry Routing | Prevents message loss | `AmqpStamp::isRetryAttempt()` | ❌ | 3 |
+| Multiple Queues | Single worker, multiple queues | `QueueReceiverInterface` | ❌ | 5 |
+| Queue Bindings | Flexible routing | `binding_keys` option | ❌ | 3 |
+| Exchange Bindings | Complex routing topologies | `exchange[bindings]` | ❌ | 3 |
+| Full AmqpStamp | Fine-grained message control | `$flags`, `$attributes` | ⚠️ Basic | 2 |
+| Message Priority | Critical messages first | `AmqpPriorityStamp` | ❌ | 5 |
+| Received Metadata | Debugging, auditing | `AmqpReceivedStamp` | ⚠️ Basic | 2 |
+| TLS/SSL | Security compliance | `amqps://`, cert options | ❌ | 1 |
+| Heartbeat | Connection reliability | `heartbeat` option | ❌ | 1 |
+| Persistent Connections | Performance | `persistent` option | ❌ | 4 |
+| Publisher Confirms | Message guarantee | `confirm_timeout` | ❌ | 4 |
+| Connection Retry | Resilience | `withConnectionExceptionRetry()` | ❌ | 1 |
+| Message Count | Monitoring, scaling | `MessageCountAwareInterface` | ❌ | 4 |
+| Queue Purge | Development/testing | `purgeQueues()` | ❌ | 4 |
+| Setup/Close | Resource control | Interfaces | ❌ | 2 |
+| Factory Pattern | Testability | `AmqpFactory` | ❌ | 1 |
+| Full DSN Parsing | Configuration simplicity | `fromDsn()` | ⚠️ Basic | 1 |
+| Default Routing Key | Simplified publishing | `default_publish_routing_key` | ⚠️ Basic | 2 |
 
 ---

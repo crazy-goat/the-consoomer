@@ -58,5 +58,6 @@ Or via options array:
 
 ## Dependencies
 
-- Phase 2: Auto-Setup (#1) for queue creation
+- Phase 1: Auto-Setup (#1) for queue creation
+- Phase 2: Full AmqpStamp (#7) for routing control
 - Phase 3: Queue Bindings (#5) for binding configuration

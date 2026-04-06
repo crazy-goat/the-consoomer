@@ -14,18 +14,22 @@ This phase implements advanced features for specific use cases.
 ## Dependencies
 
 ```
-Phase 1 (Foundation)
+Phase 1 (Foundation & DX)
 └── Phase 2 (Core Messaging)
     └── Phase 5 (Advanced Features)
         ├── Multiple Queues (#4) ────────────────────┐
+        │   └── depends on Full AmqpStamp (#7)      │
         └── Message Priority (#8) ───────────────────┴── Advanced features
+            └── depends on Full AmqpStamp (#7)
 ```
 
 ## Rationale
 
 These are advanced features for specific use cases:
-- Multiple Queues enables single worker to consume from multiple queues with different configurations
-- Message Priority allows critical messages to be processed before routine ones
+
+**Multiple Queues (#4)** enables single worker to consume from multiple queues with different configurations. **Depends on Full AmqpStamp** from Phase 2 for routing control.
+
+**Message Priority (#8)** allows critical messages to be processed before routine ones using `x-max-priority` queue argument. **Depends on Full AmqpStamp** from Phase 2 for priority attribute.
 
 ## Features Overview
 

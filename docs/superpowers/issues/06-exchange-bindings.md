@@ -50,4 +50,4 @@
 
 ## Dependencies
 
-- Phase 2: Auto-Setup (#1) for exchange creation
+- Phase 1: Auto-Setup (#1) for exchange creation

@@ -50,5 +50,5 @@ Message is published to delay exchange with `x-delay` header. Router creates tem
 
 ## Dependencies
 
-- Phase 2: Auto-Setup (#1) for exchange/queue creation
-- Phase 3: Queue Bindings (#5) for binding delay queues
+- Phase 1: Auto-Setup (#1) for exchange/queue creation
+- Phase 2: Full AmqpStamp (#7) for message attributes

@@ -46,3 +46,4 @@ amqp-consoomer://user:pass@host:5672/vhost/exchange?confirm_timeout=5
 ## Dependencies
 
 - Phase 1: Factory Pattern (#18) for Connection class
+- Phase 2: Transport Setup/Close (#17) for lifecycle management

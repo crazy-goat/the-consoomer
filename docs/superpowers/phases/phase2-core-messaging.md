@@ -2,41 +2,41 @@
 
 > **Backlog:** [missing-features.md](../missing-features.md)
 
-This phase implements core messaging functionality that enables self-configuring transports.
+This phase implements core messaging functionality that enables message attribute control and lifecycle management.
 
 ## Issues
 
 | # | Feature | Status |
 |---|---------|--------|
-| #1 | [Auto-Setup](./issues/01-auto-setup.md) | ❌ |
 | #7 | [Full AmqpStamp](./issues/07-full-amqpstamp.md) | ⚠️ Basic |
 | #9 | [Received Message Metadata](./issues/09-received-metadata.md) | ⚠️ Basic |
-| #17 | [Transport Setup/Close](./issues/17-transport-setup-close.md) | ❌ |
-| #19 | [Full DSN Parsing](./issues/19-full-dsn-parsing.md) | ⚠️ Basic |
 | #20 | [Default Publish Routing Key](./issues/20-default-routing-key.md) | ⚠️ Basic |
+| #17 | [Transport Setup/Close](./issues/17-transport-setup-close.md) | ❌ |
 
 ## Dependencies
 
 ```
-Phase 1 (Foundation)
+Phase 1 (Foundation & DX)
 └── Phase 2 (Core Messaging)
-    ├── Auto-Setup (#1) ─────────────────────────────┐
-    ├── Full AmqpStamp (#7) ────────────────────────┼── Core messaging
-    ├── Received Metadata (#9) ──────────────────────┤
-    ├── Transport Setup/Close (#17) ─────────────────┤
-    ├── Full DSN Parsing (#19) ──────────────────────┤
-    └── Default Routing Key (#20) ──────────────────┘
+    ├── Full AmqpStamp (#7) ───────────────────────┐
+    ├── Received Metadata (#9) ────────────────────┼── Core messaging
+    ├── Default Routing Key (#20) ─────────────────┤
+    └── Transport Setup/Close (#17) ───────────────┘
 ```
 
 ## Rationale
 
-Auto-Setup is critical for developer experience - currently users must manually configure RabbitMQ. Full AmqpStamp and Received Metadata provide the message attribute control that Delayed Messages and other advanced features will build upon. Transport Setup/Close gives explicit lifecycle control.
+**Full AmqpStamp (#7)** provides control over all AMQP message attributes (flags, headers, content_type, delivery_mode, etc.) - essential foundation for Phase 3 features like Delayed Messages.
+
+**Received Metadata (#9)** gives access to original AMQP envelope after receiving - useful for debugging, auditing, and correlation.
+
+**Default Routing Key (#20)** simplifies publishing by providing consistent routing without stamps.
+
+**Transport Setup/Close (#17)** gives explicit lifecycle control over transport resources.
 
 ## Features Overview
 
-- **Auto-Setup**: Transport creates exchanges/queues automatically on first use
-- **Full AmqpStamp**: Control flags, headers, content_type, delivery_mode, etc.
-- **Received Metadata**: Access to original AMQP envelope after receiving
-- **Transport Setup/Close**: Explicit setup/teardown interfaces
-- **Full DSN Parsing**: 20+ connection and queue options
+- **Full AmqpStamp**: Control flags, headers, content_type, delivery_mode, priority, etc.
+- **Received Metadata**: Access to original AMQP envelope (timestamp, app_id, message_id, headers)
 - **Default Routing Key**: Consistent routing without stamps
+- **Transport Setup/Close**: Explicit setup/teardown interfaces

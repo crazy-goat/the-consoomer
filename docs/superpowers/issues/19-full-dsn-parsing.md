@@ -1,6 +1,6 @@
 # Issue #19: Full DSN Parsing
 
-> **Phase:** [Phase 2: Core Messaging](../phases/phase2-core-messaging.md)  
+> **Phase:** [Phase 1: Foundation & DX](../phases/phase1-foundation.md)  
 > **Backlog:** [missing-features.md](../missing-features.md)
 
 ## Overview

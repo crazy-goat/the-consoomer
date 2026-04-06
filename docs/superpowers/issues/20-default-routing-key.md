@@ -53,4 +53,4 @@ Or:
 
 ## Dependencies
 
-- Phase 2: Full DSN Parsing (#19) for option handling
+- Phase 1: Full DSN Parsing (#19) for option handling

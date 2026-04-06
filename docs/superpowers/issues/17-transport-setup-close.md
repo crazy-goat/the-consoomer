@@ -80,4 +80,4 @@ $transport->close();
 
 ## Dependencies
 
-- Phase 2: Auto-Setup (#1) for setup implementation
+- Phase 1: Auto-Setup (#1) for setup implementation

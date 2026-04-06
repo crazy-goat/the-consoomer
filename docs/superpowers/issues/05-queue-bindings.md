@@ -52,5 +52,4 @@
 
 ## Dependencies
 
-- Phase 2: Auto-Setup (#1) for queue creation
-- Phase 5: Multiple Queues (#4) for queue configuration structure
+- Phase 1: Auto-Setup (#1) for queue creation

@@ -1,6 +1,6 @@
 # Issue #1: Infrastructure Auto-Setup
 
-> **Phase:** [Phase 2: Core Messaging](../phases/phase2-core-messaging.md)  
+> **Phase:** [Phase 1: Foundation & DX](../phases/phase1-foundation.md)  
 > **Backlog:** [missing-features.md](../missing-features.md)
 
 ## Overview
@@ -47,5 +47,5 @@ amqp-consoomer://user:pass@host:5672/vhost/exchange?queue=my_queue&auto_setup=tr
 
 ## Dependencies
 
-- Phase 1: Factory Pattern (#18) recommended for testability
-- Phase 2: Full DSN Parsing (#19) for option handling
+- Phase 1: Factory Pattern (#18) for testability
+- Phase 1: Full DSN Parsing (#19) for option handling

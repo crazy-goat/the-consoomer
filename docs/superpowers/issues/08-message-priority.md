@@ -59,4 +59,4 @@ $transport->send($envelope);
 ## Dependencies
 
 - Phase 2: Full AmqpStamp (#7) for stamp infrastructure
-- Phase 5: Multiple Queues (#4) for queue argument support
+- Phase 1: Full DSN Parsing (#19) for queue arguments

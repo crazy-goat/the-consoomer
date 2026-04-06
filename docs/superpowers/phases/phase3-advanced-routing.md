@@ -16,18 +16,28 @@ This phase implements advanced routing patterns including delayed messages, retr
 ## Dependencies
 
 ```
-Phase 1 (Foundation)
+Phase 1 (Foundation & DX)
 └── Phase 2 (Core Messaging)
     └── Phase 3 (Advanced Routing)
         ├── Delayed Messages (#2) ────────────────────┐
+        │   └── depends on Full AmqpStamp (#7)       │
         ├── Retry Routing (#3) ──────────────────────┼── Advanced routing
+        │   └── depends on Delayed Messages (#2)     │
         ├── Queue Bindings (#5) ─────────────────────┤
+        │   └── depends on Auto-Setup (#1)           │
         └── Exchange Bindings (#6) ─────────────────┘
+            └── depends on Auto-Setup (#1)
 ```
 
 ## Rationale
 
-Delayed Messages are essential for scheduling and retry mechanisms. Retry with Proper Routing ensures messages aren't lost during failures. Queue and Exchange Bindings enable flexible, complex routing topologies that match Symfony Messenger behavior.
+**Delayed Messages (#2)** are essential for scheduling and retry mechanisms - uses TTL + dead-letter exchange pattern.
+
+**Retry Routing (#3)** ensures messages aren't lost during failures - uses different routing keys for retry attempts to avoid infinite loops. **Depends on Delayed Messages** for retry delays.
+
+**Queue Bindings (#5)** enable flexible routing with binding keys - different consumers can receive different message types from same exchange. **Depends on Auto-Setup** from Phase 1.
+
+**Exchange Bindings (#6)** enable complex routing topologies - federation between exchanges. **Depends on Auto-Setup** from Phase 1.
 
 ## Features Overview
 
