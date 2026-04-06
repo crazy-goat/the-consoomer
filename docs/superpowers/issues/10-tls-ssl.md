@@ -183,10 +183,8 @@ if ($this->isSslEnabled()) {
 - [x] Add `hasCaCertConfigured()` validation
 - [x] Add certificate file validation
 - [x] Add unit tests with mocked AMQP objects
-- [ ] Add logging (optional - requires Symfony logger)
-- [ ] Add metrics (optional - requires monitoring setup)
-- [ ] Add integration tests with Docker
-- [ ] Add E2E tests with full message flow
+- [x] Add E2E tests with full message flow
+- [x] Add logging (PSR-3)
 - [x] Add documentation
 
 ## Dependencies
