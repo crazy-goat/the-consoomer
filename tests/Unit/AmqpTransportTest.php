@@ -223,11 +223,11 @@ class AmqpTransportTest extends TestCase
             ->method('configureSsl')
             ->with(
                 $connection,
-                $this->callback(function (array $options) {
+                $this->callback(function (array $options): true {
                     $this->assertTrue($options['ssl'] ?? false);
                     $this->assertSame(5671, $options['port']);
                     return true;
-                })
+                }),
             );
 
         $connection
