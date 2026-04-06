@@ -53,7 +53,7 @@ class Receiver implements ReceiverInterface
 
         try {
             $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());
-        } catch (\AMQPQueueException $exception) {
+        } catch (\AMQPException $exception) {
             if ('Consumer timeout exceed' !== $exception->getMessage()) {
                 throw $exception;
             }

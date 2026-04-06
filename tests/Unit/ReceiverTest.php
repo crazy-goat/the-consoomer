@@ -36,7 +36,7 @@ class ReceiverTest extends TestCase
         $this->queue
             ->expects($this->once())
             ->method('consume')
-            ->willThrowException(new \AMQPQueueException('Consumer timeout exceed'));
+            ->willThrowException(new \AMQPException('Consumer timeout exceed'));
 
         $this->queue
             ->method('getConsumerTag')
@@ -228,13 +228,13 @@ class ReceiverTest extends TestCase
         $this->queue
             ->expects($this->once())
             ->method('consume')
-            ->willThrowException(new \AMQPQueueException('Some other error'));
+            ->willThrowException(new \AMQPException('Some other error'));
 
         $this->queue
             ->method('getConsumerTag')
             ->willReturn('test_tag');
 
-        $this->expectException(\AMQPQueueException::class);
+        $this->expectException(\AMQPException::class);
         $this->expectExceptionMessage('Some other error');
 
         $receiver->get();
@@ -293,7 +293,7 @@ class ReceiverTest extends TestCase
                     $firstCall = false;
                     return;
                 }
-                throw new \AMQPQueueException('Consumer timeout exceed');
+                throw new \AMQPException('Consumer timeout exceed');
             });
 
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options);
