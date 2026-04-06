@@ -4,6 +4,11 @@
             "CrazyGoat\\TheConsoomer\\": "src/"
         }
     },
+    "autoload-dev":{
+        "psr-4": {
+            "CrazyGoat\\TheConsoomer\\Tests\\": "tests/"
+        }
+    },
     "require": {
         "symfony/messenger": "^7.2"
     },
