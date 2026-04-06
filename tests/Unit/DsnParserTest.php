@@ -112,6 +112,13 @@ class DsnParserTest extends TestCase
         $this->assertEquals(2.0, $result['connect_timeout']);
     }
 
+    public function testThrowsExceptionForMalformedDsn(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $parser->parse(':');
+    }
+
     public function testExchangeTypeEnumExists(): void
     {
         $this->assertTrue(enum_exists(\CrazyGoat\TheConsoomer\Enum\ExchangeType::class));
