@@ -114,7 +114,7 @@ class DsnParserTest extends TestCase
 
     public function testExchangeTypeEnumExists(): void
     {
-        $this->assertTrue(enum_exists('CrazyGoat\TheConsoomer\Enum\ExchangeType'));
+        $this->assertTrue(enum_exists(\CrazyGoat\TheConsoomer\Enum\ExchangeType::class));
     }
 
     public function testExchangeTypeEnumHasCorrectValues(): void

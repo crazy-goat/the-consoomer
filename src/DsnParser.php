@@ -24,10 +24,10 @@ class DsnParser
         ];
 
         foreach ($query as $key => $value) {
-            if (str_starts_with($key, 'queue_arguments[')) {
+            if (str_starts_with((string) $key, 'queue_arguments[')) {
                 continue;
             }
-            $result[$key] = $this->normalizeValue($key, $value);
+            $result[$key] = $this->normalizeValue($value);
         }
 
         if (isset($query['queue_arguments']) && is_array($query['queue_arguments'])) {
@@ -35,11 +35,11 @@ class DsnParser
         } else {
             $queueArgs = [];
             foreach ($query as $key => $value) {
-                if (preg_match('/^queue_arguments\[(.+)\]$/', $key, $matches)) {
-                    $queueArgs[$matches[1]] = $this->normalizeValue($key, $value);
+                if (preg_match('/^queue_arguments\[(.+)\]$/', (string) $key, $matches)) {
+                    $queueArgs[$matches[1]] = $this->normalizeValue($value);
                 }
             }
-            if (!empty($queueArgs)) {
+            if ($queueArgs !== []) {
                 $result['queue_arguments'] = $queueArgs;
             }
         }
@@ -57,7 +57,7 @@ class DsnParser
         ];
     }
 
-    private function normalizeValue(string $key, mixed $value): mixed
+    private function normalizeValue(mixed $value): mixed
     {
         if (is_numeric($value)) {
             return str_contains((string) $value, '.') ? (float) $value : (int) $value;
