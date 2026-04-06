@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
-class AmqpFactory
+class AmqpFactory implements AmqpFactoryInterface
 {
     public function createConnection(): \AMQPConnection
     {

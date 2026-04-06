@@ -49,14 +49,14 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         return self::create($dsn, $options, $serializer);
     }
 
-    public static function create(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
+    public static function create(string $dsn, array $options, SerializerInterface $serializer, ?AmqpFactoryInterface $factory = null): TransportInterface
     {
         $info = parse_url($dsn);
         $query = [];
         parse_str($info['query'] ?? '', $query);
         $mergedOptions = [...$options, ...self::parsePath($info['path'] ?? ''), ...$query];
 
-        $factory = new AmqpFactory();
+        $factory ??= new AmqpFactory();
         $connection = $factory->createConnection();
         $connection->setHost($info['host']);
         $connection->setPort($info['port']);

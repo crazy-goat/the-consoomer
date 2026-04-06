@@ -18,7 +18,7 @@ class Receiver implements ReceiverInterface
     private \Closure $callback;
 
     public function __construct(
-        private readonly AmqpFactory $factory,
+        private readonly AmqpFactoryInterface $factory,
         private readonly \AMQPConnection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
