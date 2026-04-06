@@ -23,6 +23,7 @@ class Receiver implements ReceiverInterface
         private readonly SerializerInterface $serializer,
         private readonly array $options,
         private readonly InfrastructureSetup $setup,
+        private readonly ?ConnectionRetryInterface $retry = null,
     ) {
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
@@ -73,7 +74,11 @@ class Receiver implements ReceiverInterface
             throw new \RuntimeException('No raw message stamp');
         }
 
-        $this->ackMessage($stamp->amqpMessage);
+        if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
+            $this->retry->withRetry(fn() => $this->ackMessage($stamp->amqpMessage));
+        } else {
+            $this->ackMessage($stamp->amqpMessage);
+        }
     }
 
     public function reject(Envelope $envelope): void
@@ -84,7 +89,12 @@ class Receiver implements ReceiverInterface
         }
 
         $this->ackPending();
-        $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+
+        if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
+            $this->retry->withRetry(fn() => $this->queue->reject($stamp->amqpMessage->getDeliveryTag()));
+        } else {
+            $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+        }
     }
 
     public function ackPending(): void

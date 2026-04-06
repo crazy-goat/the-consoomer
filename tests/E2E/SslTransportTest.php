@@ -47,14 +47,14 @@ class SslTransportTest extends SslTestCase
             $port,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            urlencode($caCert)
+            urlencode($caCert),
         );
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransport::create(
             $dsn,
             ['queue' => self::QUEUE_NAME],
-            $serializer
+            $serializer,
         );
 
         $this->assertInstanceOf(AmqpTransport::class, $transport);
@@ -77,14 +77,14 @@ class SslTransportTest extends SslTestCase
             $sslPort,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            urlencode($caCert)
+            urlencode($caCert),
         );
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransport::create(
             $dsn,
             ['queue' => self::QUEUE_NAME],
-            $serializer
+            $serializer,
         );
 
         $this->assertInstanceOf(AmqpTransport::class, $transport);
@@ -109,7 +109,7 @@ class SslTransportTest extends SslTestCase
             urlencode($vhost),
             self::EXCHANGE_NAME,
             self::QUEUE_NAME,
-            urlencode($caCert)
+            urlencode($caCert),
         );
 
         $serializer = new PhpSerializer();
@@ -150,14 +150,14 @@ class SslTransportTest extends SslTestCase
             $port,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            urlencode($caCert)
+            urlencode($caCert),
         );
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransport::create(
             $dsn,
             ['queue' => self::QUEUE_NAME],
-            $serializer
+            $serializer,
         );
 
         $this->assertInstanceOf(AmqpTransport::class, $transport);

@@ -19,6 +19,7 @@ class Sender implements SenderInterface
         private readonly SerializerInterface $serializer,
         private readonly array $options,
         private readonly InfrastructureSetup $setup,
+        private readonly ?ConnectionRetryInterface $retry = null,
     ) {
     }
 
@@ -44,12 +45,18 @@ class Sender implements SenderInterface
 
         $data = $this->serializer->encode($envelope);
 
-        $this->exchange->publish(
+        $publishCallback = fn() => $this->exchange->publish(
             $data['body'],
             $this->options['routing_key'] ?? $stamp?->routingKey ?? '',
             null,
             $data['headers'] ?? [],
         );
+
+        if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
+            $this->retry->withRetry($publishCallback);
+        } else {
+            $publishCallback();
+        }
 
         return $envelope;
     }
