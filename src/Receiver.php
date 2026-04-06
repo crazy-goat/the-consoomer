@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CrazyGoat\TheConsoomer;
 
 use Symfony\Component\Messenger\Envelope;

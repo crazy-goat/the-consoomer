@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
 use CrazyGoat\TheConsoomer\AmqpTransport;
@@ -44,7 +46,7 @@ class ConsumeProduceTest extends TestCase
             $port,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            self::QUEUE_NAME
+            self::QUEUE_NAME,
         );
 
         $serializer = new PhpSerializer();
@@ -91,7 +93,7 @@ class ConsumeProduceTest extends TestCase
             $port,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            self::QUEUE_NAME
+            self::QUEUE_NAME,
         );
 
         $serializer = new PhpSerializer();
@@ -119,7 +121,7 @@ class ConsumeProduceTest extends TestCase
             $port,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            self::QUEUE_NAME
+            self::QUEUE_NAME,
         );
 
         $serializer = new PhpSerializer();
@@ -145,7 +147,7 @@ class ConsumeProduceTest extends TestCase
             $port,
             urlencode($vhost),
             self::EXCHANGE_NAME,
-            self::QUEUE_NAME
+            self::QUEUE_NAME,
         );
         $transportWithTimeout = AmqpTransport::create($dsnWithTimeout, [], $serializer);
         $messages = iterator_to_array($transportWithTimeout->get());
