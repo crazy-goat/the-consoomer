@@ -87,6 +87,29 @@ class AmqpFactoryTest extends TestCase
         ]);
     }
 
+    public function testConfigureSslThrowsForUnreadableCertFile(): void
+    {
+        $factory = new AmqpFactory();
+        $connection = new \AMQPConnection();
+
+        $tempDir = sys_get_temp_dir();
+        $certFile = tempnam($tempDir, 'cert');
+        chmod($certFile, 0000);
+
+        try {
+            $this->expectException(\InvalidArgumentException::class);
+            $this->expectExceptionMessage('SSL ssl_cert file not readable');
+
+            $factory->configureSsl($connection, [
+                'ssl' => true,
+                'ssl_cert' => $certFile,
+            ]);
+        } finally {
+            chmod($certFile, 0644);
+            @unlink($certFile);
+        }
+    }
+
     public function testHasCaCertConfiguredReturnsTrueWhenCaCertSet(): void
     {
         $factory = new AmqpFactory();

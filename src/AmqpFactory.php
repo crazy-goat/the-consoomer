@@ -63,10 +63,10 @@ class AmqpFactory implements AmqpFactoryInterface
             $connection->setCaCert($options['ssl_cacert']);
             $logger?->debug('Using SSL CA certificate: {cacert}', ['cacert' => $options['ssl_cacert']]);
         }
-        if (isset($options['ssl_verify'])) {
-            $connection->setVerify($options['ssl_verify']);
-            $logger?->debug('SSL verify: {verify}', ['verify' => $options['ssl_verify'] ? 'enabled' : 'disabled']);
-        }
+
+        $sslVerify = $options['ssl_verify'] ?? true;
+        $connection->setVerify($sslVerify);
+        $logger?->debug('SSL verify: {verify}', ['verify' => $sslVerify ? 'enabled' : 'disabled']);
 
         $logger?->info('SSL handshake configured successfully');
     }

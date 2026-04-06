@@ -8,7 +8,7 @@ use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
-class SslTransportTest extends TestCase
+class SslTransportTest extends SslTestCase
 {
     private const EXCHANGE_NAME = 'test_ssl_exchange';
     private const QUEUE_NAME = 'test_ssl_queue';
