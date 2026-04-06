@@ -18,6 +18,7 @@ class Sender implements SenderInterface
         private readonly \AMQPConnection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
+        private readonly InfrastructureSetup $setup,
     ) {
     }
 
@@ -34,6 +35,9 @@ class Sender implements SenderInterface
 
     public function send(Envelope $envelope): Envelope
     {
+        if ($this->options['auto_setup'] ?? true) {
+            $this->setup->setup();
+        }
         $this->connect();
 
         $stamp = $envelope->last(AmqpStamp::class);

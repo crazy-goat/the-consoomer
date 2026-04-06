@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\AmqpStamp;
+use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -18,6 +19,7 @@ class SenderTest extends TestCase
     private \AMQPConnection&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPExchange&MockObject $exchange;
+    private InfrastructureSetup&MockObject $setup;
 
     protected function setUp(): void
     {
@@ -25,6 +27,7 @@ class SenderTest extends TestCase
         $this->connection = $this->createMock(\AMQPConnection::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->exchange = $this->createMock(\AMQPExchange::class);
+        $this->setup = $this->createMock(InfrastructureSetup::class);
     }
 
     public function testSendPublishesToExchange(): void
@@ -202,13 +205,39 @@ class SenderTest extends TestCase
             ->expects($this->once())
             ->method('publish');
 
-        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options);
+        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
         $sender->send(new Envelope(new \stdClass()));
+    }
+
+    public function testSendCallsSetupFirst(): void
+    {
+        $setup = $this->createMock(InfrastructureSetup::class);
+        $setup->expects($this->once())->method('setup');
+
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->factory
+            ->method('createChannel')
+            ->willReturn($channel);
+
+        $this->factory
+            ->method('createExchange')
+            ->willReturn($this->exchange);
+
+        $options = ['exchange' => 'test_exchange', 'routing_key' => 'test_key'];
+
+        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $setup);
+
+        $envelope = new Envelope(new \stdClass());
+        $this->serializer->method('encode')->willReturn(['body' => '{}', 'headers' => []]);
+        $this->exchange->method('publish');
+
+        $sender->send($envelope);
     }
 
     private function createSender(array $options): Sender
     {
-        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options);
+        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
         $reflection = new \ReflectionClass(Sender::class);
         $exchangeProperty = $reflection->getProperty('exchange');

@@ -22,6 +22,7 @@ class Receiver implements ReceiverInterface
         private readonly \AMQPConnection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
+        private readonly InfrastructureSetup $setup,
     ) {
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
@@ -42,13 +43,16 @@ class Receiver implements ReceiverInterface
         $channel = $this->factory->createChannel($this->connection);
         $channel->qos(0, $this->maxUnackedMessages);
         $this->queue = $this->factory->createQueue($channel);
-        $this->queue->setName($this->options['queue']);
+        $this->queue->setName($this->options['queue'] ?? '');
         // setup consumer, consume happens in get() function
         $this->queue->consume();
     }
 
     public function get(): iterable
     {
+        if ($this->options['auto_setup'] ?? true) {
+            $this->setup->setup();
+        }
         $this->connect();
 
         try {
