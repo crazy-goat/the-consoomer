@@ -20,45 +20,47 @@ class AmqpTransportTest extends TestCase
     private ReceiverInterface&MockObject $receiver;
     private SenderInterface&MockObject $sender;
     private SerializerInterface&MockObject $serializer;
+    private InfrastructureSetup&MockObject $setup;
 
     protected function setUp(): void
     {
         $this->receiver = $this->createMock(ReceiverInterface::class);
         $this->sender = $this->createMock(SenderInterface::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
+        $this->setup = $this->createMock(InfrastructureSetup::class);
     }
 
     public function testSupportsReturnsTrueForAmqpConsoomerDsn(): void
     {
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $this->assertTrue($transport->supports('amqp-consoomer://localhost', []));
     }
 
     public function testSupportsReturnsTrueForAmqpConsoomerDsnWithHost(): void
     {
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $this->assertTrue($transport->supports('amqp-consoomer://rabbitmq.example.com', []));
     }
 
     public function testSupportsReturnsFalseForOtherDsn(): void
     {
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $this->assertFalse($transport->supports('amqp://localhost', []));
     }
 
     public function testSupportsReturnsFalseForAmqpDsnWithoutConsoomer(): void
     {
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $this->assertFalse($transport->supports('amqp://localhost', []));
     }
 
     public function testSupportsReturnsFalseForRabbitMqDsn(): void
     {
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $this->assertFalse($transport->supports('rabbitmq://localhost', []));
     }
@@ -68,6 +70,7 @@ class AmqpTransportTest extends TestCase
         $transport = new AmqpTransport(
             $this->createMock(ReceiverInterface::class),
             $this->createMock(SenderInterface::class),
+            $this->setup,
         );
 
         $this->assertTrue($transport->supports('amqps-consoomer://localhost/%2f/exchange', []));
@@ -78,6 +81,7 @@ class AmqpTransportTest extends TestCase
         $transport = new AmqpTransport(
             $this->createMock(ReceiverInterface::class),
             $this->createMock(SenderInterface::class),
+            $this->setup,
         );
 
         $this->assertFalse($transport->supports('amqps://localhost/%2f/exchange', []));
@@ -92,7 +96,7 @@ class AmqpTransportTest extends TestCase
             ->method('get')
             ->willReturn([$envelope]);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $result = iterator_to_array($transport->get());
 
@@ -106,7 +110,7 @@ class AmqpTransportTest extends TestCase
             ->method('get')
             ->willReturn([]);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $result = iterator_to_array($transport->get());
 
@@ -122,7 +126,7 @@ class AmqpTransportTest extends TestCase
             ->method('ack')
             ->with($envelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $transport->ack($envelope);
     }
@@ -136,7 +140,7 @@ class AmqpTransportTest extends TestCase
             ->method('reject')
             ->with($envelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $transport->reject($envelope);
     }
@@ -152,7 +156,7 @@ class AmqpTransportTest extends TestCase
             ->with($envelope)
             ->willReturn($returnedEnvelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $result = $transport->send($envelope);
 
@@ -169,7 +173,7 @@ class AmqpTransportTest extends TestCase
             ->with($envelope)
             ->willReturn($envelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
 
         $result = $transport->send($envelope);
 
@@ -276,7 +280,7 @@ class AmqpTransportTest extends TestCase
             public function getMessageCount(): int { return 42; }
         };
 
-        $transport = new AmqpTransport($receiver, $this->sender);
+        $transport = new AmqpTransport($receiver, $this->sender, $this->setup);
 
         $this->assertSame(42, $transport->getMessageCount());
     }
@@ -285,8 +289,19 @@ class AmqpTransportTest extends TestCase
     {
         $receiver = $this->createMock(ReceiverInterface::class);
 
-        $transport = new AmqpTransport($receiver, $this->sender);
+        $transport = new AmqpTransport($receiver, $this->sender, $this->setup);
 
         $this->assertSame(0, $transport->getMessageCount());
+    }
+
+    public function testSetupDelegatesToInfrastructureSetup(): void
+    {
+        $this->setup
+            ->expects($this->once())
+            ->method('setup');
+
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+
+        $transport->setup();
     }
 }

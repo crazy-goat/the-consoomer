@@ -10,14 +10,16 @@ use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
+use Symfony\Component\Messenger\Transport\SetupableTransportInterface;
 use Symfony\Component\Messenger\Transport\TransportFactoryInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
 
-class AmqpTransport implements TransportInterface, TransportFactoryInterface, MessageCountAwareInterface
+class AmqpTransport implements TransportInterface, TransportFactoryInterface, MessageCountAwareInterface, SetupableTransportInterface
 {
     public function __construct(
         private readonly ReceiverInterface $receiver,
         private readonly SenderInterface $sender,
+        private readonly InfrastructureSetup $setup,
     ) {
     }
 
@@ -48,6 +50,11 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
         }
 
         return 0;
+    }
+
+    public function setup(): void
+    {
+        $this->setup->setup();
     }
 
     public function supports(string $dsn, array $options): bool
@@ -86,7 +93,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
         if (isset($mergedOptions['heartbeat'])) {
             $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
         }
-        if ($logger !== null) {
+        if ($logger instanceof LoggerInterface) {
             $amqpConnection->setLogger($logger);
         }
 
@@ -100,6 +107,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
         return new self(
             new Receiver($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
             new Sender($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
+            $setup,
         );
     }
 
