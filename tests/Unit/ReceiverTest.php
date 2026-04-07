@@ -413,22 +413,19 @@ class ReceiverTest extends TestCase
         // Original flags should be 0
         $this->queue->method('getFlags')->willReturn(0);
 
-        // Expect setFlags to be called with AMQP_PASSIVE (1) before declareQueue
+        // Expect setFlags to be called with AMQP_PASSIVE (1) before declareQueue, then restore (0)
+        $capturedFlags = [];
         $this->queue
             ->expects($this->exactly(2))
             ->method('setFlags')
-            ->willReturnCallback(function (int $flags): void {
-                static $callCount = 0;
-                ++$callCount;
-
-                if ($callCount === 1) {
-                    // First call should add AMQP_PASSIVE flag (1)
-                    $this->assertSame(\AMQP_PASSIVE, $flags);
-                } else {
-                    // Second call should restore original flags (0)
-                    $this->assertSame(0, $flags);
-                }
-            });
+            ->willReturnOnConsecutiveCalls(
+                $this->returnCallback(function (int $flags) use (&$capturedFlags): void {
+                    $capturedFlags[] = $flags;
+                }),
+                $this->returnCallback(function (int $flags) use (&$capturedFlags): void {
+                    $capturedFlags[] = $flags;
+                }),
+            );
 
         $this->queue
             ->expects($this->once())
@@ -438,6 +435,11 @@ class ReceiverTest extends TestCase
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
         $this->assertSame(50, $receiver->getMessageCount());
+
+        // Verify flags were set correctly
+        $this->assertCount(2, $capturedFlags);
+        $this->assertSame(\AMQP_PASSIVE, $capturedFlags[0]);
+        $this->assertSame(0, $capturedFlags[1]);
     }
 
     public function testGetMessageCountRestoresFlagsWhenExceptionThrown(): void

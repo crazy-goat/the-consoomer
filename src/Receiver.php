@@ -157,7 +157,8 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * Uses AMQP_PASSIVE flag to safely query queue depth without re-declaring.
      * If auto_setup is enabled, will first ensure the queue exists.
      *
-     * @throws \AMQPException When connection fails or queue does not exist (with auto_setup disabled)
+     * @throws \AMQPException When connection fails
+     * @throws \AMQPQueueException When queue does not exist (with auto_setup disabled)
      */
     public function getMessageCount(): int
     {
@@ -168,7 +169,7 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->ensureConnected();
         $this->connect();
 
-        $operation = function (): int {
+        $getMessageCountOperation = function (): int {
             // Use passive flag to safely query queue depth without re-declaring
             $flags = $this->queue->getFlags();
             $this->queue->setFlags($flags | \AMQP_PASSIVE);
@@ -182,8 +183,8 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         };
 
         $result = $this->retry instanceof ConnectionRetryInterface
-            ? $this->retry->withRetry($operation)
-            : $operation();
+            ? $this->retry->withRetry($getMessageCountOperation)
+            : $getMessageCountOperation();
 
         $this->connection->updateActivity();
 

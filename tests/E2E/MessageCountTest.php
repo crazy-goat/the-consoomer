@@ -83,14 +83,14 @@ class MessageCountTest extends TestCase
         $this->assertSame(0, $transport->getMessageCount());
     }
 
-    public function testGetMessageCountWithAutoSetupEnabled(): void
+    public function testGetMessageCountWithAutoSetupCreatesQueue(): void
     {
         $this->deleteQueue(self::QUEUE_NAME);
 
         $transport = $this->createTransport();
 
-        // Queue doesn't exist but auto_setup should create it
-        // With AMQP_PASSIVE flag, this should return 0 (empty new queue)
+        // Queue doesn't exist but auto_setup should create it via setup()
+        // After setup creates the queue, AMQP_PASSIVE declareQueue returns 0 (empty new queue)
         $count = $transport->getMessageCount();
 
         $this->assertSame(0, $count);
