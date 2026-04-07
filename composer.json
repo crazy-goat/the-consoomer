@@ -31,9 +31,12 @@
         "symfony/dependency-injection": "^6.4 || ^7.4 || ^8.0",
         "friendsofphp/php-cs-fixer": "^3.75",
         "rector/rector": "^2.0",
-        "phpunit/phpunit": "^10"
+        "phpunit/phpunit": "^10",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpstan/phpstan": "^2.1"
     },
     "scripts": {
+        "phpstan": "vendor/bin/phpstan analyze",
         "rector": "vendor/bin/rector process --dry-run",
         "phpcsfixer": "vendor/bin/php-cs-fixer fix --dry-run --diff",
         "lint:fix": [
@@ -41,6 +44,7 @@
             "vendor/bin/php-cs-fixer fix"
         ],
         "lint": [
+            "@phpstan",
             "@rector",
             "@phpcsfixer"
         ],
