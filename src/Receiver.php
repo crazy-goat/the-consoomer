@@ -141,6 +141,14 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
     }
 
+    /**
+     * Returns the number of messages in the queue.
+     *
+     * Uses AMQP_PASSIVE flag to safely query queue depth without re-declaring.
+     * If auto_setup is enabled, will first ensure the queue exists.
+     *
+     * @throws \AMQPQueueException When queue does not exist and auto_setup is disabled
+     */
     public function getMessageCount(): int
     {
         if ($this->options['auto_setup'] ?? true) {

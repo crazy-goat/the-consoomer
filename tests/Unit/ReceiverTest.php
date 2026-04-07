@@ -434,4 +434,76 @@ class ReceiverTest extends TestCase
 
         $this->assertSame(50, $receiver->getMessageCount());
     }
+
+    public function testGetMessageCountRestoresFlagsWhenExceptionThrown(): void
+    {
+        $options = ['queue' => 'test_queue', 'auto_setup' => false];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+
+        $capturedFlags = [];
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('setFlags')
+            ->willReturnCallback(function (int $flags) use (&$capturedFlags): void {
+                $capturedFlags[] = $flags;
+            });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willThrowException(new \AMQPQueueException('PRECONDITION_FAILED - queue does not exist'));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        try {
+            $receiver->getMessageCount();
+            $this->fail('Expected AMQPQueueException to be thrown');
+        } catch (\AMQPQueueException $e) {
+            // Verify flags were restored even when exception was thrown
+            $this->assertCount(2, $capturedFlags);
+            $this->assertSame(\AMQP_PASSIVE, $capturedFlags[0]);
+            $this->assertSame(0, $capturedFlags[1]);
+            $this->assertSame('PRECONDITION_FAILED - queue does not exist', $e->getMessage());
+        }
+    }
+
+    public function testGetMessageCountPreservesExistingFlags(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        // Original flags include AMQP_DURABLE (2)
+        $originalFlags = \AMQP_DURABLE;
+        $this->queue->method('getFlags')->willReturn($originalFlags);
+
+        $capturedFlags = [];
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('setFlags')
+            ->willReturnCallback(function (int $flags) use (&$capturedFlags): void {
+                $capturedFlags[] = $flags;
+            });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(75);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(75, $receiver->getMessageCount());
+
+        // Verify flags were combined correctly and restored
+        $this->assertCount(2, $capturedFlags);
+        $this->assertSame($originalFlags | \AMQP_PASSIVE, $capturedFlags[0]);
+        $this->assertSame($originalFlags, $capturedFlags[1]);
+    }
 }
