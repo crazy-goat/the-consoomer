@@ -63,14 +63,24 @@ class AmqpTransportTest extends TestCase
         $this->assertFalse($transport->supports('rabbitmq://localhost', []));
     }
 
-    public function testSupportsAmqpsScheme(): void
+    public function testSupportsAmqpsConsoomerScheme(): void
     {
         $transport = new AmqpTransport(
             $this->createMock(ReceiverInterface::class),
             $this->createMock(SenderInterface::class),
         );
 
-        $this->assertTrue($transport->supports('amqps://localhost/%2f/exchange', []));
+        $this->assertTrue($transport->supports('amqps-consoomer://localhost/%2f/exchange', []));
+    }
+
+    public function testSupportsReturnsFalseForGenericAmqpsScheme(): void
+    {
+        $transport = new AmqpTransport(
+            $this->createMock(ReceiverInterface::class),
+            $this->createMock(SenderInterface::class),
+        );
+
+        $this->assertFalse($transport->supports('amqps://localhost/%2f/exchange', []));
     }
 
     public function testGetDelegatesToReceiver(): void
@@ -246,7 +256,7 @@ class AmqpTransportTest extends TestCase
             ->method('connect');
 
         $transport = AmqpTransport::create(
-            'amqps://guest:guest@localhost/%2f/my_exchange',
+            'amqps-consoomer://guest:guest@localhost/%2f/my_exchange',
             ['exchange' => 'my_exchange', 'queue' => 'my_queue'],
             $this->serializer,
             $factory,
