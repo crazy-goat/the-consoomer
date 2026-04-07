@@ -28,6 +28,7 @@ $rules = [
         'elements' => ['arrays', 'match', 'arguments', 'parameters'],
     ],
     'single_line_empty_body' => false,
+    'single_blank_line_at_eof' => true,
 ];
 
 return (new PhpCsFixer\Config())

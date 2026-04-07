@@ -6,7 +6,6 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\Connection;
-use CrazyGoat\TheConsoomer\ConnectionRetryInterface;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
@@ -531,9 +530,7 @@ class ReceiverTest extends TestCase
         $retry
             ->expects($this->once())
             ->method('withRetry')
-            ->willReturnCallback(function (\Closure $operation): int {
-                return $operation();
-            });
+            ->willReturnCallback(fn(\Closure $operation): int => $operation());
 
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
 
@@ -555,7 +552,7 @@ class ReceiverTest extends TestCase
             ->method('declareQueue')
             ->willReturn(99);
 
-        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
         $this->assertSame(99, $receiver->getMessageCount());
     }
@@ -577,7 +574,7 @@ class ReceiverTest extends TestCase
             ->method('declareQueue')
             ->willThrowException(new \AMQPQueueException('PRECONDITION_FAILED - queue non_existent_queue does not exist'));
 
-        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
         $this->expectException(\AMQPQueueException::class);
         $this->expectExceptionMessage('PRECONDITION_FAILED - queue non_existent_queue does not exist');
@@ -611,7 +608,7 @@ class ReceiverTest extends TestCase
             ->method('declareQueue')
             ->willReturn(42);
 
-        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
         // This should work even after reconnection (queue is reset and reconnected)
         $this->assertSame(42, $receiver->getMessageCount());
@@ -634,7 +631,7 @@ class ReceiverTest extends TestCase
             ->expects($this->once())
             ->method('updateActivity');
 
-        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
         $receiver->getMessageCount();
     }
