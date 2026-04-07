@@ -26,7 +26,7 @@ class DsnParser
             'exchange' => $pathOptions['exchange'],
         ];
 
-        if ($info['scheme'] ?? '' === 'amqps') {
+        if (($info['scheme'] ?? '') === 'amqps' || ($info['scheme'] ?? '') === 'amqps-consoomer') {
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;

@@ -40,7 +40,7 @@ class SslTransportTest extends SslTestCase
         $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
-            'amqps://%s:%s@%s:%d/%s/%s?ssl_cacert=%s',
+            'amqps-consoomer://%s:%s@%s:%d/%s/%s?ssl_cacert=%s',
             $user,
             $password,
             $host,
@@ -101,7 +101,7 @@ class SslTransportTest extends SslTestCase
         $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
 
         $dsn = sprintf(
-            'amqps://%s:%s@%s:%d/%s/%s?queue=%s&ssl_cacert=%s',
+            'amqps-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&ssl_cacert=%s',
             $user,
             $password,
             $host,
