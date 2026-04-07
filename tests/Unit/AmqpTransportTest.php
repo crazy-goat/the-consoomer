@@ -10,6 +10,7 @@ use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -252,5 +253,30 @@ class AmqpTransportTest extends TestCase
         );
 
         $this->assertInstanceOf(AmqpTransport::class, $transport);
+    }
+
+    public function testGetMessageCountDelegatesToReceiver(): void
+    {
+        $receiver = new class($this->createMock(ReceiverInterface::class)) implements ReceiverInterface, MessageCountAwareInterface {
+            private ReceiverInterface $inner;
+            public function __construct(ReceiverInterface $inner) { $this->inner = $inner; }
+            public function get(): iterable { return $this->inner->get(); }
+            public function ack(Envelope $envelope): void { $this->inner->ack($envelope); }
+            public function reject(Envelope $envelope): void { $this->inner->reject($envelope); }
+            public function getMessageCount(): int { return 42; }
+        };
+
+        $transport = new AmqpTransport($receiver, $this->sender);
+
+        $this->assertSame(42, $transport->getMessageCount());
+    }
+
+    public function testGetMessageCountReturnsZeroWhenReceiverNotMessageCountAware(): void
+    {
+        $receiver = $this->createMock(ReceiverInterface::class);
+
+        $transport = new AmqpTransport($receiver, $this->sender);
+
+        $this->assertSame(0, $transport->getMessageCount());
     }
 }

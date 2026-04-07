@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\Connection;
+use CrazyGoat\TheConsoomer\ConnectionRetryInterface;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
@@ -356,5 +357,285 @@ class ReceiverTest extends TestCase
         $callbackProperty->setValue($receiver, fn(\AMQPEnvelope $message): false => false);
 
         return $receiver;
+    }
+
+    /**
+     * Verifies that setup() is called before connection operations.
+     * This follows the same pattern as get() method for consistency.
+     */
+    public function testGetMessageCountCallsSetupBeforeConnection(): void
+    {
+        $setup = $this->createMock(InfrastructureSetup::class);
+        $setup->expects($this->once())->method('setup');
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(42);
+
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $setup);
+
+        $this->assertSame(42, $receiver->getMessageCount());
+    }
+
+    public function testGetMessageCountReturnsQueueMessageCount(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(100);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(100, $receiver->getMessageCount());
+    }
+
+    public function testGetMessageCountUsesPassiveFlag(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        // Original flags should be 0
+        $this->queue->method('getFlags')->willReturn(0);
+
+        // Expect setFlags to be called with AMQP_PASSIVE (1) before declareQueue, then restore (0)
+        $capturedFlags = [];
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('setFlags')
+            ->willReturnOnConsecutiveCalls(
+                $this->returnCallback(function (int $flags) use (&$capturedFlags): void {
+                    $capturedFlags[] = $flags;
+                }),
+                $this->returnCallback(function (int $flags) use (&$capturedFlags): void {
+                    $capturedFlags[] = $flags;
+                }),
+            );
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(50);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(50, $receiver->getMessageCount());
+
+        // Verify flags were set correctly
+        $this->assertCount(2, $capturedFlags);
+        $this->assertSame(\AMQP_PASSIVE, $capturedFlags[0]);
+        $this->assertSame(0, $capturedFlags[1]);
+    }
+
+    public function testGetMessageCountRestoresFlagsWhenExceptionThrown(): void
+    {
+        $options = ['queue' => 'test_queue', 'auto_setup' => false];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+
+        $capturedFlags = [];
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('setFlags')
+            ->willReturnCallback(function (int $flags) use (&$capturedFlags): void {
+                $capturedFlags[] = $flags;
+            });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willThrowException(new \AMQPQueueException('PRECONDITION_FAILED - queue does not exist'));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        try {
+            $receiver->getMessageCount();
+            $this->fail('Expected AMQPQueueException to be thrown');
+        } catch (\AMQPQueueException $e) {
+            // Verify flags were restored even when exception was thrown
+            $this->assertCount(2, $capturedFlags);
+            $this->assertSame(\AMQP_PASSIVE, $capturedFlags[0]);
+            $this->assertSame(0, $capturedFlags[1]);
+            $this->assertSame('PRECONDITION_FAILED - queue does not exist', $e->getMessage());
+        }
+    }
+
+    public function testGetMessageCountPreservesExistingFlags(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        // Original flags include AMQP_DURABLE (2)
+        $originalFlags = \AMQP_DURABLE;
+        $this->queue->method('getFlags')->willReturn($originalFlags);
+
+        $capturedFlags = [];
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('setFlags')
+            ->willReturnCallback(function (int $flags) use (&$capturedFlags): void {
+                $capturedFlags[] = $flags;
+            });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(75);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(75, $receiver->getMessageCount());
+
+        // Verify flags were combined correctly and restored
+        $this->assertCount(2, $capturedFlags);
+        $this->assertSame($originalFlags | \AMQP_PASSIVE, $capturedFlags[0]);
+        $this->assertSame($originalFlags, $capturedFlags[1]);
+    }
+
+    public function testGetMessageCountUsesRetryWhenConfigured(): void
+    {
+        $options = ['queue' => 'test_queue'];
+        $retry = $this->createMock(\CrazyGoat\TheConsoomer\ConnectionRetryInterface::class);
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue->method('declareQueue')->willReturn(42);
+
+        // Verify that retry->withRetry is called with the operation
+        $retry
+            ->expects($this->once())
+            ->method('withRetry')
+            ->willReturnCallback(function (\Closure $operation): int {
+                return $operation();
+            });
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
+
+        $this->assertSame(42, $receiver->getMessageCount());
+    }
+
+    public function testGetMessageCountWithoutRetryCallsDirectly(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(99);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        $this->assertSame(99, $receiver->getMessageCount());
+    }
+
+    public function testGetMessageCountThrowsExceptionWhenAutoSetupDisabledAndQueueNotExists(): void
+    {
+        $options = ['queue' => 'non_existent_queue', 'auto_setup' => false];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+
+        // Simulate queue not existing - declareQueue with AMQP_PASSIVE throws when queue doesn't exist
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willThrowException(new \AMQPQueueException('PRECONDITION_FAILED - queue non_existent_queue does not exist'));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        $this->expectException(\AMQPQueueException::class);
+        $this->expectExceptionMessage('PRECONDITION_FAILED - queue non_existent_queue does not exist');
+
+        $receiver->getMessageCount();
+    }
+
+    public function testGetMessageCountHandlesReconnectionWhenHeartbeatStale(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        // Simulate stale connection - checkHeartbeat returns true (needs reconnect)
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(true);
+
+        // Reconnect should be called when heartbeat is stale
+        $this->connection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(42);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        // This should work even after reconnection (queue is reset and reconnected)
+        $this->assertSame(42, $receiver->getMessageCount());
+    }
+
+    public function testGetMessageCountCallsUpdateActivity(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue->method('declareQueue')->willReturn(42);
+
+        // Verify updateActivity is called after operation
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        $receiver->getMessageCount();
     }
 }

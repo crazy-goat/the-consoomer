@@ -6,13 +6,14 @@ namespace CrazyGoat\TheConsoomer;
 
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\TransportFactoryInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
 
-class AmqpTransport implements TransportInterface, TransportFactoryInterface
+class AmqpTransport implements TransportInterface, TransportFactoryInterface, MessageCountAwareInterface
 {
     public function __construct(
         private readonly ReceiverInterface $receiver,
@@ -38,6 +39,15 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
     public function send(Envelope $envelope): Envelope
     {
         return $this->sender->send($envelope);
+    }
+
+    public function getMessageCount(): int
+    {
+        if ($this->receiver instanceof MessageCountAwareInterface) {
+            return $this->receiver->getMessageCount();
+        }
+
+        return 0;
     }
 
     public function supports(string $dsn, array $options): bool
