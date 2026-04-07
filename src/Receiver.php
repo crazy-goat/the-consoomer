@@ -88,8 +88,10 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         };
 
         $channel = $this->connection->getChannel();
+        $channel->qos(0, $this->maxUnackedMessages);
         $this->queue = $this->factory->createQueue($channel);
         $this->queue->setName($this->options['queue'] ?? '');
+        $this->queue->consume(); // Start consumer to set consumer tag (needed for get())
     }
 
     public function get(): iterable
