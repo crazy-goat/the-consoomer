@@ -67,15 +67,23 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
 
         $factory->configureSsl($connection, $mergedOptions, $logger);
 
+        $amqpConnection = new Connection($factory, $connection);
+        if (isset($mergedOptions['heartbeat'])) {
+            $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
+        }
+        if ($logger !== null) {
+            $amqpConnection->setLogger($logger);
+        }
+
         $connection->connect();
 
-        $setup = new InfrastructureSetup($factory, $connection, $mergedOptions);
+        $setup = new InfrastructureSetup($factory, $amqpConnection, $mergedOptions);
 
         $retry = self::createRetry($mergedOptions, $logger);
 
         return new self(
-            new Receiver($factory, $connection, $serializer, $mergedOptions, $setup, $retry),
-            new Sender($factory, $connection, $serializer, $mergedOptions, $setup, $retry),
+            new Receiver($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
+            new Sender($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
         );
     }
 

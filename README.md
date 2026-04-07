@@ -69,6 +69,24 @@ Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=tes
 | `queue` | Queue name to consume from | (required) |
 | `max_unacked_messages` | Prefetch count / batch size | 100 |
 | `timeout` | Consumer timeout in seconds | 0.1 |
+| `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
+
+### Heartbeat
+
+The heartbeat feature keeps connections alive and detects dead connections. When enabled, the connection will automatically reconnect if no activity is detected for twice the heartbeat interval.
+
+```yaml
+framework:
+    messenger:
+        transports:
+            consoomer:
+                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/?queue=my_queue&heartbeat=60'
+```
+
+With heartbeat enabled:
+- Connection is checked before each operation (send, get, ack, reject)
+- If stale (elapsed > 2 * heartbeat), automatic reconnect occurs
+- Activity is updated after each operation
 
 ## Testing
 

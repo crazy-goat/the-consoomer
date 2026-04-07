@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactoryInterface;
+use CrazyGoat\TheConsoomer\Connection;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -12,7 +13,7 @@ use PHPUnit\Framework\TestCase;
 class InfrastructureSetupTest extends TestCase
 {
     private AmqpFactoryInterface&MockObject $factory;
-    private \AMQPConnection&MockObject $connection;
+    private Connection&MockObject $connection;
     private \AMQPChannel&MockObject $channel;
     private \AMQPExchange&MockObject $exchange;
     private \AMQPQueue&MockObject $queue;
@@ -20,7 +21,7 @@ class InfrastructureSetupTest extends TestCase
     protected function setUp(): void
     {
         $this->factory = $this->createMock(AmqpFactoryInterface::class);
-        $this->connection = $this->createMock(\AMQPConnection::class);
+        $this->connection = $this->createMock(Connection::class);
         $this->channel = $this->createMock(\AMQPChannel::class);
         $this->exchange = $this->createMock(\AMQPExchange::class);
         $this->queue = $this->createMock(\AMQPQueue::class);
@@ -28,7 +29,7 @@ class InfrastructureSetupTest extends TestCase
 
     public function testSetupIsIdempotentAndOnlyExecutesOnce(): void
     {
-        $this->factory->method('createChannel')->with($this->connection)->willReturn($this->channel);
+        $this->connection->method('getChannel')->willReturn($this->channel);
         $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
         $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
 
@@ -55,10 +56,9 @@ class InfrastructureSetupTest extends TestCase
 
     public function testSetupCreatesExchangeAndQueueWithCorrectParameters(): void
     {
-        $this->factory
+        $this->connection
             ->expects($this->once())
-            ->method('createChannel')
-            ->with($this->connection)
+            ->method('getChannel')
             ->willReturn($this->channel);
 
         $this->factory

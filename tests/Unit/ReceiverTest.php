@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
+use CrazyGoat\TheConsoomer\Connection;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
@@ -16,7 +17,7 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 class ReceiverTest extends TestCase
 {
     private AmqpFactory&MockObject $factory;
-    private \AMQPConnection&MockObject $connection;
+    private Connection&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPQueue&MockObject $queue;
     private InfrastructureSetup&MockObject $setup;
@@ -24,7 +25,7 @@ class ReceiverTest extends TestCase
     protected function setUp(): void
     {
         $this->factory = $this->createMock(AmqpFactory::class);
-        $this->connection = $this->createMock(\AMQPConnection::class);
+        $this->connection = $this->createMock(Connection::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->queue = $this->createMock(\AMQPQueue::class);
         $this->setup = $this->createMock(InfrastructureSetup::class);
@@ -36,7 +37,7 @@ class ReceiverTest extends TestCase
         $setup->expects($this->once())->method('setup');
 
         $channel = $this->createMock(\AMQPChannel::class);
-        $this->factory->method('createChannel')->willReturn($channel);
+        $this->connection->method('getChannel')->willReturn($channel);
         $this->factory->method('createQueue')->willReturn($this->queue);
         $this->queue->method('getConsumerTag')->willReturn('consumer_tag');
 
@@ -65,6 +66,11 @@ class ReceiverTest extends TestCase
         $this->queue
             ->method('getConsumerTag')
             ->willReturn('test_tag');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
 
         $result = $receiver->get();
 
@@ -115,6 +121,11 @@ class ReceiverTest extends TestCase
         $this->queue
             ->method('getConsumerTag')
             ->willReturn('test_tag');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
 
         $result = $receiver->get();
 
@@ -258,6 +269,11 @@ class ReceiverTest extends TestCase
             ->method('getConsumerTag')
             ->willReturn('test_tag');
 
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
         $this->expectException(\AMQPException::class);
         $this->expectExceptionMessage('Some other error');
 
@@ -296,10 +312,9 @@ class ReceiverTest extends TestCase
             ->method('getConsumerTag')
             ->willReturn('test_tag');
 
-        $this->factory
+        $this->connection
             ->expects($this->once())
-            ->method('createChannel')
-            ->with($this->connection)
+            ->method('getChannel')
             ->willReturn($channel);
 
         $this->factory
@@ -307,6 +322,11 @@ class ReceiverTest extends TestCase
             ->method('createQueue')
             ->with($channel)
             ->willReturn($this->queue);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
 
         $firstCall = true;
         $this->queue

@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\AmqpStamp;
+use CrazyGoat\TheConsoomer\Connection;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -16,7 +17,7 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 class SenderTest extends TestCase
 {
     private AmqpFactory&MockObject $factory;
-    private \AMQPConnection&MockObject $connection;
+    private Connection&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPExchange&MockObject $exchange;
     private InfrastructureSetup&MockObject $setup;
@@ -24,7 +25,7 @@ class SenderTest extends TestCase
     protected function setUp(): void
     {
         $this->factory = $this->createMock(AmqpFactory::class);
-        $this->connection = $this->createMock(\AMQPConnection::class);
+        $this->connection = $this->createMock(Connection::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->exchange = $this->createMock(\AMQPExchange::class);
         $this->setup = $this->createMock(InfrastructureSetup::class);
@@ -54,6 +55,11 @@ class SenderTest extends TestCase
                 null,
                 ['content-type' => 'application/json'],
             );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
 
         $sender = $this->createSender($options);
         $result = $sender->send($envelope);
@@ -87,6 +93,11 @@ class SenderTest extends TestCase
                 null,
                 [],
             );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
 
         $sender = $this->createSender($options);
         $result = $sender->send($envelope);
@@ -122,6 +133,11 @@ class SenderTest extends TestCase
                 [],
             );
 
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
         $sender = $this->createSender($options);
         $sender->send($envelope);
     }
@@ -149,6 +165,11 @@ class SenderTest extends TestCase
                 [],
             );
 
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
         $sender = $this->createSender($options);
         $sender->send($envelope);
     }
@@ -165,6 +186,11 @@ class SenderTest extends TestCase
             ->expects($this->exactly(2))
             ->method('publish');
 
+        $this->connection
+            ->expects($this->exactly(2))
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
         $sender = $this->createSender($options);
 
         $envelope1 = new Envelope(new \stdClass());
@@ -180,10 +206,9 @@ class SenderTest extends TestCase
 
         $channel = $this->createMock(\AMQPChannel::class);
 
-        $this->factory
+        $this->connection
             ->expects($this->once())
-            ->method('createChannel')
-            ->with($this->connection)
+            ->method('getChannel')
             ->willReturn($channel);
 
         $this->factory
@@ -205,6 +230,11 @@ class SenderTest extends TestCase
             ->expects($this->once())
             ->method('publish');
 
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
         $sender->send(new Envelope(new \stdClass()));
     }
@@ -216,8 +246,8 @@ class SenderTest extends TestCase
 
         $channel = $this->createMock(\AMQPChannel::class);
 
-        $this->factory
-            ->method('createChannel')
+        $this->connection
+            ->method('getChannel')
             ->willReturn($channel);
 
         $this->factory
@@ -231,6 +261,11 @@ class SenderTest extends TestCase
         $envelope = new Envelope(new \stdClass());
         $this->serializer->method('encode')->willReturn(['body' => '{}', 'headers' => []]);
         $this->exchange->method('publish');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
 
         $sender->send($envelope);
     }

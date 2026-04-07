@@ -19,7 +19,7 @@ class Receiver implements ReceiverInterface
 
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
-        private readonly \AMQPConnection $connection,
+        private readonly Connection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
         private readonly InfrastructureSetup $setup,
@@ -41,12 +41,19 @@ class Receiver implements ReceiverInterface
             return false;
         };
 
-        $channel = $this->factory->createChannel($this->connection);
+        $channel = $this->connection->getChannel();
         $channel->qos(0, $this->maxUnackedMessages);
         $this->queue = $this->factory->createQueue($channel);
         $this->queue->setName($this->options['queue'] ?? '');
-        // setup consumer, consume happens in get() function
         $this->queue->consume();
+    }
+
+    private function ensureConnected(): void
+    {
+        if ($this->connection->checkHeartbeat()) {
+            $this->connection->reconnect();
+            $this->queue = null;
+        }
     }
 
     public function get(): iterable
@@ -55,6 +62,7 @@ class Receiver implements ReceiverInterface
             $this->setup->setup();
         }
         $this->connect();
+        $this->ensureConnected();
 
         try {
             $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());
@@ -63,6 +71,8 @@ class Receiver implements ReceiverInterface
                 throw $exception;
             }
         }
+
+        $this->connection->updateActivity();
 
         return $this->message instanceof Envelope ? [$this->message] : [];
     }
@@ -75,9 +85,13 @@ class Receiver implements ReceiverInterface
         }
 
         if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
-            $this->retry->withRetry(fn() => $this->ackMessage($stamp->amqpMessage));
+            $this->retry->withRetry(function () use ($stamp) {
+                $this->ackMessage($stamp->amqpMessage);
+                $this->connection->updateActivity();
+            });
         } else {
             $this->ackMessage($stamp->amqpMessage);
+            $this->connection->updateActivity();
         }
     }
 
@@ -92,10 +106,12 @@ class Receiver implements ReceiverInterface
             $this->retry->withRetry(function () use ($stamp) {
                 $this->ackPending();
                 $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+                $this->connection->updateActivity();
             });
         } else {
             $this->ackPending();
             $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+            $this->connection->updateActivity();
         }
     }
 
