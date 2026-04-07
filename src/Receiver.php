@@ -161,11 +161,14 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
      */
     public function getMessageCount(): int
     {
+        // First ensure connection is alive (reconnect if needed via heartbeat)
+        $this->ensureConnected();
+        // Then establish AMQP connection and queue
+        $this->connect();
+        // Finally setup infrastructure on fresh connection
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->ensureConnected();
-        $this->connect();
 
         $operation = function (): int {
             // Use passive flag to safely query queue depth without re-declaring
