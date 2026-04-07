@@ -27,7 +27,7 @@ class DsnParser
         ];
 
         $scheme = $info['scheme'] ?? '';
-        if ($scheme === 'amqps-consoomer') {
+        if (($scheme ?? '') === 'amqps-consoomer') {
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
