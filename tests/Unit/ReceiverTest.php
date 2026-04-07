@@ -360,10 +360,10 @@ class ReceiverTest extends TestCase
     }
 
     /**
-     * Setup is called after connection is established to ensure it works on fresh connection.
-     * This is better than calling setup first (which could work on stale connection).
+     * Verifies that setup() is called before connection operations.
+     * This follows the same pattern as get() method for consistency.
      */
-    public function testGetMessageCountCallsSetupAfterConnection(): void
+    public function testGetMessageCountCallsSetupBeforeConnection(): void
     {
         $setup = $this->createMock(InfrastructureSetup::class);
         $setup->expects($this->once())->method('setup');
