@@ -29,6 +29,26 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
 
+    /**
+     * Checks if connection needs reconnection due to heartbeat timeout.
+     * Resets internal state when reconnection occurs.
+     * This handles stale connections detected via heartbeat mechanism.
+     */
+    private function ensureConnected(): void
+    {
+        if ($this->connection->checkHeartbeat()) {
+            $this->connection->reconnect();
+            $this->queue = null;
+            $this->unacked = 0;
+            $this->lastUnacked = null;
+        }
+    }
+
+    /**
+     * Establishes AMQP connection and sets up queue if not already connected.
+     * Creates channel, configures QoS, and initializes queue consumer.
+     * This is idempotent - safe to call multiple times.
+     */
     private function connect(): void
     {
         if ($this->queue instanceof \AMQPQueue) {
@@ -47,16 +67,6 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->queue = $this->factory->createQueue($channel);
         $this->queue->setName($this->options['queue'] ?? '');
         $this->queue->consume();
-    }
-
-    private function ensureConnected(): void
-    {
-        if ($this->connection->checkHeartbeat()) {
-            $this->connection->reconnect();
-            $this->queue = null;
-            $this->unacked = 0;
-            $this->lastUnacked = null;
-        }
     }
 
     public function get(): iterable

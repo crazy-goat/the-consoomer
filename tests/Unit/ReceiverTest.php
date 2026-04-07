@@ -553,4 +553,29 @@ class ReceiverTest extends TestCase
 
         $this->assertSame(99, $receiver->getMessageCount());
     }
+
+    public function testGetMessageCountThrowsExceptionWhenAutoSetupDisabledAndQueueNotExists(): void
+    {
+        $options = ['queue' => 'non_existent_queue', 'auto_setup' => false];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+
+        // Simulate queue not existing - declareQueue with AMQP_PASSIVE throws when queue doesn't exist
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willThrowException(new \AMQPQueueException('PRECONDITION_FAILED - queue non_existent_queue does not exist'));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        $this->expectException(\AMQPQueueException::class);
+        $this->expectExceptionMessage('PRECONDITION_FAILED - queue non_existent_queue does not exist');
+
+        $receiver->getMessageCount();
+    }
 }
