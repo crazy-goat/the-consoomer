@@ -57,7 +57,11 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $mergedOptions = [...$options, ...$parsedDsn];
 
         $factory ??= new AmqpFactory();
-        $connection = $factory->createConnection();
+
+        // Native AMQP heartbeat - negotiated with broker at protocol level
+        // Set via constructor to ensure RabbitMQ sees the heartbeat value
+        $connection = $factory->createConnection($mergedOptions);
+
         $connection->setHost($parsedDsn['host']);
         $connection->setPort($parsedDsn['port']);
         $connection->setVhost($parsedDsn['vhost']);
@@ -67,15 +71,25 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
 
         $factory->configureSsl($connection, $mergedOptions, $logger);
 
-        $connection->connect();
+        // Client-side heartbeat tracking for auto-reconnect detection
+        $amqpConnection = new Connection($factory, $connection);
+        if (isset($mergedOptions['heartbeat'])) {
+            $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
+        }
+        if ($logger !== null) {
+            $amqpConnection->setLogger($logger);
+        }
 
-        $setup = new InfrastructureSetup($factory, $connection, $mergedOptions);
+        $connection->connect();
+        $amqpConnection->updateActivity();
+
+        $setup = new InfrastructureSetup($factory, $amqpConnection, $mergedOptions);
 
         $retry = self::createRetry($mergedOptions, $logger);
 
         return new self(
-            new Receiver($factory, $connection, $serializer, $mergedOptions, $setup, $retry),
-            new Sender($factory, $connection, $serializer, $mergedOptions, $setup, $retry),
+            new Receiver($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
+            new Sender($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
         );
     }
 

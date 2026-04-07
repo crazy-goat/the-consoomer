@@ -10,7 +10,7 @@ class InfrastructureSetup
 
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
-        private readonly \AMQPConnection $connection,
+        private readonly Connection $connection,
         private readonly array $options,
     ) {
         if (!isset($options['exchange']) || !isset($options['queue'])) {
@@ -24,7 +24,7 @@ class InfrastructureSetup
             return;
         }
 
-        $channel = $this->factory->createChannel($this->connection);
+        $channel = $this->connection->getChannel();
 
         $exchange = $this->factory->createExchange($channel);
         $exchange->setName($this->options['exchange']);

@@ -8,7 +8,7 @@ use Psr\Log\LoggerInterface;
 
 interface AmqpFactoryInterface
 {
-    public function createConnection(): \AMQPConnection;
+    public function createConnection(array $options = []): \AMQPConnection;
 
     public function createChannel(\AMQPConnection $connection): \AMQPChannel;
 

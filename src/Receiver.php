@@ -19,7 +19,7 @@ class Receiver implements ReceiverInterface
 
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
-        private readonly \AMQPConnection $connection,
+        private readonly Connection $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
         private readonly InfrastructureSetup $setup,
@@ -41,12 +41,21 @@ class Receiver implements ReceiverInterface
             return false;
         };
 
-        $channel = $this->factory->createChannel($this->connection);
+        $channel = $this->connection->getChannel();
         $channel->qos(0, $this->maxUnackedMessages);
         $this->queue = $this->factory->createQueue($channel);
         $this->queue->setName($this->options['queue'] ?? '');
-        // setup consumer, consume happens in get() function
         $this->queue->consume();
+    }
+
+    private function ensureConnected(): void
+    {
+        if ($this->connection->checkHeartbeat()) {
+            $this->connection->reconnect();
+            $this->queue = null;
+            $this->unacked = 0;
+            $this->lastUnacked = null;
+        }
     }
 
     public function get(): iterable
@@ -54,6 +63,7 @@ class Receiver implements ReceiverInterface
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
+        $this->ensureConnected();
         $this->connect();
 
         try {
@@ -64,25 +74,35 @@ class Receiver implements ReceiverInterface
             }
         }
 
+        $this->connection->updateActivity();
+
         return $this->message instanceof Envelope ? [$this->message] : [];
     }
 
     public function ack(Envelope $envelope): void
     {
+        $this->ensureConnected();
+
         $stamp = $envelope->last(RawMessageStamp::class);
         if (!$stamp instanceof RawMessageStamp) {
             throw new \RuntimeException('No raw message stamp');
         }
 
         if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
-            $this->retry->withRetry(fn() => $this->ackMessage($stamp->amqpMessage));
+            $this->retry->withRetry(function () use ($stamp) {
+                $this->ackMessage($stamp->amqpMessage);
+                $this->connection->updateActivity();
+            });
         } else {
             $this->ackMessage($stamp->amqpMessage);
+            $this->connection->updateActivity();
         }
     }
 
     public function reject(Envelope $envelope): void
     {
+        $this->ensureConnected();
+
         $stamp = $envelope->last(RawMessageStamp::class);
         if (!$stamp instanceof RawMessageStamp) {
             throw new \RuntimeException('No raw message stamp');
@@ -92,10 +112,12 @@ class Receiver implements ReceiverInterface
             $this->retry->withRetry(function () use ($stamp) {
                 $this->ackPending();
                 $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+                $this->connection->updateActivity();
             });
         } else {
             $this->ackPending();
             $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+            $this->connection->updateActivity();
         }
     }
 

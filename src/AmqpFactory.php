@@ -8,9 +8,14 @@ use Psr\Log\LoggerInterface;
 
 class AmqpFactory implements AmqpFactoryInterface
 {
-    public function createConnection(): \AMQPConnection
+    public function createConnection(array $options = []): \AMQPConnection
     {
-        return new \AMQPConnection();
+        $connectionOptions = [];
+        if (isset($options['heartbeat'])) {
+            $connectionOptions['heartbeat'] = (int) $options['heartbeat'];
+        }
+
+        return new \AMQPConnection($connectionOptions);
     }
 
     public function createChannel(\AMQPConnection $connection): \AMQPChannel
