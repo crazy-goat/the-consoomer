@@ -14,7 +14,7 @@ class Connection
 
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
-        private \AMQPConnection $amqpConnection,
+        private readonly \AMQPConnection $amqpConnection,
     ) {
         $this->lastActivityTime = time();
     }

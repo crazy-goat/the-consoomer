@@ -64,7 +64,7 @@ class Sender implements SenderInterface
         );
 
         if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
-            $this->retry->withRetry(function () use ($publishCallback) {
+            $this->retry->withRetry(function () use ($publishCallback): void {
                 $publishCallback();
                 $this->connection->updateActivity();
             });

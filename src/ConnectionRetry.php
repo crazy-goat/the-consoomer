@@ -35,7 +35,7 @@ class ConnectionRetry implements ConnectionRetryInterface
 
     public function withRetry(callable $operation): mixed
     {
-        if ($this->retryCircuitBreaker && $this->circuitBreaker !== null && !$this->circuitBreaker->isAvailable()) {
+        if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker && !$this->circuitBreaker->isAvailable()) {
             $this->logger?->error('Circuit breaker is open, rejecting operation');
             $this->metrics->recordCircuitBreakerOpen();
             throw new \RuntimeException('Circuit breaker is open');
@@ -48,7 +48,7 @@ class ConnectionRetry implements ConnectionRetryInterface
             try {
                 $result = $operation();
 
-                if ($this->retryCircuitBreaker && $this->circuitBreaker !== null) {
+                if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
                     $this->circuitBreaker->recordSuccess();
                 }
 
@@ -80,7 +80,7 @@ class ConnectionRetry implements ConnectionRetryInterface
 
         $this->metrics->recordFailure();
 
-        if ($this->retryCircuitBreaker && $this->circuitBreaker !== null) {
+        if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
             $this->circuitBreaker->recordFailure();
         }
 
@@ -94,7 +94,7 @@ class ConnectionRetry implements ConnectionRetryInterface
 
     public function isCircuitOpen(): bool
     {
-        if ($this->circuitBreaker === null) {
+        if (!$this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
             return false;
         }
 
@@ -103,7 +103,7 @@ class ConnectionRetry implements ConnectionRetryInterface
 
     public function getState(): CircuitState
     {
-        if ($this->circuitBreaker === null) {
+        if (!$this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
             return CircuitState::CLOSED;
         }
 
