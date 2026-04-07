@@ -129,4 +129,32 @@ class HeartbeatTest extends TestCase
 
         $transport->ack($messages[0]);
     }
+
+    public function testReconnectsAfterHeartbeatTimeout(): void
+    {
+        $dsn = $this->createDsn(heartbeat: 1);
+        $serializer = new PhpSerializer();
+        $transport = AmqpTransport::create($dsn, [], $serializer);
+
+        $msg1 = new \stdClass();
+        $msg1->content = "Before sleep";
+        $transport->send(new Envelope($msg1));
+
+        sleep(3);
+
+        $msg2 = new \stdClass();
+        $msg2->content = "After reconnect";
+        $transport->send(new Envelope($msg2));
+
+        $messages = [];
+        for ($i = 0; $i < 2; $i++) {
+            $batch = iterator_to_array($transport->get());
+            if (count($batch) > 0) {
+                $messages[] = $batch[0];
+                $transport->ack($batch[0]);
+            }
+        }
+
+        $this->assertCount(2, $messages);
+    }
 }
