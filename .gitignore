@@ -8,6 +8,7 @@
 /examples/symfony/vendor/
 
 /.php-cs-fixer.cache
+/cache/
 
 .env.test.local
 .phpunit.cache/
