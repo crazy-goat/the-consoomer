@@ -582,4 +582,36 @@ class ReceiverTest extends TestCase
 
         $receiver->getMessageCount();
     }
+
+    public function testGetMessageCountHandlesReconnectionWhenHeartbeatStale(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        // Simulate stale connection - checkHeartbeat returns true (needs reconnect)
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(true);
+
+        // Reconnect should be called when heartbeat is stale
+        $this->connection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(42);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        // This should work even after reconnection (queue is reset and reconnected)
+        $this->assertSame(42, $receiver->getMessageCount());
+    }
 }
