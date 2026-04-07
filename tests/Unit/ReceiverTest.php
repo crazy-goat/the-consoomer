@@ -357,4 +357,43 @@ class ReceiverTest extends TestCase
 
         return $receiver;
     }
+
+    public function testGetMessageCountCallsSetupFirst(): void
+    {
+        $setup = $this->createMock(InfrastructureSetup::class);
+        $setup->expects($this->once())->method('setup');
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(42);
+
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $setup);
+
+        $this->assertSame(42, $receiver->getMessageCount());
+    }
+
+    public function testGetMessageCountReturnsQueueMessageCount(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(100);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(100, $receiver->getMessageCount());
+    }
 }

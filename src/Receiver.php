@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer;
 
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class Receiver implements ReceiverInterface
+class Receiver implements ReceiverInterface, MessageCountAwareInterface
 {
     private int $unacked = 0;
     private int $maxUnackedMessages = 100;
@@ -138,5 +139,16 @@ class Receiver implements ReceiverInterface
         if (0 === $this->unacked % $this->maxUnackedMessages) {
             $this->ackPending();
         }
+    }
+
+    public function getMessageCount(): int
+    {
+        if ($this->options['auto_setup'] ?? true) {
+            $this->setup->setup();
+        }
+        $this->ensureConnected();
+        $this->connect();
+
+        return $this->queue->declareQueue();
     }
 }
