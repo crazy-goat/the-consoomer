@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\Connection;
+use CrazyGoat\TheConsoomer\ConnectionRetryInterface;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
@@ -505,5 +506,51 @@ class ReceiverTest extends TestCase
         $this->assertCount(2, $capturedFlags);
         $this->assertSame($originalFlags | \AMQP_PASSIVE, $capturedFlags[0]);
         $this->assertSame($originalFlags, $capturedFlags[1]);
+    }
+
+    public function testGetMessageCountUsesRetryWhenConfigured(): void
+    {
+        $options = ['queue' => 'test_queue'];
+        $retry = $this->createMock(\CrazyGoat\TheConsoomer\ConnectionRetryInterface::class);
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue->method('declareQueue')->willReturn(42);
+
+        // Verify that retry->withRetry is called with the operation
+        $retry
+            ->expects($this->once())
+            ->method('withRetry')
+            ->willReturnCallback(function (\Closure $operation): int {
+                return $operation();
+            });
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
+
+        $this->assertSame(42, $receiver->getMessageCount());
+    }
+
+    public function testGetMessageCountWithoutRetryCallsDirectly(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(99);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        $this->assertSame(99, $receiver->getMessageCount());
     }
 }
