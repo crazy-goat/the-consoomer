@@ -158,7 +158,12 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange');
 
+        $this->assertEquals('localhost', $result['host']);
         $this->assertEquals(5671, $result['port']);
+        $this->assertEquals('guest', $result['user']);
+        $this->assertEquals('guest', $result['password']);
         $this->assertTrue($result['ssl']);
+        $this->assertEquals('/', $result['vhost']);
+        $this->assertEquals('my_exchange', $result['exchange']);
     }
 }

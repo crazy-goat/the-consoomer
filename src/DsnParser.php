@@ -26,7 +26,16 @@ class DsnParser
             'exchange' => $pathOptions['exchange'],
         ];
 
-        if (($info['scheme'] ?? '') === 'amqps' || ($info['scheme'] ?? '') === 'amqps-consoomer') {
+        $scheme = $info['scheme'] ?? '';
+        if ($scheme === 'amqps-consoomer') {
+            $result['ssl'] = true;
+            if (!isset($info['port'])) {
+                $result['port'] = 5671;
+            }
+        } elseif ($scheme === 'amqps') {
+            // @deprecated Legacy amqps:// scheme — no longer claimed by AmqpTransport::supports().
+            // Only reachable when DsnParser is used independently of AmqpTransport.
+            // Will be removed in 0.2. Use amqps-consoomer:// instead.
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
