@@ -93,7 +93,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
         if (isset($mergedOptions['heartbeat'])) {
             $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
         }
-        if ($logger instanceof \Psr\Log\LoggerInterface) {
+        if ($logger instanceof LoggerInterface) {
             $amqpConnection->setLogger($logger);
         }
 

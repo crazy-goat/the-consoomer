@@ -306,4 +306,27 @@ class AmqpTransportTest extends TestCase
 
         $this->assertSame(0, $transport->getMessageCount());
     }
+
+    public function testSetupDelegatesToInfrastructureSetup(): void
+    {
+        $this->setup
+            ->expects($this->once())
+            ->method('setup');
+
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+
+        $transport->setup();
+    }
+
+    public function testSetupIsIdempotent(): void
+    {
+        $this->setup
+            ->expects($this->exactly(2))
+            ->method('setup');
+
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+
+        $transport->setup();
+        $transport->setup();
+    }
 }
