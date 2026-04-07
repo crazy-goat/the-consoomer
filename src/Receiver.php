@@ -181,10 +181,12 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
             }
         };
 
-        if ($this->retry instanceof ConnectionRetryInterface) {
-            return $this->retry->withRetry($operation);
-        }
+        $result = $this->retry instanceof ConnectionRetryInterface
+            ? $this->retry->withRetry($operation)
+            : $operation();
 
-        return $operation();
+        $this->connection->updateActivity();
+
+        return $result;
     }
 }

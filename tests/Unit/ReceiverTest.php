@@ -614,4 +614,26 @@ class ReceiverTest extends TestCase
         // This should work even after reconnection (queue is reset and reconnected)
         $this->assertSame(42, $receiver->getMessageCount());
     }
+
+    public function testGetMessageCountCallsUpdateActivity(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue->method('declareQueue')->willReturn(42);
+
+        // Verify updateActivity is called after operation
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, null);
+
+        $receiver->getMessageCount();
+    }
 }
