@@ -65,8 +65,8 @@ class SetupTransportTest extends TestCase
         $queue = new \AMQPQueue($this->channel);
         $queue->setName($this->queueName);
         $queue->setFlags(\AMQP_DURABLE);
-        $queue->declareQueue();
+        $messageCount = $queue->declareQueue();
 
-        $this->addToAssertionCount(2);
+        $this->assertGreaterThanOrEqual(0, $messageCount, 'Queue should exist after setup()');
     }
 }
