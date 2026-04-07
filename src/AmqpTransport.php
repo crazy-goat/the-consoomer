@@ -57,7 +57,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $mergedOptions = [...$options, ...$parsedDsn];
 
         $factory ??= new AmqpFactory();
-        $connection = $factory->createConnection();
+        $connection = $factory->createConnection($mergedOptions);
         $connection->setHost($parsedDsn['host']);
         $connection->setPort($parsedDsn['port']);
         $connection->setVhost($parsedDsn['vhost']);
