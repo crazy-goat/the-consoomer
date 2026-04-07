@@ -76,6 +76,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         }
 
         $connection->connect();
+        $amqpConnection->updateActivity();
 
         $setup = new InfrastructureSetup($factory, $amqpConnection, $mergedOptions);
 
