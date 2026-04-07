@@ -79,6 +79,14 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
             return;
         }
 
+        // Initialize callback even though we won't consume - needed for potential later get() calls
+        $this->callback = function (\AMQPEnvelope $message): false {
+            $envelope = $this->serializer->decode(['body' => $message->getBody()]);
+            $this->message = $envelope->with(new RawMessageStamp($message));
+
+            return false;
+        };
+
         $channel = $this->connection->getChannel();
         $this->queue = $this->factory->createQueue($channel);
         $this->queue->setName($this->options['queue'] ?? '');
