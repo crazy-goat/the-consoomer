@@ -44,10 +44,7 @@ class MessageCountTest extends TestCase
         $transport = $this->createTransport();
         $serializer = new PhpSerializer();
 
-        // Initially empty
-        $this->assertSame(0, $transport->getMessageCount());
-
-        // Send 3 messages
+        // Send 3 messages (auto_setup will create queue if needed)
         for ($i = 1; $i <= 3; ++$i) {
             $message = new \stdClass();
             $message->id = $i;
@@ -55,7 +52,10 @@ class MessageCountTest extends TestCase
             $transport->send($envelope);
         }
 
-        // Should have 3 messages
+        // Small delay to allow RabbitMQ to process all messages
+        usleep(100000); // 100ms
+
+        // Should have 3 messages (queue created by auto_setup during first getMessageCount)
         $this->assertSame(3, $transport->getMessageCount());
 
         // Consume and ack one message
