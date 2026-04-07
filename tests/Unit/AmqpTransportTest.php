@@ -271,26 +271,13 @@ class AmqpTransportTest extends TestCase
 
     public function testGetMessageCountDelegatesToReceiver(): void
     {
-        $receiver = new class ($this->createMock(ReceiverInterface::class)) implements ReceiverInterface, MessageCountAwareInterface {
-            public function __construct(private readonly ReceiverInterface $inner)
-            {
-            }
-            public function get(): iterable
-            {
-                return $this->inner->get();
-            }
-            public function ack(Envelope $envelope): void
-            {
-                $this->inner->ack($envelope);
-            }
-            public function reject(Envelope $envelope): void
-            {
-                $this->inner->reject($envelope);
-            }
-            public function getMessageCount(): int
-            {
-                return 42;
-            }
+        $receiver = new class($this->createMock(ReceiverInterface::class)) implements ReceiverInterface, MessageCountAwareInterface {
+            private ReceiverInterface $inner;
+            public function __construct(ReceiverInterface $inner) { $this->inner = $inner; }
+            public function get(): iterable { return $this->inner->get(); }
+            public function ack(Envelope $envelope): void { $this->inner->ack($envelope); }
+            public function reject(Envelope $envelope): void { $this->inner->reject($envelope); }
+            public function getMessageCount(): int { return 42; }
         };
 
         $transport = new AmqpTransport($receiver, $this->sender, $this->setup);
