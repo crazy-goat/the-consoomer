@@ -44,8 +44,8 @@
         "test-unit": "phpunit --testsuite unit",
         "test-e2e": "phpunit --testsuite e2e",
         "test-coverage": "phpunit --coverage-html coverage",
-        "rabbitmq-start": "docker-compose -f docker-compose.test.yml up -d",
-        "rabbitmq-stop": "docker-compose -f docker-compose.test.yml down",
+        "rabbitmq-start": "docker compose -f docker-compose.test.yml up -d",
+        "rabbitmq-stop": "docker compose -f docker-compose.test.yml down",
         "rabbitmq-wait": "scripts/wait-for-rabbitmq.sh",
         "test-e2e-full": [
             "@rabbitmq-start",
