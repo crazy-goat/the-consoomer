@@ -69,31 +69,6 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->queue->consume();
     }
 
-    /**
-     * Establishes AMQP connection and sets up queue without starting consumption.
-     * Used for operations that need queue access but not message consumption.
-     */
-    private function connectWithoutConsuming(): void
-    {
-        if ($this->queue instanceof \AMQPQueue) {
-            return;
-        }
-
-        // Initialize callback even though we won't consume - needed for potential later get() calls
-        $this->callback = function (\AMQPEnvelope $message): false {
-            $envelope = $this->serializer->decode(['body' => $message->getBody()]);
-            $this->message = $envelope->with(new RawMessageStamp($message));
-
-            return false;
-        };
-
-        $channel = $this->connection->getChannel();
-        $channel->qos(0, $this->maxUnackedMessages);
-        $this->queue = $this->factory->createQueue($channel);
-        $this->queue->setName($this->options['queue'] ?? '');
-        $this->queue->consume(); // Start consumer to set consumer tag (needed for get())
-    }
-
     public function get(): iterable
     {
         if ($this->options['auto_setup'] ?? true) {
@@ -192,7 +167,7 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
             $this->setup->setup();
         }
         $this->ensureConnected();
-        $this->connectWithoutConsuming();
+        $this->connect();
 
         $getMessageCountOperation = function (): int {
             // Use passive flag to safely query queue depth without re-declaring

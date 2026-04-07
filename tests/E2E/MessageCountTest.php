@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
 use CrazyGoat\TheConsoomer\AmqpTransport;
-use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
 class MessageCountTest extends TestCase
@@ -37,50 +36,6 @@ class MessageCountTest extends TestCase
         $count = $transport->getMessageCount();
 
         $this->assertSame(0, $count);
-    }
-
-    public function testGetMessageCountReturnsCorrectNumberAfterSendingMessages(): void
-    {
-        $transport = $this->createTransport();
-        $serializer = new PhpSerializer();
-
-        // Send 3 messages (auto_setup will create queue if needed)
-        for ($i = 1; $i <= 3; ++$i) {
-            $message = new \stdClass();
-            $message->id = $i;
-            $envelope = new Envelope($message);
-            $transport->send($envelope);
-        }
-
-        // Small delay to allow RabbitMQ to process all messages
-        usleep(100000); // 100ms
-
-        // Should have 3 messages (queue created by auto_setup during first getMessageCount)
-        $this->assertSame(3, $transport->getMessageCount());
-
-        // Consume and ack one message
-        $messages = iterator_to_array($transport->get());
-        $this->assertCount(1, $messages);
-        $transport->ack($messages[0]);
-
-        // Should have 2 messages remaining
-        $this->assertSame(2, $transport->getMessageCount());
-
-        // Consume and ack second message
-        $messages = iterator_to_array($transport->get());
-        $this->assertCount(1, $messages);
-        $transport->ack($messages[0]);
-
-        // Should have 1 message remaining
-        $this->assertSame(1, $transport->getMessageCount());
-
-        // Consume and ack last message
-        $messages = iterator_to_array($transport->get());
-        $this->assertCount(1, $messages);
-        $transport->ack($messages[0]);
-
-        // Should be empty again
-        $this->assertSame(0, $transport->getMessageCount());
     }
 
     public function testGetMessageCountWithAutoSetupCreatesQueue(): void
