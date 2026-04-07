@@ -396,4 +396,42 @@ class ReceiverTest extends TestCase
 
         $this->assertSame(100, $receiver->getMessageCount());
     }
+
+    public function testGetMessageCountUsesPassiveFlag(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        // Original flags should be 0
+        $this->queue->method('getFlags')->willReturn(0);
+
+        // Expect setFlags to be called with AMQP_PASSIVE (1) before declareQueue
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('setFlags')
+            ->willReturnCallback(function (int $flags): void {
+                static $callCount = 0;
+                ++$callCount;
+
+                if ($callCount === 1) {
+                    // First call should add AMQP_PASSIVE flag (1)
+                    $this->assertSame(\AMQP_PASSIVE, $flags);
+                } else {
+                    // Second call should restore original flags (0)
+                    $this->assertSame(0, $flags);
+                }
+            });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('declareQueue')
+            ->willReturn(50);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(50, $receiver->getMessageCount());
+    }
 }

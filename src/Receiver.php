@@ -149,6 +149,15 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->ensureConnected();
         $this->connect();
 
-        return $this->queue->declareQueue();
+        // Use passive flag to safely query queue depth without re-declaring
+        $flags = $this->queue->getFlags();
+        $this->queue->setFlags($flags | \AMQP_PASSIVE);
+
+        try {
+            return $this->queue->declareQueue();
+        } finally {
+            // Restore original flags
+            $this->queue->setFlags($flags);
+        }
     }
 }
