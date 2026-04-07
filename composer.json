@@ -34,8 +34,12 @@
         "phpunit/phpunit": "^10"
     },
     "scripts": {
-        "rector": "vendor/bin/rector process",
-        "phpcsfixer": "vendor/bin/php-cs-fixer fix",
+        "rector": "vendor/bin/rector process --dry-run",
+        "phpcsfixer": "vendor/bin/php-cs-fixer fix --dry-run --diff",
+        "lint:fix": [
+            "vendor/bin/rector process",
+            "vendor/bin/php-cs-fixer fix"
+        ],
         "lint": [
             "@rector",
             "@phpcsfixer"
