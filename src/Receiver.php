@@ -53,6 +53,8 @@ class Receiver implements ReceiverInterface
         if ($this->connection->checkHeartbeat()) {
             $this->connection->reconnect();
             $this->queue = null;
+            $this->unacked = 0;
+            $this->lastUnacked = null;
         }
     }
 
@@ -61,8 +63,8 @@ class Receiver implements ReceiverInterface
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->connect();
         $this->ensureConnected();
+        $this->connect();
 
         try {
             $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());

@@ -9,13 +9,14 @@ use Psr\Log\LoggerInterface;
 class Connection
 {
     private int $heartbeat = 0;
-    private int $lastActivityTime = 0;
+    private int $lastActivityTime;
     private ?LoggerInterface $logger = null;
 
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
         private \AMQPConnection $amqpConnection,
     ) {
+        $this->lastActivityTime = time();
     }
 
     public function setHeartbeat(int $seconds): void
@@ -49,7 +50,7 @@ class Connection
         $elapsed = $now - $this->lastActivityTime;
         $threshold = 2 * $this->heartbeat;
 
-        $this->logger?->info('Checking heartbeat, last activity: {lastActivity}, elapsed: {elapsed}, threshold: {threshold}', [
+        $this->logger?->debug('Checking heartbeat, last activity: {lastActivity}, elapsed: {elapsed}, threshold: {threshold}', [
             'lastActivity' => $this->lastActivityTime,
             'elapsed' => $elapsed,
             'threshold' => $threshold,

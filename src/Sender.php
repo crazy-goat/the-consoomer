@@ -49,8 +49,8 @@ class Sender implements SenderInterface
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->connect();
         $this->ensureConnected();
+        $this->connect();
 
         $stamp = $envelope->last(AmqpStamp::class);
 
