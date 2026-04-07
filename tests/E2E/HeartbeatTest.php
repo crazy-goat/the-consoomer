@@ -128,7 +128,5 @@ class HeartbeatTest extends TestCase
         $this->assertCount(1, $messages);
 
         $transport->ack($messages[0]);
-
-        $this->assertTrue(true);
     }
 }

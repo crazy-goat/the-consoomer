@@ -81,6 +81,8 @@ class Receiver implements ReceiverInterface
 
     public function ack(Envelope $envelope): void
     {
+        $this->ensureConnected();
+
         $stamp = $envelope->last(RawMessageStamp::class);
         if (!$stamp instanceof RawMessageStamp) {
             throw new \RuntimeException('No raw message stamp');
@@ -99,6 +101,8 @@ class Receiver implements ReceiverInterface
 
     public function reject(Envelope $envelope): void
     {
+        $this->ensureConnected();
+
         $stamp = $envelope->last(RawMessageStamp::class);
         if (!$stamp instanceof RawMessageStamp) {
             throw new \RuntimeException('No raw message stamp');

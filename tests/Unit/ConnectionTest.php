@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
-use CrazyGoat\TheConsoomer\AmqpFactory;
+use CrazyGoat\TheConsoomer\AmqpFactoryInterface;
 use CrazyGoat\TheConsoomer\Connection;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class ConnectionTest extends TestCase
 {
-    private AmqpFactory&MockObject $factory;
+    private AmqpFactoryInterface&MockObject $factory;
     private \AMQPConnection&MockObject $amqpConnection;
 
     protected function setUp(): void
     {
-        $this->factory = $this->createMock(AmqpFactory::class);
+        $this->factory = $this->createMock(AmqpFactoryInterface::class);
         $this->amqpConnection = $this->createMock(\AMQPConnection::class);
     }
 

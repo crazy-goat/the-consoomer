@@ -57,7 +57,11 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
         $mergedOptions = [...$options, ...$parsedDsn];
 
         $factory ??= new AmqpFactory();
+
+        // Native AMQP heartbeat - negotiated with broker at protocol level
+        // Set via constructor to ensure RabbitMQ sees the heartbeat value
         $connection = $factory->createConnection($mergedOptions);
+
         $connection->setHost($parsedDsn['host']);
         $connection->setPort($parsedDsn['port']);
         $connection->setVhost($parsedDsn['vhost']);
@@ -67,6 +71,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface
 
         $factory->configureSsl($connection, $mergedOptions, $logger);
 
+        // Client-side heartbeat tracking for auto-reconnect detection
         $amqpConnection = new Connection($factory, $connection);
         if (isset($mergedOptions['heartbeat'])) {
             $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
