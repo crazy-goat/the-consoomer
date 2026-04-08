@@ -8,6 +8,8 @@ use Psr\Log\LoggerInterface;
 
 class ConnectionRetry implements ConnectionRetryInterface
 {
+    /** Jitter variation factor - 25% of delay is used as max variation range */
+    public const JITTER_VARIATION_FACTOR = 0.25;
     private ?CircuitBreaker $circuitBreaker = null;
     private readonly RetryMetrics $metrics;
 
@@ -132,7 +134,7 @@ class ConnectionRetry implements ConnectionRetryInterface
         $delay = min($delay, $this->retryMaxDelay);
 
         if ($this->retryJitter) {
-            $variation = (int) ($delay * 0.25);
+            $variation = (int) ($delay * self::JITTER_VARIATION_FACTOR);
             $delay += random_int(-$variation, $variation);
         }
 

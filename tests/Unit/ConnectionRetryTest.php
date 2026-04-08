@@ -10,6 +10,11 @@ use PHPUnit\Framework\TestCase;
 
 class ConnectionRetryTest extends TestCase
 {
+    public function testJitterVariationFactorConstant(): void
+    {
+        $this->assertSame(0.25, ConnectionRetry::JITTER_VARIATION_FACTOR);
+    }
+
     public function testSuccessfulOperationNoRetry(): void
     {
         $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
