@@ -51,7 +51,7 @@ class RetryMetrics
         return $this->circuitBreakerOpens;
     }
 
-    public function getSuccessRate(): float
+    public function getRetrySuccessRate(): float
     {
         if ($this->totalAttempts === 0) {
             return 0.0;
@@ -75,7 +75,7 @@ class RetryMetrics
             'successful_retries' => $this->successfulRetries,
             'failed_retries' => $this->failedRetries,
             'circuit_breaker_opens' => $this->circuitBreakerOpens,
-            'success_rate' => $this->getSuccessRate(),
+            'retry_success_rate' => $this->getRetrySuccessRate(),
         ];
     }
 }

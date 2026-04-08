@@ -67,14 +67,14 @@ class RetryMetricsTest extends TestCase
         $metrics->recordSuccess();
         $metrics->recordSuccess();
 
-        $this->assertEqualsWithDelta(66.67, $metrics->getSuccessRate(), 0.01);
+        $this->assertEqualsWithDelta(66.67, $metrics->getRetrySuccessRate(), 0.01);
     }
 
     public function testSuccessRateWithNoAttempts(): void
     {
         $metrics = new RetryMetrics();
 
-        $this->assertEquals(0.0, $metrics->getSuccessRate());
+        $this->assertEquals(0.0, $metrics->getRetrySuccessRate());
     }
 
     public function testReset(): void
@@ -107,6 +107,6 @@ class RetryMetricsTest extends TestCase
         $this->assertArrayHasKey('successful_retries', $array);
         $this->assertArrayHasKey('failed_retries', $array);
         $this->assertArrayHasKey('circuit_breaker_opens', $array);
-        $this->assertArrayHasKey('success_rate', $array);
+        $this->assertArrayHasKey('retry_success_rate', $array);
     }
 }
