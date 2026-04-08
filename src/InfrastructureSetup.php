@@ -43,6 +43,9 @@ class InfrastructureSetup
         $queue = $this->factory->createQueue($channel);
         $queue->setName($this->options['queue']);
         $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
+        if (isset($this->options['queue_arguments'])) {
+            $queue->setArguments($this->options['queue_arguments']);
+        }
         $queue->declareQueue();
 
         $routingKey = $this->options['routing_key'] ?? '';

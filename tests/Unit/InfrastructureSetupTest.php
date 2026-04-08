@@ -209,4 +209,52 @@ class InfrastructureSetupTest extends TestCase
         $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
         $setup->setup();
     }
+
+    public function testSetupAppliesQueueArgumentsToQueue(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
+        $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $expectedArguments = [
+            'x-max-priority' => 10,
+            'x-message-ttl' => 60000,
+            'x-dead-letter-exchange' => 'dlx',
+        ];
+
+        $this->queue->expects($this->once())->method('setArguments')->with($expectedArguments);
+        $this->queue->expects($this->once())->method('declareQueue');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'queue_arguments' => $expectedArguments,
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupDoesNotSetArgumentsWhenQueueArgumentsNotProvided(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
+        $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        // setArguments should never be called when queue_arguments is not in options
+        $this->queue->expects($this->never())->method('setArguments');
+        $this->queue->expects($this->once())->method('declareQueue');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
 }
