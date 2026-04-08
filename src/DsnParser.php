@@ -23,8 +23,8 @@ class DsnParser
         $result = [
             'host' => $info['host'] ?? 'localhost',
             'port' => $info['port'] ?? 5672,
-            'user' => $info['user'] ?? 'guest',
-            'password' => $info['pass'] ?? 'guest',
+            'user' => urldecode($info['user'] ?? 'guest'),
+            'password' => urldecode($info['pass'] ?? 'guest'),
             'vhost' => $pathOptions['vhost'],
             'exchange' => $pathOptions['exchange'],
         ];
