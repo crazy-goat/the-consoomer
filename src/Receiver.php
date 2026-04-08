@@ -11,8 +11,9 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class Receiver implements ReceiverInterface, MessageCountAwareInterface
 {
+    public const DEFAULT_MAX_UNACKED_MESSAGES = 100;
     private int $unacked = 0;
-    private int $maxUnackedMessages = 100;
+    private int $maxUnackedMessages = self::DEFAULT_MAX_UNACKED_MESSAGES;
     private ?\AMQPEnvelope $lastUnacked = null;
     private ?Envelope $message = null;
     private ?\AMQPQueue $queue = null;

@@ -215,7 +215,7 @@ class ReceiverTest extends TestCase
         $reflection = new \ReflectionClass(Receiver::class);
         $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
 
-        $this->assertSame(100, $maxUnackedProperty->getValue($receiver));
+        $this->assertSame(Receiver::DEFAULT_MAX_UNACKED_MESSAGES, $maxUnackedProperty->getValue($receiver));
     }
 
     public function testMaxUnackedMessagesConfigurationCanBeOverridden(): void
