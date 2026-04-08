@@ -58,7 +58,7 @@ class Sender implements SenderInterface
 
         $publishCallback = fn() => $this->exchange->publish(
             $data['body'],
-            $this->options['routing_key'] ?? $stamp?->routingKey ?? '',
+            $stamp?->routingKey ?? $this->options['routing_key'] ?? '',
             null,
             $data['headers'] ?? [],
         );
