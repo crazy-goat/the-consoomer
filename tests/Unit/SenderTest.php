@@ -105,7 +105,7 @@ class SenderTest extends TestCase
         $this->assertSame($envelope, $result);
     }
 
-    public function testSendUsesRoutingKeyFromOptionsOverStamp(): void
+    public function testSendUsesRoutingKeyFromStampOverOptions(): void
     {
         $options = [
             'exchange' => 'test_exchange',
@@ -114,6 +114,42 @@ class SenderTest extends TestCase
         $stamp = new AmqpStamp('stamp.routing.key');
 
         $envelope = new Envelope(new \stdClass(), [$stamp]);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('encode')
+            ->willReturn([
+                'body' => '{"message":"test"}',
+                'headers' => [],
+            ]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                '{"message":"test"}',
+                'stamp.routing.key',
+                null,
+                [],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendUsesRoutingKeyFromOptionsWhenNoStamp(): void
+    {
+        $options = [
+            'exchange' => 'test_exchange',
+            'routing_key' => 'options.routing.key',
+        ];
+
+        $envelope = new Envelope(new \stdClass());
 
         $this->serializer
             ->expects($this->once())
