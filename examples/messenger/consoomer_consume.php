@@ -51,4 +51,4 @@ try {
 }
 
 $time = $stopwatch->stop('consomer')->getDuration();
-printf("Messages procesed: %d, time: %.3fs, rate: %d msg/s", MyMessageHandler::$counter, $time / 1000.0, floor((MyMessageHandler::$counter / $time) * 1000));
+printf("Messages processed: %d, time: %.3fs, rate: %d msg/s", MyMessageHandler::$counter, $time / 1000.0, floor((MyMessageHandler::$counter / $time) * 1000));
