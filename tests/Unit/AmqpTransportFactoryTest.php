@@ -44,16 +44,16 @@ class AmqpTransportFactoryTest extends TestCase
     {
         $factory = $this->createMock(AmqpFactoryInterface::class);
         $connection = $this->createMock(\AMQPConnection::class);
-        
+
         $factory
             ->expects($this->once())
             ->method('createConnection')
             ->willReturn($connection);
-        
+
         $connection
             ->expects($this->once())
             ->method('connect');
-        
+
         return [$factory, $connection];
     }
 

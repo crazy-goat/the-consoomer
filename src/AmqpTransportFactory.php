@@ -8,11 +8,6 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\TransportFactoryInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
-use CrazyGoat\TheConsoomer\AmqpFactory;
-use CrazyGoat\TheConsoomer\Connection;
-use CrazyGoat\TheConsoomer\InfrastructureSetup;
-use CrazyGoat\TheConsoomer\Receiver;
-use CrazyGoat\TheConsoomer\Sender;
 
 class AmqpTransportFactory implements TransportFactoryInterface
 {
@@ -31,7 +26,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
         array $options,
         SerializerInterface $serializer,
         ?AmqpFactoryInterface $factory = null,
-        ?\Psr\Log\LoggerInterface $logger = null,
+        ?LoggerInterface $logger = null,
     ): TransportInterface {
         $dsnParser = new DsnParser();
         $parsedDsn = $dsnParser->parse($dsn);
@@ -60,7 +55,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
         if (isset($mergedOptions['heartbeat'])) {
             $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
         }
-        if ($logger instanceof \Psr\Log\LoggerInterface) {
+        if ($logger instanceof LoggerInterface) {
             $amqpConnection->setLogger($logger);
         }
 
