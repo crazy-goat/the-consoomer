@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use CrazyGoat\TheConsoomer\Enum\ExchangeType;
+
 class InfrastructureSetup
 {
     private bool $setupPerformed = false;
@@ -28,19 +30,19 @@ class InfrastructureSetup
 
         $exchange = $this->factory->createExchange($channel);
         $exchange->setName($this->options['exchange']);
-        $type = match ($this->options['exchange_type'] ?? 'direct') {
-            'fanout' => AMQP_EX_TYPE_FANOUT,
-            'topic' => AMQP_EX_TYPE_TOPIC,
-            'headers' => AMQP_EX_TYPE_HEADERS,
-            default => AMQP_EX_TYPE_DIRECT,
+        $type = match (ExchangeType::tryFrom((string) ($this->options['exchange_type'] ?? 'direct'))) {
+            ExchangeType::FANOUT => \AMQP_EX_TYPE_FANOUT,
+            ExchangeType::TOPIC => \AMQP_EX_TYPE_TOPIC,
+            ExchangeType::HEADERS => \AMQP_EX_TYPE_HEADERS,
+            default => \AMQP_EX_TYPE_DIRECT,
         };
         $exchange->setType($type);
-        $exchange->setFlags(AMQP_DURABLE | ($this->options['exchange_flags'] ?? 0));
+        $exchange->setFlags(\AMQP_DURABLE | ($this->options['exchange_flags'] ?? 0));
         $exchange->declareExchange();
 
         $queue = $this->factory->createQueue($channel);
         $queue->setName($this->options['queue']);
-        $queue->setFlags(AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
+        $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
         $queue->declareQueue();
 
         $routingKey = $this->options['routing_key'] ?? '';
