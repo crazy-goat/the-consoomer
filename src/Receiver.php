@@ -142,12 +142,19 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->unacked = 0;
     }
 
+    /**
+     * Acknowledges a message and tracks batched acknowledgments.
+     *
+     * Uses AMQP_MULTIPLE flag to ack all messages up to the delivery tag,
+     * which is more efficient than ack'ing one by one. The ackPending()
+     * resets internal state after each batch.
+     */
     private function ackMessage(\AMQPEnvelope $message): void
     {
         $this->lastUnacked = $message;
         ++$this->unacked;
 
-        if (0 === $this->unacked % $this->maxUnackedMessages) {
+        if ($this->unacked >= $this->maxUnackedMessages) {
             $this->ackPending();
         }
     }
