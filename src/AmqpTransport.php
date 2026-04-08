@@ -71,7 +71,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
     {
         $dsnParser = new DsnParser();
         $parsedDsn = $dsnParser->parse($dsn);
-        $mergedOptions = [...$options, ...$parsedDsn];
+        $mergedOptions = [...$parsedDsn, ...$options];
 
         $factory ??= new AmqpFactory();
 
@@ -79,6 +79,9 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
         // Set via constructor to ensure RabbitMQ sees the heartbeat value
         $connection = $factory->createConnection($mergedOptions);
 
+        // Connection parameters (host, port, vhost, user, password, timeout) are always
+        // taken from $parsedDsn, not from $mergedOptions. These are part of the DSN
+        // authority/path and cannot be overridden by programmatic $options.
         $connection->setHost($parsedDsn['host']);
         $connection->setPort($parsedDsn['port']);
         $connection->setVhost($parsedDsn['vhost']);
