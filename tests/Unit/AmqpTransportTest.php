@@ -196,8 +196,8 @@ class AmqpTransportTest extends TestCase
             ->method('connect');
 
         $transport = AmqpTransport::create(
-            'amqp-consoomer://guest:guest@localhost:5672/vhost',
-            ['queue' => 'test-queue', 'exchange' => 'test-exchange'],
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange',
+            ['queue' => 'test-queue'],
             $serializer,
             $factory,
         );

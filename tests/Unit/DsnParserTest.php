@@ -60,36 +60,38 @@ class DsnParserTest extends TestCase
         $this->assertEquals(60000, $result['queue_arguments']['x-message-ttl']);
     }
 
-    public function testValidatesOptionsReturnsTrueForValidDsn(): void
+    public function testValidatesOptionsAutomaticallyForValidDsn(): void
     {
         $parser = new DsnParser();
-        $parsed = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queue=my_queue');
+        // Should not throw - valid DSN with exchange
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queue=my_queue');
 
-        $this->assertTrue($parser->validateOptions($parsed));
+        $this->assertEquals('my_exchange', $result['exchange']);
     }
 
-    public function testValidateOptionsReturnsFalseWhenExchangeMissing(): void
+    public function testParseThrowsExceptionWhenExchangeMissing(): void
     {
         $parser = new DsnParser();
-        $parsed = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/');
-
-        $this->assertFalse($parser->validateOptions($parsed));
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('DSN is missing required exchange name');
+        $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/');
     }
 
-    public function testValidateOptionsReturnsFalseForInvalidExchangeType(): void
+    public function testParseThrowsExceptionForInvalidExchangeType(): void
     {
         $parser = new DsnParser();
-        $parsed = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?exchange_type=invalid');
-
-        $this->assertFalse($parser->validateOptions($parsed));
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Invalid exchange_type "invalid"');
+        $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?exchange_type=invalid');
     }
 
-    public function testValidateOptionsReturnsTrueForValidExchangeType(): void
+    public function testValidatesOptionsAutomaticallyForValidExchangeType(): void
     {
         $parser = new DsnParser();
-        $parsed = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?exchange_type=fanout');
+        // Should not throw - valid exchange_type
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?exchange_type=fanout');
 
-        $this->assertTrue($parser->validateOptions($parsed));
+        $this->assertEquals('fanout', $result['exchange_type']);
     }
 
     public function testParsesMultipleQueues(): void

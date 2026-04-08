@@ -6,6 +6,9 @@ namespace CrazyGoat\TheConsoomer;
 
 class DsnParser
 {
+    /** @var list<string> */
+    private static ?array $validExchangeTypes = null;
+
     public function parse(string $dsn): array
     {
         $info = parse_url($dsn);
@@ -63,7 +66,34 @@ class DsnParser
             }
         }
 
-        return $result;
+        return $this->validateParsedOptions($result);
+    }
+
+    private function validateParsedOptions(array $options): array
+    {
+        if (empty($options['exchange'])) {
+            throw new \InvalidArgumentException('DSN is missing required exchange name. Expected format: amqp-consoomer://host/vhost/exchange');
+        }
+
+        if (isset($options['exchange_type'])) {
+            if (self::$validExchangeTypes === null) {
+                self::$validExchangeTypes = array_map(
+                    fn(\CrazyGoat\TheConsoomer\Enum\ExchangeType $type) => $type->value,
+                    \CrazyGoat\TheConsoomer\Enum\ExchangeType::cases(),
+                );
+            }
+            if (!in_array($options['exchange_type'], self::$validExchangeTypes, true)) {
+                throw new \InvalidArgumentException(
+                    sprintf(
+                        'Invalid exchange_type "%s". Valid types are: %s',
+                        $options['exchange_type'],
+                        implode(', ', self::$validExchangeTypes),
+                    ),
+                );
+            }
+        }
+
+        return $options;
     }
 
     private function parsePath(string $path): array
@@ -106,22 +136,18 @@ class DsnParser
         return $this->normalizeValue($value);
     }
 
+    /**
+     * @deprecated This method is deprecated and will be removed in 0.2.
+     *             Validation now happens automatically in parse().
+     *             This method always returns true for backward compatibility.
+     */
     public function validateOptions(array $options): bool
     {
-        if (empty($options['exchange'])) {
+        try {
+            $this->validateParsedOptions($options);
+            return true;
+        } catch (\InvalidArgumentException) {
             return false;
         }
-
-        if (isset($options['exchange_type'])) {
-            $validTypes = array_map(
-                fn(\CrazyGoat\TheConsoomer\Enum\ExchangeType $type) => $type->value,
-                \CrazyGoat\TheConsoomer\Enum\ExchangeType::cases(),
-            );
-            if (!in_array($options['exchange_type'], $validTypes, true)) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }
