@@ -105,31 +105,12 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
 
         $setup = new InfrastructureSetup($factory, $amqpConnection, $mergedOptions);
 
-        $retry = self::createRetry($mergedOptions, $logger);
+        $retry = AmqpTransportFactory::createRetry($mergedOptions, $logger);
 
         return new self(
             new Receiver($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
             new Sender($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
             $setup,
         );
-    }
-
-    private static function createRetry(array $options, ?LoggerInterface $logger = null): ?ConnectionRetryInterface
-    {
-        if ($options['retry'] ?? false) {
-            return new ConnectionRetry(
-                retryCount: (int) ($options['retry_count'] ?? 3),
-                retryDelay: (int) ($options['retry_delay'] ?? 100000),
-                retryBackoff: (bool) ($options['retry_backoff'] ?? false),
-                retryMaxDelay: (int) ($options['retry_max_delay'] ?? 30000000),
-                retryJitter: (bool) ($options['retry_jitter'] ?? true),
-                retryCircuitBreaker: (bool) ($options['retry_circuit_breaker'] ?? false),
-                retryCircuitBreakerThreshold: (int) ($options['retry_circuit_breaker_threshold'] ?? 10),
-                retryCircuitBreakerTimeout: (int) ($options['retry_circuit_breaker_timeout'] ?? 60),
-                logger: $logger,
-            );
-        }
-
-        return null;
     }
 }
