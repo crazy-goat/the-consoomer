@@ -77,6 +77,47 @@ class ReceiverTest extends TestCase
         $this->assertSame([], $result);
     }
 
+    /**
+     * @dataProvider timeoutMessageVariationProvider
+     */
+    public function testGetReturnsEmptyArrayForTimeoutMessageVariation(string $message): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willThrowException(new \AMQPException($message));
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $result = $receiver->get();
+
+        $this->assertSame([], $result, "Failed for message: {$message}");
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function timeoutMessageVariationProvider(): array
+    {
+        return [
+            'original message' => ['Consumer timeout exceed'],
+            'grammatically correct' => ['Consumer timeout exceeded'],
+            'with verb has been' => ['Consumer timeout has been exceeded'],
+            'with colon' => ['Consumer timeout: exceeded'],
+        ];
+    }
+
     public function testGetReturnsMessageWhenAvailable(): void
     {
         $options = ['queue' => 'test_queue'];

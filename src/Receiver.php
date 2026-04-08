@@ -81,7 +81,11 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
         try {
             $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());
         } catch (\AMQPException $exception) {
-            if ('Consumer timeout exceed' !== $exception->getMessage()) {
+            // Use substring match instead of exact string comparison to handle
+            // variations in the ext-amqp extension's error message wording
+            // (e.g., "exceed" vs "exceeded"). This is more robust against
+            // upstream changes in the C extension.
+            if (!str_contains($exception->getMessage(), 'Consumer timeout')) {
                 throw $exception;
             }
         }
