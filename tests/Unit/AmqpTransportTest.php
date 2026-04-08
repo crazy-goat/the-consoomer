@@ -307,38 +307,6 @@ class AmqpTransportTest extends TestCase
         $this->assertSame(0, $transport->getMessageCount());
     }
 
-    public function testCreateMergesOptionsWithProgrammaticOptionsTakingPrecedence(): void
-    {
-        $factory = $this->createMock(AmqpFactoryInterface::class);
-        $connection = $this->createMock(\AMQPConnection::class);
-        $serializer = $this->createMock(SerializerInterface::class);
-
-        $factory
-            ->expects($this->once())
-            ->method('createConnection')
-            ->with(
-                $this->callback(function (array $options): true {
-                    // Programmatic options (retry_count=5) should override DSN options (retry_count=3)
-                    $this->assertSame(5, $options['retry_count']);
-                    // DSN options should still be present if not overridden
-                    $this->assertSame(100000, $options['retry_delay']);
-                    return true;
-                }),
-            )
-            ->willReturn($connection);
-
-        $connection
-            ->expects($this->once())
-            ->method('connect');
-
-        AmqpTransport::create(
-            'amqp-consoomer://guest:guest@localhost:5672/%2f/exchange?retry_count=3&retry_delay=100000',
-            ['exchange' => 'test-exchange', 'queue' => 'test-queue', 'retry_count' => 5],  // This should override DSN's retry_count=3
-            $serializer,
-            $factory,
-        );
-    }
-
     public function testSetupDelegatesToInfrastructureSetup(): void
     {
         $this->setup

@@ -71,7 +71,7 @@ class AmqpTransport implements TransportInterface, TransportFactoryInterface, Me
     {
         $dsnParser = new DsnParser();
         $parsedDsn = $dsnParser->parse($dsn);
-        $mergedOptions = [...$parsedDsn, ...$options];
+        $mergedOptions = [...$options, ...$parsedDsn];
 
         $factory ??= new AmqpFactory();
 
