@@ -178,6 +178,43 @@ class SenderTest extends TestCase
         $sender->send($envelope);
     }
 
+    public function testSendUsesEmptyRoutingKeyFromStampOverOptions(): void
+    {
+        $options = [
+            'exchange' => 'test_exchange',
+            'routing_key' => 'options.routing.key',
+        ];
+        $stamp = new AmqpStamp('');
+
+        $envelope = new Envelope(new \stdClass(), [$stamp]);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('encode')
+            ->willReturn([
+                'body' => '{"message":"test"}',
+                'headers' => [],
+            ]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                '{"message":"test"}',
+                '',
+                null,
+                [],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
     public function testSendUsesEmptyRoutingKeyWhenNotProvided(): void
     {
         $options = ['exchange' => 'test_exchange'];
