@@ -114,4 +114,99 @@ class InfrastructureSetupTest extends TestCase
         $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
         $setup->setup();
     }
+
+    public function testSetupWithFanoutExchangeType(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
+        $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('setType')->with(AMQP_EX_TYPE_FANOUT);
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_type' => 'fanout',
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupWithTopicExchangeType(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
+        $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('setType')->with(AMQP_EX_TYPE_TOPIC);
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_type' => 'topic',
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupWithHeadersExchangeType(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
+        $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('setType')->with(AMQP_EX_TYPE_HEADERS);
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_type' => 'headers',
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupWithInvalidExchangeTypeFallsBackToDirect(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
+        $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('setType')->with(AMQP_EX_TYPE_DIRECT);
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_type' => 'invalid_type',
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupWithNullExchangeTypeFallsBackToDirect(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->with($this->channel)->willReturn($this->exchange);
+        $this->factory->method('createQueue')->with($this->channel)->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('setType')->with(AMQP_EX_TYPE_DIRECT);
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_type' => null,
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
 }
