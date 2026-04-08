@@ -72,6 +72,7 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
     public function get(): iterable
     {
+        $this->message = null;
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
