@@ -184,6 +184,42 @@ class ReceiverTest extends TestCase
         $receiver->ack($envelope);
     }
 
+    public function testBatchAckTriggersAfterMaxUnackedMessages(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 3];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $envelopes = [];
+        for ($i = 1; $i <= 6; $i++) {
+            $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+            $amqpEnvelope->method('getDeliveryTag')->willReturn($i);
+            $stamps = [new RawMessageStamp($amqpEnvelope)];
+            $envelopes[] = new Envelope(new \stdClass(), $stamps);
+        }
+
+        $ackCallCount = 0;
+        $ackedTags = [];
+
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('ack')
+            ->willReturnCallback(function ($tag, $flags) use (&$ackCallCount, &$ackedTags): void {
+                $ackCallCount++;
+                $ackedTags[] = $tag;
+                $this->assertSame(AMQP_MULTIPLE, $flags);
+            });
+
+        $receiver->ack($envelopes[0]);
+        $receiver->ack($envelopes[1]);
+        $receiver->ack($envelopes[2]);
+        $receiver->ack($envelopes[3]);
+        $receiver->ack($envelopes[4]);
+        $receiver->ack($envelopes[5]);
+
+        $this->assertSame([3, 6], $ackedTags);
+    }
+
     public function testRejectRejectsMessage(): void
     {
         $options = ['queue' => 'test_queue'];
