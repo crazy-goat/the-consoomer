@@ -8,6 +8,11 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\TransportFactoryInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
+use CrazyGoat\TheConsoomer\AmqpFactory;
+use CrazyGoat\TheConsoomer\Connection;
+use CrazyGoat\TheConsoomer\InfrastructureSetup;
+use CrazyGoat\TheConsoomer\Receiver;
+use CrazyGoat\TheConsoomer\Sender;
 
 class AmqpTransportFactory implements TransportFactoryInterface
 {
@@ -18,7 +23,59 @@ class AmqpTransportFactory implements TransportFactoryInterface
 
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
     {
-        throw new \RuntimeException('Not implemented yet');
+        return self::create($dsn, $options, $serializer);
+    }
+
+    public static function create(
+        string $dsn,
+        array $options,
+        SerializerInterface $serializer,
+        ?AmqpFactoryInterface $factory = null,
+        ?\Psr\Log\LoggerInterface $logger = null,
+    ): TransportInterface {
+        $dsnParser = new DsnParser();
+        $parsedDsn = $dsnParser->parse($dsn);
+        $mergedOptions = [...$parsedDsn, ...$options];
+
+        $factory ??= new AmqpFactory();
+
+        // Native AMQP heartbeat - negotiated with broker at protocol level
+        // Set via constructor to ensure RabbitMQ sees the heartbeat value
+        $connection = $factory->createConnection($mergedOptions);
+
+        // Connection parameters (host, port, vhost, user, password, timeout) are always
+        // taken from $parsedDsn, not from $mergedOptions. These are part of the DSN
+        // authority/path and cannot be overridden by programmatic $options.
+        $connection->setHost($parsedDsn['host']);
+        $connection->setPort($parsedDsn['port']);
+        $connection->setVhost($parsedDsn['vhost']);
+        $connection->setLogin($parsedDsn['user']);
+        $connection->setPassword($parsedDsn['password']);
+        $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? 0.1));
+
+        $factory->configureSsl($connection, $mergedOptions, $logger);
+
+        // Client-side heartbeat tracking for auto-reconnect detection
+        $amqpConnection = new Connection($factory, $connection);
+        if (isset($mergedOptions['heartbeat'])) {
+            $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
+        }
+        if ($logger instanceof \Psr\Log\LoggerInterface) {
+            $amqpConnection->setLogger($logger);
+        }
+
+        $connection->connect();
+        $amqpConnection->updateActivity();
+
+        $setup = new InfrastructureSetup($factory, $amqpConnection, $mergedOptions);
+
+        $retry = self::createRetry($mergedOptions, $logger);
+
+        return new AmqpTransport(
+            new Receiver($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
+            new Sender($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
+            $setup,
+        );
     }
 
     public static function createRetry(array $options, ?LoggerInterface $logger = null): ?ConnectionRetryInterface
