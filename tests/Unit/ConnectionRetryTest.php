@@ -197,4 +197,26 @@ class ConnectionRetryTest extends TestCase
         $this->assertFalse($retry->isCircuitOpen());
         $this->assertEquals(CircuitState::CLOSED, $retry->getState());
     }
+
+    /**
+     * Regression test for issue #60: CircuitBreaker should not transition based on
+     * construction time - timeout should only start after first actual failure.
+     */
+    public function testCircuitBreakerDoesNotTransitionWithoutFailure(): void
+    {
+        $retry = new ConnectionRetry(
+            retryCount: 1,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 1,
+        );
+
+        // Wait longer than timeout
+        sleep(2);
+
+        // Should still be available (CLOSED state) since no failure occurred
+        $this->assertFalse($retry->isCircuitOpen());
+        $this->assertEquals(CircuitState::CLOSED, $retry->getState());
+    }
 }
