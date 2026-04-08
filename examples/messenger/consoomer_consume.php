@@ -27,7 +27,7 @@ class MyMessageHandler
     }
 }
 
-$dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/?queue=test';
+$dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=test';
 $transport = AmqpTransport::create($dsn, [], new PhpSerializer());
 
 $bus = new MessageBus([
