@@ -10,7 +10,7 @@ class CircuitBreaker
 {
     private int $failureCount = 0;
     private int $successCount = 0;
-    private \DateTimeImmutable $lastFailureTime;
+    private ?\DateTimeImmutable $lastFailureTime = null;
     private CircuitState $state = CircuitState::CLOSED;
 
     public function __construct(
@@ -18,7 +18,6 @@ class CircuitBreaker
         private readonly int $timeout = 60,
         private readonly ?LoggerInterface $logger = null,
     ) {
-        $this->lastFailureTime = new \DateTimeImmutable();
     }
 
     public function recordSuccess(): void
@@ -52,6 +51,9 @@ class CircuitBreaker
         }
 
         if ($this->state === CircuitState::OPEN) {
+            if (!$this->lastFailureTime instanceof \DateTimeImmutable) {
+                return false;
+            }
             $elapsed = time() - $this->lastFailureTime->getTimestamp();
             if ($elapsed >= $this->timeout) {
                 $this->transitionTo(CircuitState::HALF_OPEN);
@@ -74,7 +76,7 @@ class CircuitBreaker
         $this->failureCount = 0;
         $this->successCount = 0;
         $this->state = CircuitState::CLOSED;
-        $this->lastFailureTime = new \DateTimeImmutable();
+        $this->lastFailureTime = null;
     }
 
     private function transitionTo(CircuitState $newState): void
