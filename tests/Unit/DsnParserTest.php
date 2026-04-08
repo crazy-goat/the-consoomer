@@ -168,4 +168,68 @@ class DsnParserTest extends TestCase
         $this->assertEquals('/', $result['vhost']);
         $this->assertEquals('my_exchange', $result['exchange']);
     }
+
+    public function testParsesUrlEncodedUserAndPassword(): void
+    {
+        $parser = new DsnParser();
+        // User: user@domain.com (URL-encoded as user%40domain.com)
+        // Password: pass#word (URL-encoded as pass%23word)
+        $result = $parser->parse('amqp-consoomer://user%40domain.com:pass%23word@localhost:5672/%2f/my_exchange');
+
+        $this->assertSame('user@domain.com', $result['user']);
+        $this->assertSame('pass#word', $result['password']);
+    }
+
+    public function testParsesUrlEncodedSpecialCharactersInCredentials(): void
+    {
+        $parser = new DsnParser();
+        // Test various URL-encoded special characters
+        // %2B = +, %2F = /, %3A = :, %3D = =, %26 = &
+        $result = $parser->parse('amqp-consoomer://user%2Bname:pass%2Fword%3Atest@localhost/%2f/my_exchange');
+
+        $this->assertSame('user+name', $result['user']);
+        $this->assertSame('pass/word:test', $result['password']);
+    }
+
+    public function testParsesNonEncodedCredentials(): void
+    {
+        $parser = new DsnParser();
+        // Verify that plain credentials (without URL encoding) still work correctly
+        $result = $parser->parse('amqp-consoomer://simpleuser:simplepass@localhost/%2f/my_exchange');
+
+        $this->assertSame('simpleuser', $result['user']);
+        $this->assertSame('simplepass', $result['password']);
+    }
+
+    public function testParsesDefaultCredentials(): void
+    {
+        $parser = new DsnParser();
+        // Verify that default 'guest' credentials work after urldecode
+        $result = $parser->parse('amqp-consoomer://localhost/%2f/my_exchange');
+
+        $this->assertSame('guest', $result['user']);
+        $this->assertSame('guest', $result['password']);
+    }
+
+    public function testParsesUrlEncodedPercentSign(): void
+    {
+        $parser = new DsnParser();
+        // Test percent-encoded percent sign (%25)
+        // Password: pass%word (URL-encoded as pass%25word)
+        $result = $parser->parse('amqp-consoomer://user:pass%25word@localhost/%2f/my_exchange');
+
+        $this->assertSame('user', $result['user']);
+        $this->assertSame('pass%word', $result['password']);
+    }
+
+    public function testParsesUrlEncodedSpaces(): void
+    {
+        $parser = new DsnParser();
+        // Test spaces encoded as %20 and +
+        // Note: urldecode() treats + as space, which is correct for URL-encoded form data
+        $result = $parser->parse('amqp-consoomer://user%20name:pass+word@localhost/%2f/my_exchange');
+
+        $this->assertSame('user name', $result['user']);
+        $this->assertSame('pass word', $result['password']);
+    }
 }
