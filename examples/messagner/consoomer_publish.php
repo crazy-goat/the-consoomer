@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use CrazyGoat\TheConsoomer\AmqpStamp;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\DependencyInjection\Container;
