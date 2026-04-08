@@ -14,7 +14,7 @@ use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 include __DIR__ . '/../../vendor/autoload.php';
 include __DIR__ . '/common.php';
 
-$dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f';
+$dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages';
 $transport = AmqpTransport::create($dsn, [], new PhpSerializer());
 
 $container = new ServiceLocator(['consoomer' => fn() => $transport]);
