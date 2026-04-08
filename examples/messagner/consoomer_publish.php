@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use CrazyGoat\TheConsoomer\AmqpStamp;
 use CrazyGoat\TheConsoomer\AmqpTransport;
-use Symfony\Component\DependencyInjection\Container;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBus;
 use Symfony\Component\Messenger\Middleware\SendMessageMiddleware;
@@ -17,6 +17,7 @@ include __DIR__ . '/common.php';
 $dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f';
 $transport = AmqpTransport::create($dsn, [], new PhpSerializer());
 
+$container = new ServiceLocator(['consoomer' => fn() => $transport]);
 $senders = new SendersLocator([MyMessage::class => ['consoomer']], $container);
 
 $bus = new MessageBus([
