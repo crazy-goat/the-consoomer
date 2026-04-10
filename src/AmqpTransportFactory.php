@@ -85,6 +85,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
                 retryCircuitBreaker: (bool) ($options['retry_circuit_breaker'] ?? false),
                 retryCircuitBreakerThreshold: (int) ($options['retry_circuit_breaker_threshold'] ?? 10),
                 retryCircuitBreakerTimeout: (int) ($options['retry_circuit_breaker_timeout'] ?? 60),
+                retryCircuitBreakerSuccessThreshold: (int) ($options['retry_circuit_breaker_success_threshold'] ?? 2),
                 logger: $logger,
             );
         }

@@ -22,6 +22,7 @@ class ConnectionRetry implements ConnectionRetryInterface
         private readonly bool $retryCircuitBreaker = false,
         private readonly int $retryCircuitBreakerThreshold = 10,
         private readonly int $retryCircuitBreakerTimeout = 60,
+        private readonly int $retryCircuitBreakerSuccessThreshold = 2,
         private readonly ?LoggerInterface $logger = null,
     ) {
         $this->metrics = new RetryMetrics();
@@ -30,6 +31,7 @@ class ConnectionRetry implements ConnectionRetryInterface
             $this->circuitBreaker = new CircuitBreaker(
                 $this->retryCircuitBreakerThreshold,
                 $this->retryCircuitBreakerTimeout,
+                $this->retryCircuitBreakerSuccessThreshold,
                 $this->logger,
             );
         }
