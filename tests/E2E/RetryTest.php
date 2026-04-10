@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
@@ -50,7 +51,7 @@ class RetryTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Hello Retry Test';
@@ -89,7 +90,7 @@ class RetryTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Hello Backoff Test';
@@ -123,7 +124,7 @@ class RetryTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Hello Circuit Breaker Test';

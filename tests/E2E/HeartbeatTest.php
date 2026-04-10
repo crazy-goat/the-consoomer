@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
@@ -55,7 +56,7 @@ class HeartbeatTest extends TestCase
     {
         $dsn = $this->createDsn(heartbeat: 60);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Heartbeat test message';
@@ -66,7 +67,7 @@ class HeartbeatTest extends TestCase
         $messages = iterator_to_array($transport->get());
 
         $this->assertCount(1, $messages);
-        $this->assertEquals('Heartbeat test message', $messages[0]->getMessage()->content);
+        $this->assertSame('Heartbeat test message', $messages[0]->getMessage()->content);
 
         $transport->ack($messages[0]);
     }
@@ -75,7 +76,7 @@ class HeartbeatTest extends TestCase
     {
         $dsn = $this->createDsn(heartbeat: 0);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'No heartbeat test';
@@ -86,7 +87,7 @@ class HeartbeatTest extends TestCase
         $messages = iterator_to_array($transport->get());
 
         $this->assertCount(1, $messages);
-        $this->assertEquals('No heartbeat test', $messages[0]->getMessage()->content);
+        $this->assertSame('No heartbeat test', $messages[0]->getMessage()->content);
 
         $transport->ack($messages[0]);
     }
@@ -95,7 +96,7 @@ class HeartbeatTest extends TestCase
     {
         $dsn = $this->createDsn(heartbeat: 30);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         for ($i = 0; $i < 5; $i++) {
             $testMessage = new \stdClass();
@@ -116,7 +117,7 @@ class HeartbeatTest extends TestCase
     {
         $dsn = $this->createDsn(heartbeat: 60);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Send-Receive-Ack cycle';
@@ -134,7 +135,7 @@ class HeartbeatTest extends TestCase
     {
         $dsn = $this->createDsn(heartbeat: 1);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $msg1 = new \stdClass();
         $msg1->content = "Before sleep";

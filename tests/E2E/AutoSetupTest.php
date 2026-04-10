@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
@@ -48,7 +49,7 @@ class AutoSetupTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Hello Auto Setup Test';
@@ -67,7 +68,7 @@ class AutoSetupTest extends TestCase
         $receivedMessage = $receivedEnvelope->getMessage();
 
         $this->assertInstanceOf(\stdClass::class, $receivedMessage);
-        $this->assertEquals('Hello Auto Setup Test', $receivedMessage->content);
+        $this->assertSame('Hello Auto Setup Test', $receivedMessage->content);
 
         $transport->ack($receivedEnvelope);
     }

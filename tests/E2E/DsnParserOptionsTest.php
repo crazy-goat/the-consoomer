@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
@@ -56,7 +57,7 @@ class DsnParserOptionsTest extends TestCase
     {
         $dsn = $this->buildDsn(['heartbeat' => 60]);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Heartbeat test';
@@ -78,7 +79,7 @@ class DsnParserOptionsTest extends TestCase
             'write_timeout' => 1.0,
         ]);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Timeout test';
@@ -117,7 +118,7 @@ class DsnParserOptionsTest extends TestCase
             );
 
             $serializer = new PhpSerializer();
-            $transport = AmqpTransport::create($dsn, [], $serializer);
+            $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
             $testMessage = new \stdClass();
             $testMessage->content = 'Routing key test';
@@ -142,7 +143,7 @@ class DsnParserOptionsTest extends TestCase
             'max_unacked_messages' => 10,
         ]);
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Combined options test';
@@ -179,6 +180,6 @@ class DsnParserOptionsTest extends TestCase
         $parsed = $parser->parse($dsn);
 
         $this->assertArrayHasKey('queue_arguments', $parsed);
-        $this->assertEquals(10, $parsed['queue_arguments']['x-max-priority']);
+        $this->assertSame(10, $parsed['queue_arguments']['x-max-priority']);
     }
 }

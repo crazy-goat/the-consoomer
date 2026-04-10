@@ -13,14 +13,14 @@ class AmqpStampTest extends TestCase
     {
         $stamp = new AmqpStamp('my.routing.key');
 
-        $this->assertEquals('my.routing.key', $stamp->routingKey);
+        $this->assertSame('my.routing.key', $stamp->routingKey);
     }
 
     public function testConstructorWithDefaultRoutingKey(): void
     {
         $stamp = new AmqpStamp();
 
-        $this->assertEquals('', $stamp->routingKey);
+        $this->assertSame('', $stamp->routingKey);
     }
 
     public function testIsNonSendable(): void

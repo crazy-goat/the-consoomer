@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
@@ -47,7 +48,7 @@ class SetupTransportTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $transport->setup();
 
