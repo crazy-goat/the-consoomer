@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
 use CrazyGoat\TheConsoomer\AmqpTransport;
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
@@ -51,7 +52,7 @@ class SslTransportTest extends SslTestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create(
+        $transport = AmqpTransportFactory::create(
             $dsn,
             ['queue' => self::QUEUE_NAME],
             $serializer,
@@ -81,7 +82,7 @@ class SslTransportTest extends SslTestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create(
+        $transport = AmqpTransportFactory::create(
             $dsn,
             ['queue' => self::QUEUE_NAME],
             $serializer,
@@ -113,7 +114,7 @@ class SslTransportTest extends SslTestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'SSL test message ' . uniqid();
@@ -154,7 +155,7 @@ class SslTransportTest extends SslTestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create(
+        $transport = AmqpTransportFactory::create(
             $dsn,
             ['queue' => self::QUEUE_NAME],
             $serializer,

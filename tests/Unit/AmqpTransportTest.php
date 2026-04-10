@@ -12,20 +12,17 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
-use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class AmqpTransportTest extends TestCase
 {
     private ReceiverInterface&MockObject $receiver;
     private SenderInterface&MockObject $sender;
-    private SerializerInterface&MockObject $serializer;
     private InfrastructureSetup&MockObject $setup;
 
     protected function setUp(): void
     {
         $this->receiver = $this->createMock(ReceiverInterface::class);
         $this->sender = $this->createMock(SenderInterface::class);
-        $this->serializer = $this->createMock(SerializerInterface::class);
         $this->setup = $this->createMock(InfrastructureSetup::class);
     }
 
