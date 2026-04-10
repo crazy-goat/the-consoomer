@@ -21,7 +21,7 @@ class ConnectionRetryTest extends TestCase
 
         $result = $retry->withRetry(fn(): string => 'success');
 
-        $this->assertEquals('success', $result);
+        $this->assertSame('success', $result);
     }
 
     public function testRetryCountZeroThrowsRuntimeException(): void
@@ -48,7 +48,7 @@ class ConnectionRetryTest extends TestCase
             throw new \AMQPConnectionException('Connection failed');
         });
 
-        $this->assertEquals(3, $attempt);
+        $this->assertSame(3, $attempt);
     }
 
     public function testRetrySucceedsOnSecondAttempt(): void
@@ -64,8 +64,8 @@ class ConnectionRetryTest extends TestCase
             return 'success';
         });
 
-        $this->assertEquals('success', $result);
-        $this->assertEquals(2, $attempt);
+        $this->assertSame('success', $result);
+        $this->assertSame(2, $attempt);
     }
 
     public function testNoRetryOnOtherException(): void
@@ -98,7 +98,7 @@ class ConnectionRetryTest extends TestCase
         }
 
         $this->assertTrue($retry->isCircuitOpen());
-        $this->assertEquals(CircuitState::OPEN, $retry->getState());
+        $this->assertSame(CircuitState::OPEN, $retry->getState());
     }
 
     public function testCircuitBreakerAllowsRequestWhenHalfOpen(): void
@@ -124,7 +124,7 @@ class ConnectionRetryTest extends TestCase
 
         $result = $retry->withRetry(fn(): string => 'success');
 
-        $this->assertEquals('success', $result);
+        $this->assertSame('success', $result);
     }
 
     public function testExponentialBackoff(): void
@@ -195,7 +195,7 @@ class ConnectionRetryTest extends TestCase
         $retry->reset();
 
         $this->assertFalse($retry->isCircuitOpen());
-        $this->assertEquals(CircuitState::CLOSED, $retry->getState());
+        $this->assertSame(CircuitState::CLOSED, $retry->getState());
     }
 
     /**
@@ -217,6 +217,6 @@ class ConnectionRetryTest extends TestCase
 
         // Should still be available (CLOSED state) since no failure occurred
         $this->assertFalse($retry->isCircuitOpen());
-        $this->assertEquals(CircuitState::CLOSED, $retry->getState());
+        $this->assertSame(CircuitState::CLOSED, $retry->getState());
     }
 }

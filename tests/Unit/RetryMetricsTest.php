@@ -13,10 +13,10 @@ class RetryMetricsTest extends TestCase
     {
         $metrics = new RetryMetrics();
 
-        $this->assertEquals(0, $metrics->getTotalAttempts());
-        $this->assertEquals(0, $metrics->getSuccessfulRetries());
-        $this->assertEquals(0, $metrics->getFailedRetries());
-        $this->assertEquals(0, $metrics->getCircuitBreakerOpens());
+        $this->assertSame(0, $metrics->getTotalAttempts());
+        $this->assertSame(0, $metrics->getSuccessfulRetries());
+        $this->assertSame(0, $metrics->getFailedRetries());
+        $this->assertSame(0, $metrics->getCircuitBreakerOpens());
     }
 
     public function testRecordAttempt(): void
@@ -26,7 +26,7 @@ class RetryMetricsTest extends TestCase
         $metrics->recordAttempt();
         $metrics->recordAttempt();
 
-        $this->assertEquals(2, $metrics->getTotalAttempts());
+        $this->assertSame(2, $metrics->getTotalAttempts());
     }
 
     public function testRecordSuccess(): void
@@ -36,7 +36,7 @@ class RetryMetricsTest extends TestCase
         $metrics->recordAttempt();
         $metrics->recordSuccess();
 
-        $this->assertEquals(1, $metrics->getSuccessfulRetries());
+        $this->assertSame(1, $metrics->getSuccessfulRetries());
     }
 
     public function testRecordFailure(): void
@@ -45,7 +45,7 @@ class RetryMetricsTest extends TestCase
 
         $metrics->recordFailure();
 
-        $this->assertEquals(1, $metrics->getFailedRetries());
+        $this->assertSame(1, $metrics->getFailedRetries());
     }
 
     public function testRecordCircuitBreakerOpen(): void
@@ -54,7 +54,7 @@ class RetryMetricsTest extends TestCase
 
         $metrics->recordCircuitBreakerOpen();
 
-        $this->assertEquals(1, $metrics->getCircuitBreakerOpens());
+        $this->assertSame(1, $metrics->getCircuitBreakerOpens());
     }
 
     public function testSuccessRateCalculation(): void
@@ -74,7 +74,7 @@ class RetryMetricsTest extends TestCase
     {
         $metrics = new RetryMetrics();
 
-        $this->assertEquals(0.0, $metrics->getRetrySuccessRate());
+        $this->assertSame(0.0, $metrics->getRetrySuccessRate());
     }
 
     public function testReset(): void
@@ -88,10 +88,10 @@ class RetryMetricsTest extends TestCase
 
         $metrics->reset();
 
-        $this->assertEquals(0, $metrics->getTotalAttempts());
-        $this->assertEquals(0, $metrics->getSuccessfulRetries());
-        $this->assertEquals(0, $metrics->getFailedRetries());
-        $this->assertEquals(0, $metrics->getCircuitBreakerOpens());
+        $this->assertSame(0, $metrics->getTotalAttempts());
+        $this->assertSame(0, $metrics->getSuccessfulRetries());
+        $this->assertSame(0, $metrics->getFailedRetries());
+        $this->assertSame(0, $metrics->getCircuitBreakerOpens());
     }
 
     public function testToArray(): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
 use CrazyGoat\TheConsoomer\AmqpTransport;
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
 class MessageCountTest extends TestCase
@@ -72,6 +73,6 @@ class MessageCountTest extends TestCase
 
         $serializer = new PhpSerializer();
 
-        return AmqpTransport::create($dsn, [], $serializer);
+        return AmqpTransportFactory::create($dsn, [], $serializer);
     }
 }
