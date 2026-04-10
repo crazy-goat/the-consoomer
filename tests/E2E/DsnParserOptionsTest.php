@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
 use CrazyGoat\TheConsoomer\AmqpTransportFactory;
+use CrazyGoat\TheConsoomer\AmqpTransport;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
