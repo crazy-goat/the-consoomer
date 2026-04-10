@@ -73,7 +73,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
         );
     }
 
-    public static function createRetry(array $options, ?LoggerInterface $logger = null): ?ConnectionRetryInterface
+    private static function createRetry(array $options, ?LoggerInterface $logger = null): ?ConnectionRetryInterface
     {
         if ($options['retry'] ?? false) {
             return new ConnectionRetry(
