@@ -19,6 +19,9 @@ class CircuitBreaker
         private readonly int $successThreshold = 2,
         private readonly ?LoggerInterface $logger = null,
     ) {
+        if ($this->successThreshold < 2) {
+            throw new \InvalidArgumentException('successThreshold must be at least 2');
+        }
     }
 
     public function recordSuccess(): void

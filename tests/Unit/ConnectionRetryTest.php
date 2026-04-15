@@ -283,4 +283,19 @@ class ConnectionRetryTest extends TestCase
         $retry->withRetry(fn(): string => 'success');
         $this->assertSame(CircuitState::CLOSED, $retry->getState());
     }
+
+    public function testCircuitBreakerSuccessThresholdValidation(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('successThreshold must be at least 2');
+
+        new ConnectionRetry(
+            retryCount: 1,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            retryCircuitBreakerSuccessThreshold: 1,
+        );
+    }
 }

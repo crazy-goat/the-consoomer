@@ -11,3 +11,4 @@
 
 .env.test.local
 .phpunit.cache/
+.aider.chat.history.md
