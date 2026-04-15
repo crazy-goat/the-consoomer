@@ -54,22 +54,7 @@ class MessageCountTest extends TestCase
 
     private function createTransport(): AmqpTransport
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME);
 
         $serializer = new PhpSerializer();
 

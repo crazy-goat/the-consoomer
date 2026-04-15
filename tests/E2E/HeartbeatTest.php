@@ -30,30 +30,9 @@ class HeartbeatTest extends TestCase
         parent::tearDown();
     }
 
-    private function createDsn(int $heartbeat = 0): string
-    {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        return sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&heartbeat=%d',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-            $heartbeat,
-        );
-    }
-
     public function testHeartbeatEnabledSendsAndReceivesMessage(): void
     {
-        $dsn = $this->createDsn(heartbeat: 60);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 60]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
@@ -73,7 +52,7 @@ class HeartbeatTest extends TestCase
 
     public function testHeartbeatDisabledWorks(): void
     {
-        $dsn = $this->createDsn(heartbeat: 0);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 0]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
@@ -93,7 +72,7 @@ class HeartbeatTest extends TestCase
 
     public function testMultipleMessagesWithHeartbeat(): void
     {
-        $dsn = $this->createDsn(heartbeat: 30);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 30]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
@@ -114,7 +93,7 @@ class HeartbeatTest extends TestCase
 
     public function testSendReceiveAckCycleWithHeartbeat(): void
     {
-        $dsn = $this->createDsn(heartbeat: 60);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 60]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
@@ -132,7 +111,7 @@ class HeartbeatTest extends TestCase
 
     public function testReconnectsAfterHeartbeatTimeout(): void
     {
-        $dsn = $this->createDsn(heartbeat: 1);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 1]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 

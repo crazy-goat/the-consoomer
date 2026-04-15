@@ -32,22 +32,11 @@ class RetryTest extends TestCase
 
     public function testTransportWithRetryEnabled(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&retry=true&retry_count=3&retry_delay=100000',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'retry' => 'true',
+            'retry_count' => '3',
+            'retry_delay' => '100000',
+        ]);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
@@ -71,22 +60,13 @@ class RetryTest extends TestCase
 
     public function testTransportWithRetryAndBackoff(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&retry=true&retry_count=3&retry_backoff=true&retry_jitter=false&retry_max_delay=1000000',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'retry' => 'true',
+            'retry_count' => '3',
+            'retry_backoff' => 'true',
+            'retry_jitter' => 'false',
+            'retry_max_delay' => '1000000',
+        ]);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
@@ -105,22 +85,13 @@ class RetryTest extends TestCase
 
     public function testTransportWithCircuitBreaker(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&retry=true&retry_count=1&retry_circuit_breaker=true&retry_circuit_breaker_threshold=5&retry_circuit_breaker_timeout=60',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'retry' => 'true',
+            'retry_count' => '1',
+            'retry_circuit_breaker' => 'true',
+            'retry_circuit_breaker_threshold' => '5',
+            'retry_circuit_breaker_timeout' => '60',
+        ]);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);

@@ -32,24 +32,7 @@ class SslTransportTest extends SslTestCase
 
     public function testAmqpsSchemeCreatesTransport(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT') ?: 5671;
-        $port = (int) $sslPort;
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
-
-        $dsn = sprintf(
-            'amqps-consoomer://%s:%s@%s:%d/%s/%s?ssl_cacert=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            urlencode($caCert),
-        );
+        $dsn = $this->buildAmqpsDsn(self::EXCHANGE_NAME);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create(
@@ -63,23 +46,9 @@ class SslTransportTest extends SslTestCase
 
     public function testAmqpConsoomerWithSslOption(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = intval(getenv('RABBITMQ_SSL_PORT') ?: 5671);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_cacert=%s',
-            $user,
-            $password,
-            $host,
-            $sslPort,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            urlencode($caCert),
-        );
+        $dsn = $this->buildSslDsnWithOptions(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'ssl' => 'true',
+        ]);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create(
@@ -93,25 +62,7 @@ class SslTransportTest extends SslTestCase
 
     public function testPublishConsumeWithAmqpsScheme(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT') ?: 5671;
-        $port = (int) $sslPort;
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
-
-        $dsn = sprintf(
-            'amqps-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&ssl_cacert=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-            urlencode($caCert),
-        );
+        $dsn = $this->buildSslDsn(self::EXCHANGE_NAME, self::QUEUE_NAME);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
@@ -135,24 +86,10 @@ class SslTransportTest extends SslTestCase
 
     public function testSslWithCertificateFiles(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT') ?: 5671;
-        $port = (int) $sslPort;
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?ssl=true&ssl_verify=false&ssl_cacert=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            urlencode($caCert),
-        );
+        $dsn = $this->buildSslDsnWithOptions(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'ssl' => 'true',
+            'ssl_verify' => 'false',
+        ]);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create(
