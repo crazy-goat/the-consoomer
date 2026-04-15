@@ -219,4 +219,68 @@ class ConnectionRetryTest extends TestCase
         $this->assertFalse($retry->isCircuitOpen());
         $this->assertSame(CircuitState::CLOSED, $retry->getState());
     }
+
+    public function testCircuitBreakerSuccessThresholdDefaultIsTwo(): void
+    {
+        $retry = new ConnectionRetry(
+            retryCount: 1,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (\AMQPConnectionException) {
+        }
+
+        $this->assertTrue($retry->isCircuitOpen());
+
+        sleep(3);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $retry->withRetry(fn(): string => 'success');
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $retry->withRetry(fn(): string => 'success');
+        $this->assertSame(CircuitState::CLOSED, $retry->getState());
+    }
+
+    public function testCircuitBreakerCustomSuccessThreshold(): void
+    {
+        $retry = new ConnectionRetry(
+            retryCount: 1,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            retryCircuitBreakerSuccessThreshold: 3,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (\AMQPConnectionException) {
+        }
+
+        sleep(3);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $retry->withRetry(fn(): string => 'success');
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $retry->withRetry(fn(): string => 'success');
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $retry->withRetry(fn(): string => 'success');
+        $this->assertSame(CircuitState::CLOSED, $retry->getState());
+    }
 }
