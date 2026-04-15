@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use CrazyGoat\TheConsoomer\AmqpTransport;
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use Symfony\Component\Messenger\Exception\StopWorkerException;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
@@ -28,7 +28,7 @@ class MyMessageHandler
 }
 
 $dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=test';
-$transport = AmqpTransport::create($dsn, [], new PhpSerializer());
+$transport = AmqpTransportFactory::create($dsn, [], new PhpSerializer());
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(
