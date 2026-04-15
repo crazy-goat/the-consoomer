@@ -11,6 +11,8 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 
 class AmqpTransportFactory implements TransportFactoryInterface
 {
+    private static ?DsnParser $dsnParser = null;
+
     public function supports(string $dsn, array $options): bool
     {
         return str_starts_with($dsn, 'amqp-consoomer://') || str_starts_with($dsn, 'amqps-consoomer://');
@@ -21,6 +23,10 @@ class AmqpTransportFactory implements TransportFactoryInterface
         return self::create($dsn, $options, $serializer);
     }
 
+    /**
+     * Convenience method for direct instantiation outside Symfony DI.
+     * Use createTransport() when integrating with Symfony Messenger transport factory system.
+     */
     public static function create(
         string $dsn,
         array $options,
@@ -28,8 +34,8 @@ class AmqpTransportFactory implements TransportFactoryInterface
         ?AmqpFactoryInterface $factory = null,
         ?LoggerInterface $logger = null,
     ): TransportInterface {
-        $dsnParser = new DsnParser();
-        $parsedDsn = $dsnParser->parse($dsn);
+        self::$dsnParser ??= new DsnParser();
+        $parsedDsn = self::$dsnParser->parse($dsn);
         $mergedOptions = [...$parsedDsn, ...$options];
 
         $factory ??= new AmqpFactory();
