@@ -27,4 +27,28 @@ abstract class SslTestCase extends TestCase
 
         $this->channel = new \AMQPChannel($this->connection);
     }
+
+    protected function buildSslDsn(string $exchange, string $queue, array $extra = []): string
+    {
+        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
+        $port = intval(getenv('RABBITMQ_SSL_PORT') ?: 5671);
+        $user = getenv('RABBITMQ_USER') ?: 'guest';
+        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
+        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
+
+        $params = array_merge(['queue' => $queue, 'ssl_cacert' => $caCert], $extra);
+        $query = http_build_query($params);
+
+        return sprintf(
+            'amqps-consoomer://%s:%s@%s:%d/%s/%s?%s',
+            $user,
+            $password,
+            $host,
+            $port,
+            urlencode($vhost),
+            $exchange,
+            $query,
+        );
+    }
 }

@@ -29,32 +29,9 @@ class DsnParserOptionsTest extends TestCase
         parent::tearDown();
     }
 
-    private function buildDsn(array $extraParams = []): string
-    {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $params = array_merge(['queue' => self::QUEUE_NAME], $extraParams);
-        $query = http_build_query($params);
-
-        return sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            $query,
-        );
-    }
-
     public function testHeartbeatOption(): void
     {
-        $dsn = $this->buildDsn(['heartbeat' => 60]);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 60]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
@@ -72,7 +49,7 @@ class DsnParserOptionsTest extends TestCase
 
     public function testTimeoutOptions(): void
     {
-        $dsn = $this->buildDsn([
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
             'timeout' => 0.5,
             'read_timeout' => 1.0,
             'write_timeout' => 1.0,
@@ -99,22 +76,9 @@ class DsnParserOptionsTest extends TestCase
         $this->bindQueue($routingKeyQueue, self::EXCHANGE_NAME, 'custom.routing.key');
 
         try {
-            $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-            $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-            $user = getenv('RABBITMQ_USER') ?: 'guest';
-            $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-            $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-            $dsn = sprintf(
-                'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&routing_key=custom.routing.key',
-                $user,
-                $password,
-                $host,
-                $port,
-                urlencode($vhost),
-                self::EXCHANGE_NAME,
-                $routingKeyQueue,
-            );
+            $dsn = $this->buildDsn(self::EXCHANGE_NAME, $routingKeyQueue, [
+                'routing_key' => 'custom.routing.key',
+            ]);
 
             $serializer = new PhpSerializer();
             $transport = AmqpTransportFactory::create($dsn, [], $serializer);
@@ -136,7 +100,7 @@ class DsnParserOptionsTest extends TestCase
 
     public function testMultipleOptionsCombined(): void
     {
-        $dsn = $this->buildDsn([
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
             'heartbeat' => 30,
             'timeout' => 1.0,
             'max_unacked_messages' => 10,
@@ -158,22 +122,9 @@ class DsnParserOptionsTest extends TestCase
 
     public function testQueueArgumentsParsed(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&queue_arguments[x-max-priority]=10',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'queue_arguments[x-max-priority]' => 10,
+        ]);
 
         $parser = new \CrazyGoat\TheConsoomer\DsnParser();
         $parsed = $parser->parse($dsn);

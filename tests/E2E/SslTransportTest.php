@@ -93,25 +93,7 @@ class SslTransportTest extends SslTestCase
 
     public function testPublishConsumeWithAmqpsScheme(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $sslPort = getenv('RABBITMQ_SSL_PORT') ?: 5671;
-        $port = (int) $sslPort;
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-        $caCert = getenv('RABBITMQ_SSL_CA_CERT') ?: __DIR__ . '/ssl/ca_certificate.pem';
-
-        $dsn = sprintf(
-            'amqps-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&ssl_cacert=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-            urlencode($caCert),
-        );
+        $dsn = $this->buildSslDsn(self::EXCHANGE_NAME, self::QUEUE_NAME);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);

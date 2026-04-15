@@ -32,22 +32,7 @@ class ConsumeProduceTest extends TestCase
 
     public function testProduceAndConsumeMessage(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
@@ -79,22 +64,7 @@ class ConsumeProduceTest extends TestCase
     {
         $this->purgeQueue(self::QUEUE_NAME);
 
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&timeout=0.1',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['timeout' => 0.1]);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
@@ -107,22 +77,7 @@ class ConsumeProduceTest extends TestCase
 
     public function testRejectMessage(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
@@ -139,16 +94,7 @@ class ConsumeProduceTest extends TestCase
         $receivedEnvelope = $messages[0];
         $transport->reject($receivedEnvelope);
 
-        $dsnWithTimeout = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&timeout=0.1',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            self::QUEUE_NAME,
-        );
+        $dsnWithTimeout = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['timeout' => 0.1]);
         $transportWithTimeout = AmqpTransportFactory::create($dsnWithTimeout, [], $serializer);
         $messages = iterator_to_array($transportWithTimeout->get());
         $this->assertEmpty($messages);

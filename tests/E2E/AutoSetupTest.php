@@ -29,23 +29,9 @@ class AutoSetupTest extends TestCase
 
     public function testAutoSetupCreatesExchangeAndQueue(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
-
-        $dsn = sprintf(
-            'amqp-consoomer://%s:%s@%s:%d/%s/%s?queue=%s&routing_key=%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
-            self::EXCHANGE_NAME,
-            $this->queueName,
-            self::ROUTING_KEY,
-        );
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, $this->queueName, [
+            'routing_key' => self::ROUTING_KEY,
+        ]);
 
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);

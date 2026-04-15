@@ -95,4 +95,27 @@ abstract class TestCase extends BaseTestCase
         $exchange->setName($exchangeName);
         $exchange->publish($body, $routingKey);
     }
+
+    protected function buildDsn(string $exchange, string $queue, array $extra = []): string
+    {
+        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
+        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
+        $user = getenv('RABBITMQ_USER') ?: 'guest';
+        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
+        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+
+        $params = array_merge(['queue' => $queue], $extra);
+        $query = http_build_query($params);
+
+        return sprintf(
+            'amqp-consoomer://%s:%s@%s:%d/%s/%s?%s',
+            $user,
+            $password,
+            $host,
+            $port,
+            urlencode($vhost),
+            $exchange,
+            $query,
+        );
+    }
 }
