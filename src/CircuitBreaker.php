@@ -16,15 +16,19 @@ class CircuitBreaker
     public function __construct(
         private readonly int $threshold = 10,
         private readonly int $timeout = 60,
+        private readonly int $successThreshold = 2,
         private readonly ?LoggerInterface $logger = null,
     ) {
+        if ($this->successThreshold < 2) {
+            throw new \InvalidArgumentException('successThreshold must be at least 2');
+        }
     }
 
     public function recordSuccess(): void
     {
         $this->successCount++;
 
-        if ($this->state === CircuitState::HALF_OPEN && $this->successCount >= 2) {
+        if ($this->state === CircuitState::HALF_OPEN && $this->successCount >= $this->successThreshold) {
             $this->transitionTo(CircuitState::CLOSED);
             $this->failureCount = 0;
             $this->successCount = 0;
