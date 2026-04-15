@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
-use CrazyGoat\TheConsoomer\AmqpTransport;
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
@@ -50,7 +50,7 @@ class ConsumeProduceTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'Hello E2E Test';
@@ -97,7 +97,7 @@ class ConsumeProduceTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $messages = $transport->get();
         $messages = iterator_to_array($messages);
@@ -125,7 +125,7 @@ class ConsumeProduceTest extends TestCase
         );
 
         $serializer = new PhpSerializer();
-        $transport = AmqpTransport::create($dsn, [], $serializer);
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $testMessage = new \stdClass();
         $testMessage->content = 'To Reject';
@@ -149,7 +149,7 @@ class ConsumeProduceTest extends TestCase
             self::EXCHANGE_NAME,
             self::QUEUE_NAME,
         );
-        $transportWithTimeout = AmqpTransport::create($dsnWithTimeout, [], $serializer);
+        $transportWithTimeout = AmqpTransportFactory::create($dsnWithTimeout, [], $serializer);
         $messages = iterator_to_array($transportWithTimeout->get());
         $this->assertEmpty($messages);
     }
