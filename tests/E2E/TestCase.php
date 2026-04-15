@@ -13,18 +13,14 @@ abstract class TestCase extends BaseTestCase
 
     protected function setUp(): void
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+        $params = $this->getDsnParams();
 
         $this->connection = new \AMQPConnection();
-        $this->connection->setHost($host);
-        $this->connection->setPort($port);
-        $this->connection->setLogin($user);
-        $this->connection->setPassword($password);
-        $this->connection->setVhost($vhost);
+        $this->connection->setHost($params['host']);
+        $this->connection->setPort($params['port']);
+        $this->connection->setLogin($params['user']);
+        $this->connection->setPassword($params['password']);
+        $this->connection->setVhost($params['vhost']);
         $this->connection->connect();
 
         $this->channel = new \AMQPChannel($this->connection);
@@ -96,24 +92,37 @@ abstract class TestCase extends BaseTestCase
         $exchange->publish($body, $routingKey);
     }
 
+    /**
+     * @return array{host: string, port: int, user: string, password: string, vhost: string}
+     */
+    protected function getDsnParams(): array
+    {
+        return [
+            'host' => getenv('RABBITMQ_HOST') ?: 'localhost',
+            'port' => intval(getenv('RABBITMQ_PORT') ?: 5672),
+            'user' => getenv('RABBITMQ_USER') ?: 'guest',
+            'password' => getenv('RABBITMQ_PASSWORD') ?: 'guest',
+            'vhost' => getenv('RABBITMQ_VHOST') ?: '/',
+        ];
+    }
+
+    /**
+     * @param array<string, string|int|float> $extra
+     */
     protected function buildDsn(string $exchange, string $queue, array $extra = []): string
     {
-        $host = getenv('RABBITMQ_HOST') ?: 'localhost';
-        $port = intval(getenv('RABBITMQ_PORT') ?: 5672);
-        $user = getenv('RABBITMQ_USER') ?: 'guest';
-        $password = getenv('RABBITMQ_PASSWORD') ?: 'guest';
-        $vhost = getenv('RABBITMQ_VHOST') ?: '/';
+        $params = $this->getDsnParams();
 
-        $params = array_merge(['queue' => $queue], $extra);
-        $query = http_build_query($params);
+        $queryParams = array_merge(['queue' => $queue], $extra);
+        $query = http_build_query($queryParams);
 
         return sprintf(
             'amqp-consoomer://%s:%s@%s:%d/%s/%s?%s',
-            $user,
-            $password,
-            $host,
-            $port,
-            urlencode($vhost),
+            $params['user'],
+            $params['password'],
+            $params['host'],
+            $params['port'],
+            urlencode($params['vhost']),
             $exchange,
             $query,
         );
