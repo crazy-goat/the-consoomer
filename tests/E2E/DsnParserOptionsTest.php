@@ -179,6 +179,6 @@ class DsnParserOptionsTest extends TestCase
         $parsed = $parser->parse($dsn);
 
         $this->assertArrayHasKey('queue_arguments', $parsed);
-        $this->assertEquals(10, $parsed['queue_arguments']['x-max-priority']);
+        $this->assertSame(10, $parsed['queue_arguments']['x-max-priority']);
     }
 }

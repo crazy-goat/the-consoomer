@@ -70,7 +70,7 @@ class ConsumeProduceTest extends TestCase
         $receivedMessage = $receivedEnvelope->getMessage();
 
         $this->assertInstanceOf(\stdClass::class, $receivedMessage);
-        $this->assertEquals('Hello E2E Test', $receivedMessage->content);
+        $this->assertSame('Hello E2E Test', $receivedMessage->content);
 
         $transport->ack($receivedEnvelope);
     }

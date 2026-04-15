@@ -66,7 +66,7 @@ class HeartbeatTest extends TestCase
         $messages = iterator_to_array($transport->get());
 
         $this->assertCount(1, $messages);
-        $this->assertEquals('Heartbeat test message', $messages[0]->getMessage()->content);
+        $this->assertSame('Heartbeat test message', $messages[0]->getMessage()->content);
 
         $transport->ack($messages[0]);
     }
@@ -86,7 +86,7 @@ class HeartbeatTest extends TestCase
         $messages = iterator_to_array($transport->get());
 
         $this->assertCount(1, $messages);
-        $this->assertEquals('No heartbeat test', $messages[0]->getMessage()->content);
+        $this->assertSame('No heartbeat test', $messages[0]->getMessage()->content);
 
         $transport->ack($messages[0]);
     }

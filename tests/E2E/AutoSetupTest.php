@@ -67,7 +67,7 @@ class AutoSetupTest extends TestCase
         $receivedMessage = $receivedEnvelope->getMessage();
 
         $this->assertInstanceOf(\stdClass::class, $receivedMessage);
-        $this->assertEquals('Hello Auto Setup Test', $receivedMessage->content);
+        $this->assertSame('Hello Auto Setup Test', $receivedMessage->content);
 
         $transport->ack($receivedEnvelope);
     }
