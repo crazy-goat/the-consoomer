@@ -8,11 +8,8 @@ use CrazyGoat\TheConsoomer\ClockInterface;
 
 final class FrozenClock implements ClockInterface
 {
-    private \DateTimeImmutable $time;
-
-    public function __construct(?\DateTimeImmutable $time = null)
+    public function __construct(private ?\DateTimeImmutable $time = new \DateTimeImmutable())
     {
-        $this->time = $time ?? new \DateTimeImmutable();
     }
 
     public function now(): \DateTimeImmutable
