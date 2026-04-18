@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use CrazyGoat\TheConsoomer\Clock\SystemClock;
 use Psr\Log\LoggerInterface;
 
 class ConnectionRetry implements ConnectionRetryInterface
@@ -24,6 +25,7 @@ class ConnectionRetry implements ConnectionRetryInterface
         private readonly int $retryCircuitBreakerTimeout = 60,
         private readonly int $retryCircuitBreakerSuccessThreshold = 2,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?ClockInterface $clock = new SystemClock(),
     ) {
         $this->metrics = new RetryMetrics();
 
@@ -33,6 +35,7 @@ class ConnectionRetry implements ConnectionRetryInterface
                 $this->retryCircuitBreakerTimeout,
                 $this->retryCircuitBreakerSuccessThreshold,
                 $this->logger,
+                $this->clock,
             );
         }
     }
