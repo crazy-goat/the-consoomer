@@ -22,6 +22,10 @@ final class FrozenClock implements ClockInterface
 
     public function advance(int $seconds): void
     {
-        $this->time = $this->time->modify("+{$seconds} seconds");
+        $newTime = $this->time->modify("+{$seconds} seconds");
+        if ($newTime === false) {
+            throw new \RuntimeException("Failed to advance time by {$seconds} seconds");
+        }
+        $this->time = $newTime;
     }
 }
