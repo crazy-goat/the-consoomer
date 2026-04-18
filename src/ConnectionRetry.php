@@ -66,6 +66,12 @@ class ConnectionRetry implements ConnectionRetryInterface
 
                 return $result;
             } catch (\AMQPException $exception) {
+                // Only retry on recoverable AMQP errors (connection/channel issues)
+                // Don't retry on permanent failures (not found, access denied, precondition failed)
+                if (in_array($exception->getCode(), [403, 404, 406], true)) {
+                    throw $exception;
+                }
+                
                 $lastException = $exception;
                 $attempt++;
 
