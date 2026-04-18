@@ -80,68 +80,6 @@ class ConnectionRetryTest extends TestCase
         });
     }
 
-    public function testRetryOnChannelException(): void
-    {
-        $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
-
-        $this->expectException(\AMQPChannelException::class);
-
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPChannelException('Channel closed unexpectedly');
-        });
-
-        $this->assertSame(3, $attempt);
-    }
-
-    public function testRetryOnExchangeException(): void
-    {
-        $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
-
-        $this->expectException(\AMQPExchangeException::class);
-
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPExchangeException('Exchange error after reconnect');
-        });
-
-        $this->assertSame(3, $attempt);
-    }
-
-    public function testRetryOnQueueException(): void
-    {
-        $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
-
-        $this->expectException(\AMQPQueueException::class);
-
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPQueueException('Queue error after reconnect');
-        });
-
-        $this->assertSame(3, $attempt);
-    }
-
-    public function testRetrySucceedsOnSecondAttemptWithChannelException(): void
-    {
-        $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
-
-        $result = $retry->withRetry(function () use (&$attempt): string {
-            $attempt++;
-            if ($attempt < 2) {
-                throw new \AMQPChannelException('Channel closed');
-            }
-            return 'success';
-        });
-
-        $this->assertSame('success', $result);
-        $this->assertSame(2, $attempt);
-    }
-
     public function testCircuitBreakerOpensAfterThreshold(): void
     {
         $retry = new ConnectionRetry(

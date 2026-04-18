@@ -65,7 +65,7 @@ class ConnectionRetry implements ConnectionRetryInterface
                 $this->metrics->recordAttempt();
 
                 return $result;
-            } catch (\AMQPException $exception) {
+            } catch (\AMQPConnectionException $exception) {
                 $lastException = $exception;
                 $attempt++;
 
