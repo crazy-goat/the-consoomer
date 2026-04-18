@@ -11,6 +11,11 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 
 class AmqpTransportFactory implements TransportFactoryInterface
 {
+    private const DEFAULT_READ_TIMEOUT = 0.1;
+    private const DEFAULT_RETRY_COUNT = 3;
+    private const DEFAULT_RETRY_DELAY = 100_000;
+    private const DEFAULT_RETRY_MAX_DELAY = 30_000_000;
+
     private static ?DsnParser $dsnParser = null;
 
     public function supports(string $dsn, array $options): bool
@@ -52,7 +57,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
         $connection->setVhost($parsedDsn['vhost']);
         $connection->setLogin($parsedDsn['user']);
         $connection->setPassword($parsedDsn['password']);
-        $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? 0.1));
+        $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? self::DEFAULT_READ_TIMEOUT));
 
         $factory->configureSsl($connection, $mergedOptions, $logger);
 
@@ -83,10 +88,10 @@ class AmqpTransportFactory implements TransportFactoryInterface
     {
         if ($options['retry'] ?? false) {
             return new ConnectionRetry(
-                retryCount: (int) ($options['retry_count'] ?? 3),
-                retryDelay: (int) ($options['retry_delay'] ?? 100000),
+                retryCount: (int) ($options['retry_count'] ?? self::DEFAULT_RETRY_COUNT),
+                retryDelay: (int) ($options['retry_delay'] ?? self::DEFAULT_RETRY_DELAY),
                 retryBackoff: (bool) ($options['retry_backoff'] ?? false),
-                retryMaxDelay: (int) ($options['retry_max_delay'] ?? 30000000),
+                retryMaxDelay: (int) ($options['retry_max_delay'] ?? self::DEFAULT_RETRY_MAX_DELAY),
                 retryJitter: (bool) ($options['retry_jitter'] ?? true),
                 retryCircuitBreaker: (bool) ($options['retry_circuit_breaker'] ?? false),
                 retryCircuitBreakerThreshold: (int) ($options['retry_circuit_breaker_threshold'] ?? 10),
