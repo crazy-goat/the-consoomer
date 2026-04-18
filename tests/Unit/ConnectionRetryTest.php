@@ -261,6 +261,8 @@ class ConnectionRetryTest extends TestCase
 
     public function testCircuitBreakerCustomSuccessThreshold(): void
     {
+        $clock = new FrozenClock();
+
         $retry = new ConnectionRetry(
             retryCount: 1,
             retryDelay: 1000,
@@ -268,6 +270,7 @@ class ConnectionRetryTest extends TestCase
             retryCircuitBreakerThreshold: 1,
             retryCircuitBreakerTimeout: 2,
             retryCircuitBreakerSuccessThreshold: 3,
+            clock: $clock,
         );
 
         try {
@@ -277,7 +280,7 @@ class ConnectionRetryTest extends TestCase
         } catch (\AMQPConnectionException) {
         }
 
-        sleep(3);
+        $clock->advance(3);
 
         $retry->isCircuitOpen();
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
