@@ -112,7 +112,6 @@ class SenderTest extends TestCase
         array $options,
         ?string $stampRoutingKey,
         string $expectedRoutingKey,
-        string $scenario,
     ): void {
         $envelope = $stampRoutingKey !== null
             ? new Envelope(new \stdClass(), [new AmqpStamp($stampRoutingKey)])
@@ -146,7 +145,7 @@ class SenderTest extends TestCase
     }
 
     /**
-     * @return array<string, array{options: array<string, string>, stampRoutingKey: string|null, expectedRoutingKey: string, scenario: string}>
+     * @return array<string, array{options: array<string, string>, stampRoutingKey: string|null, expectedRoutingKey: string}>
      */
     public static function routingKeyPrecedenceProvider(): array
     {
@@ -158,7 +157,6 @@ class SenderTest extends TestCase
                 ],
                 'stampRoutingKey' => 'stamp.routing.key',
                 'expectedRoutingKey' => 'stamp.routing.key',
-                'scenario' => 'stamp takes precedence',
             ],
             'options routing key used when no stamp' => [
                 'options' => [
@@ -167,7 +165,6 @@ class SenderTest extends TestCase
                 ],
                 'stampRoutingKey' => null,
                 'expectedRoutingKey' => 'options.routing.key',
-                'scenario' => 'options used when no stamp',
             ],
             'empty stamp routing key takes precedence over options' => [
                 'options' => [
@@ -176,7 +173,6 @@ class SenderTest extends TestCase
                 ],
                 'stampRoutingKey' => '',
                 'expectedRoutingKey' => '',
-                'scenario' => 'empty stamp takes precedence',
             ],
         ];
     }
