@@ -11,6 +11,10 @@ class ConnectionRetry implements ConnectionRetryInterface
 {
     /** Jitter variation factor - 25% of delay is used as max variation range */
     public const JITTER_VARIATION_FACTOR = 0.25;
+    
+    /** AMQP error codes that indicate permanent failures - should not retry */
+    private const PERMANENT_FAILURE_CODES = [403, 404, 406];
+    
     private ?CircuitBreaker $circuitBreaker = null;
     private readonly RetryMetrics $metrics;
 
@@ -68,7 +72,11 @@ class ConnectionRetry implements ConnectionRetryInterface
             } catch (\AMQPException $exception) {
                 // Only retry on recoverable AMQP errors (connection/channel issues)
                 // Don't retry on permanent failures (not found, access denied, precondition failed)
-                if (in_array($exception->getCode(), [403, 404, 406], true)) {
+                if (in_array($exception->getCode(), self::PERMANENT_FAILURE_CODES, true)) {
+                    $this->logger?->warning('Permanent AMQP failure, not retrying', [
+                        'code' => $exception->getCode(),
+                        'error' => $exception->getMessage(),
+                    ]);
                     throw $exception;
                 }
                 

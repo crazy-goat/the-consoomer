@@ -144,50 +144,70 @@ class ConnectionRetryTest extends TestCase
 
     public function testNoRetryOnQueueNotFound(): void
     {
+        $attempt = 0;
         $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
 
-        $this->expectException(\AMQPQueueException::class);
-        $this->expectExceptionMessage('Queue not found');
-
-        $retry->withRetry(function (): void {
-            throw new \AMQPQueueException('Queue not found', 404);
-        });
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPQueueException('Queue not found', 404);
+            });
+            $this->fail('Expected AMQPQueueException to be thrown');
+        } catch (\AMQPQueueException $e) {
+            $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
+            $this->assertSame('Queue not found', $e->getMessage());
+        }
     }
 
     public function testNoRetryOnExchangeNotFound(): void
     {
+        $attempt = 0;
         $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
 
-        $this->expectException(\AMQPExchangeException::class);
-        $this->expectExceptionMessage('Exchange not found');
-
-        $retry->withRetry(function (): void {
-            throw new \AMQPExchangeException('Exchange not found', 404);
-        });
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPExchangeException('Exchange not found', 404);
+            });
+            $this->fail('Expected AMQPExchangeException to be thrown');
+        } catch (\AMQPExchangeException $e) {
+            $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
+            $this->assertSame('Exchange not found', $e->getMessage());
+        }
     }
 
     public function testNoRetryOnAccessDenied(): void
     {
+        $attempt = 0;
         $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
 
-        $this->expectException(\AMQPException::class);
-        $this->expectExceptionMessage('Access refused');
-
-        $retry->withRetry(function (): void {
-            throw new \AMQPException('Access refused', 403);
-        });
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPException('Access refused', 403);
+            });
+            $this->fail('Expected AMQPException to be thrown');
+        } catch (\AMQPException $e) {
+            $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
+            $this->assertSame(403, $e->getCode());
+        }
     }
 
     public function testNoRetryOnPreconditionFailed(): void
     {
+        $attempt = 0;
         $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
 
-        $this->expectException(\AMQPException::class);
-        $this->expectExceptionMessage('Precondition failed');
-
-        $retry->withRetry(function (): void {
-            throw new \AMQPException('Precondition failed', 406);
-        });
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPException('Precondition failed', 406);
+            });
+            $this->fail('Expected AMQPException to be thrown');
+        } catch (\AMQPException $e) {
+            $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
+            $this->assertSame(406, $e->getCode());
+        }
     }
 
     public function testCircuitBreakerOpensAfterThreshold(): void
