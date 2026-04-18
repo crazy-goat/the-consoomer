@@ -105,15 +105,17 @@ class SenderTest extends TestCase
         $this->assertSame($envelope, $result);
     }
 
-    public function testSendUsesRoutingKeyFromStampOverOptions(): void
-    {
-        $options = [
-            'exchange' => 'test_exchange',
-            'routing_key' => 'options.routing.key',
-        ];
-        $stamp = new AmqpStamp('stamp.routing.key');
-
-        $envelope = new Envelope(new \stdClass(), [$stamp]);
+    /**
+     * @dataProvider routingKeyPrecedenceProvider
+     */
+    public function testSendRoutingKeyPrecedence(
+        array $options,
+        ?string $stampRoutingKey,
+        string $expectedRoutingKey,
+    ): void {
+        $envelope = $stampRoutingKey !== null
+            ? new Envelope(new \stdClass(), [new AmqpStamp($stampRoutingKey)])
+            : new Envelope(new \stdClass());
 
         $this->serializer
             ->expects($this->once())
@@ -128,7 +130,7 @@ class SenderTest extends TestCase
             ->method('publish')
             ->with(
                 '{"message":"test"}',
-                'stamp.routing.key',
+                $expectedRoutingKey,
                 null,
                 [],
             );
@@ -142,77 +144,37 @@ class SenderTest extends TestCase
         $sender->send($envelope);
     }
 
-    public function testSendUsesRoutingKeyFromOptionsWhenNoStamp(): void
+    /**
+     * @return array<string, array{options: array<string, string>, stampRoutingKey: string|null, expectedRoutingKey: string}>
+     */
+    public static function routingKeyPrecedenceProvider(): array
     {
-        $options = [
-            'exchange' => 'test_exchange',
-            'routing_key' => 'options.routing.key',
+        return [
+            'stamp routing key takes precedence over options' => [
+                'options' => [
+                    'exchange' => 'test_exchange',
+                    'routing_key' => 'options.routing.key',
+                ],
+                'stampRoutingKey' => 'stamp.routing.key',
+                'expectedRoutingKey' => 'stamp.routing.key',
+            ],
+            'options routing key used when no stamp' => [
+                'options' => [
+                    'exchange' => 'test_exchange',
+                    'routing_key' => 'options.routing.key',
+                ],
+                'stampRoutingKey' => null,
+                'expectedRoutingKey' => 'options.routing.key',
+            ],
+            'empty stamp routing key takes precedence over options' => [
+                'options' => [
+                    'exchange' => 'test_exchange',
+                    'routing_key' => 'options.routing.key',
+                ],
+                'stampRoutingKey' => '',
+                'expectedRoutingKey' => '',
+            ],
         ];
-
-        $envelope = new Envelope(new \stdClass());
-
-        $this->serializer
-            ->expects($this->once())
-            ->method('encode')
-            ->willReturn([
-                'body' => '{"message":"test"}',
-                'headers' => [],
-            ]);
-
-        $this->exchange
-            ->expects($this->once())
-            ->method('publish')
-            ->with(
-                '{"message":"test"}',
-                'options.routing.key',
-                null,
-                [],
-            );
-
-        $this->connection
-            ->expects($this->once())
-            ->method('checkHeartbeat')
-            ->willReturn(false);
-
-        $sender = $this->createSender($options);
-        $sender->send($envelope);
-    }
-
-    public function testSendUsesEmptyRoutingKeyFromStampOverOptions(): void
-    {
-        $options = [
-            'exchange' => 'test_exchange',
-            'routing_key' => 'options.routing.key',
-        ];
-        $stamp = new AmqpStamp('');
-
-        $envelope = new Envelope(new \stdClass(), [$stamp]);
-
-        $this->serializer
-            ->expects($this->once())
-            ->method('encode')
-            ->willReturn([
-                'body' => '{"message":"test"}',
-                'headers' => [],
-            ]);
-
-        $this->exchange
-            ->expects($this->once())
-            ->method('publish')
-            ->with(
-                '{"message":"test"}',
-                '',
-                null,
-                [],
-            );
-
-        $this->connection
-            ->expects($this->once())
-            ->method('checkHeartbeat')
-            ->willReturn(false);
-
-        $sender = $this->createSender($options);
-        $sender->send($envelope);
     }
 
     public function testSendUsesEmptyRoutingKeyWhenNotProvided(): void
