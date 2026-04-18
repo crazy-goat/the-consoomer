@@ -208,18 +208,19 @@ class ConnectionRetryTest extends TestCase
      */
     public function testCircuitBreakerDoesNotTransitionWithoutFailure(): void
     {
+        $clock = new FrozenClock();
+
         $retry = new ConnectionRetry(
             retryCount: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,
             retryCircuitBreakerTimeout: 1,
+            clock: $clock,
         );
 
-        // Wait longer than timeout
-        sleep(2);
+        $clock->advance(2);
 
-        // Should still be available (CLOSED state) since no failure occurred
         $this->assertFalse($retry->isCircuitOpen());
         $this->assertSame(CircuitState::CLOSED, $retry->getState());
     }
