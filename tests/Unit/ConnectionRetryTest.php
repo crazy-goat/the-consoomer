@@ -227,12 +227,15 @@ class ConnectionRetryTest extends TestCase
 
     public function testCircuitBreakerSuccessThresholdDefaultIsTwo(): void
     {
+        $clock = new FrozenClock();
+
         $retry = new ConnectionRetry(
             retryCount: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,
             retryCircuitBreakerTimeout: 2,
+            clock: $clock,
         );
 
         try {
@@ -244,7 +247,7 @@ class ConnectionRetryTest extends TestCase
 
         $this->assertTrue($retry->isCircuitOpen());
 
-        sleep(3);
+        $clock->advance(3);
 
         $retry->isCircuitOpen();
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
