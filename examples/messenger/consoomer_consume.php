@@ -43,12 +43,12 @@ $worker = new \Symfony\Component\Messenger\Worker(
     $bus,
 );
 
-$stopwatch->start('consomer');
+$stopwatch->start('consumer');
 try {
     $worker->run(['sleep' => 0]);
 } catch (\Throwable) {
     echo "Job finished." . PHP_EOL;
 }
 
-$time = $stopwatch->stop('consomer')->getDuration();
+$time = $stopwatch->stop('consumer')->getDuration();
 printf("Messages processed: %d, time: %.3fs, rate: %d msg/s", MyMessageHandler::$counter, $time / 1000.0, floor((MyMessageHandler::$counter / $time) * 1000));
