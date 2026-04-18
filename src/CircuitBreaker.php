@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer;
 
 use Psr\Log\LoggerInterface;
+use CrazyGoat\TheConsoomer\Clock\SystemClock;
+use CrazyGoat\TheConsoomer\ClockInterface;
 
 class CircuitBreaker
 {
@@ -12,16 +14,19 @@ class CircuitBreaker
     private int $successCount = 0;
     private ?\DateTimeImmutable $lastFailureTime = null;
     private CircuitState $state = CircuitState::CLOSED;
+    private readonly ClockInterface $clock;
 
     public function __construct(
         private readonly int $threshold = 10,
         private readonly int $timeout = 60,
         private readonly int $successThreshold = 2,
         private readonly ?LoggerInterface $logger = null,
+        ?ClockInterface $clock = null,
     ) {
         if ($this->successThreshold < 2) {
             throw new \InvalidArgumentException('successThreshold must be at least 2');
         }
+        $this->clock = $clock ?? new SystemClock();
     }
 
     public function recordSuccess(): void
@@ -38,7 +43,7 @@ class CircuitBreaker
     public function recordFailure(): void
     {
         $this->failureCount++;
-        $this->lastFailureTime = new \DateTimeImmutable();
+        $this->lastFailureTime = $this->clock->now();
 
         if ($this->state === CircuitState::HALF_OPEN) {
             $this->transitionTo(CircuitState::OPEN);
@@ -58,7 +63,7 @@ class CircuitBreaker
             if (!$this->lastFailureTime instanceof \DateTimeImmutable) {
                 return false;
             }
-            $elapsed = time() - $this->lastFailureTime->getTimestamp();
+            $elapsed = $this->clock->now()->getTimestamp() - $this->lastFailureTime->getTimestamp();
             if ($elapsed >= $this->timeout) {
                 $this->transitionTo(CircuitState::HALF_OPEN);
                 $this->successCount = 0;
