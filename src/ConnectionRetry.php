@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use CrazyGoat\TheConsoomer\Clock\SystemClock;
+use CrazyGoat\TheConsoomer\ClockInterface;
 use Psr\Log\LoggerInterface;
 
 class ConnectionRetry implements ConnectionRetryInterface
@@ -12,6 +14,8 @@ class ConnectionRetry implements ConnectionRetryInterface
     public const JITTER_VARIATION_FACTOR = 0.25;
     private ?CircuitBreaker $circuitBreaker = null;
     private readonly RetryMetrics $metrics;
+
+    private readonly ClockInterface $clock;
 
     public function __construct(
         private readonly int $retryCount = 3,
@@ -24,8 +28,10 @@ class ConnectionRetry implements ConnectionRetryInterface
         private readonly int $retryCircuitBreakerTimeout = 60,
         private readonly int $retryCircuitBreakerSuccessThreshold = 2,
         private readonly ?LoggerInterface $logger = null,
+        ?ClockInterface $clock = null,
     ) {
         $this->metrics = new RetryMetrics();
+        $this->clock = $clock ?? new SystemClock();
 
         if ($this->retryCircuitBreaker) {
             $this->circuitBreaker = new CircuitBreaker(
@@ -33,6 +39,7 @@ class ConnectionRetry implements ConnectionRetryInterface
                 $this->retryCircuitBreakerTimeout,
                 $this->retryCircuitBreakerSuccessThreshold,
                 $this->logger,
+                $this->clock,
             );
         }
     }
