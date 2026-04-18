@@ -11,10 +11,10 @@ class ConnectionRetry implements ConnectionRetryInterface
 {
     /** Jitter variation factor - 25% of delay is used as max variation range */
     public const JITTER_VARIATION_FACTOR = 0.25;
-    
+
     /** AMQP error codes that indicate permanent failures - should not retry */
     private const PERMANENT_FAILURE_CODES = [403, 404, 406];
-    
+
     private ?CircuitBreaker $circuitBreaker = null;
     private readonly RetryMetrics $metrics;
 
@@ -79,7 +79,7 @@ class ConnectionRetry implements ConnectionRetryInterface
                     ]);
                     throw $exception;
                 }
-                
+
                 $lastException = $exception;
                 $attempt++;
 
