@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
-use CrazyGoat\TheConsoomer\Connection;
+use CrazyGoat\TheConsoomer\ConnectionInterface;
 use CrazyGoat\TheConsoomer\Exception\MissingStampException;
-use CrazyGoat\TheConsoomer\InfrastructureSetup;
+use CrazyGoat\TheConsoomer\InfrastructureSetupInterface;
 use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -18,23 +18,23 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 class ReceiverTest extends TestCase
 {
     private AmqpFactory&MockObject $factory;
-    private Connection&MockObject $connection;
+    private ConnectionInterface&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPQueue&MockObject $queue;
-    private InfrastructureSetup&MockObject $setup;
+    private InfrastructureSetupInterface&MockObject $setup;
 
     protected function setUp(): void
     {
         $this->factory = $this->createMock(AmqpFactory::class);
-        $this->connection = $this->createMock(Connection::class);
+        $this->connection = $this->createMock(ConnectionInterface::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->queue = $this->createMock(\AMQPQueue::class);
-        $this->setup = $this->createMock(InfrastructureSetup::class);
+        $this->setup = $this->createMock(InfrastructureSetupInterface::class);
     }
 
     public function testGetCallsSetupFirst(): void
     {
-        $setup = $this->createMock(InfrastructureSetup::class);
+        $setup = $this->createMock(InfrastructureSetupInterface::class);
         $setup->expects($this->once())->method('setup');
 
         $channel = $this->createMock(\AMQPChannel::class);
@@ -442,7 +442,7 @@ class ReceiverTest extends TestCase
      */
     public function testGetMessageCountCallsSetupBeforeConnection(): void
     {
-        $setup = $this->createMock(InfrastructureSetup::class);
+        $setup = $this->createMock(InfrastructureSetupInterface::class);
         $setup->expects($this->once())->method('setup');
 
         $channel = $this->createMock(\AMQPChannel::class);

@@ -6,7 +6,7 @@ namespace CrazyGoat\TheConsoomer;
 
 use CrazyGoat\TheConsoomer\Enum\ExchangeType;
 
-class InfrastructureSetup
+final class InfrastructureSetup implements InfrastructureSetupInterface
 {
     private bool $setupPerformed = false;
 
@@ -23,7 +23,7 @@ class InfrastructureSetup
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
-        private readonly Connection $connection,
+        private readonly ConnectionInterface $connection,
         private readonly array $options,
     ) {
         if (!isset($options['exchange']) || !isset($options['queue'])) {

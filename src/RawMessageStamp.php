@@ -6,9 +6,9 @@ namespace CrazyGoat\TheConsoomer;
 
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
-class RawMessageStamp implements NonSendableStampInterface
+final readonly class RawMessageStamp implements NonSendableStampInterface
 {
-    public function __construct(public readonly \AMQPEnvelope $amqpMessage)
+    public function __construct(public \AMQPEnvelope $amqpMessage)
     {
     }
 }

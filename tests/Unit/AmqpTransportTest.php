@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpTransport;
-use CrazyGoat\TheConsoomer\InfrastructureSetup;
+use CrazyGoat\TheConsoomer\InfrastructureSetupInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Messenger\Envelope;
@@ -17,13 +17,13 @@ class AmqpTransportTest extends TestCase
 {
     private ReceiverInterface&MockObject $receiver;
     private SenderInterface&MockObject $sender;
-    private InfrastructureSetup&MockObject $setup;
+    private InfrastructureSetupInterface&MockObject $setup;
 
     protected function setUp(): void
     {
         $this->receiver = $this->createMock(ReceiverInterface::class);
         $this->sender = $this->createMock(SenderInterface::class);
-        $this->setup = $this->createMock(InfrastructureSetup::class);
+        $this->setup = $this->createMock(InfrastructureSetupInterface::class);
     }
 
     public function testGetDelegatesToReceiver(): void

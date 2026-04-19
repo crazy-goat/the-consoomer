@@ -10,7 +10,7 @@ use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class Receiver implements ReceiverInterface, MessageCountAwareInterface
+final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 {
     public const DEFAULT_MAX_UNACKED_MESSAGES = 100;
     private int $unacked = 0;
@@ -30,10 +30,10 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
-        private readonly Connection $connection,
+        private readonly ConnectionInterface $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
-        private readonly InfrastructureSetup $setup,
+        private readonly InfrastructureSetupInterface $setup,
         private readonly ?ConnectionRetryInterface $retry = null,
     ) {
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));

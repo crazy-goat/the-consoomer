@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
-class RetryMetrics
+final class RetryMetrics
 {
     private int $totalAttempts = 0;
     private int $successfulRetries = 0;
