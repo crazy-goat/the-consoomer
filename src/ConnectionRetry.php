@@ -158,8 +158,6 @@ final class ConnectionRetry implements ConnectionRetryInterface
 
     /**
      * {@inheritdoc}
-     *
-     * @return bool
      */
     public function isCircuitOpen(): bool
     {
@@ -172,8 +170,6 @@ final class ConnectionRetry implements ConnectionRetryInterface
 
     /**
      * {@inheritdoc}
-     *
-     * @return CircuitState
      */
     public function getState(): CircuitState
     {
@@ -186,8 +182,6 @@ final class ConnectionRetry implements ConnectionRetryInterface
 
     /**
      * {@inheritdoc}
-     *
-     * @return RetryMetrics
      */
     public function getMetrics(): RetryMetrics
     {

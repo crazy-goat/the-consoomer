@@ -42,7 +42,6 @@ class AmqpTransportFactory implements TransportFactoryInterface
      * @param string              $dsn        DSN string
      * @param array               $options    Additional options
      * @param SerializerInterface $serializer Message serializer
-     * @return TransportInterface
      */
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
     {
@@ -90,7 +89,6 @@ class AmqpTransportFactory implements TransportFactoryInterface
      * @param SerializerInterface  $serializer Message serializer
      * @param AmqpFactoryInterface|null $factory    AMQP factory (optional)
      * @param LoggerInterface|null      $logger     Logger (optional)
-     * @return TransportInterface
      * @throws \InvalidArgumentException When DSN is invalid
      */
     public static function create(
@@ -161,7 +159,6 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     retry_circuit_breaker_success_threshold?: int,
      * } $options Retry configuration options
      * @param LoggerInterface|null $logger Logger instance
-     * @return ConnectionRetryInterface|null
      */
     private static function createRetry(array $options, ?LoggerInterface $logger = null): ?ConnectionRetryInterface
     {

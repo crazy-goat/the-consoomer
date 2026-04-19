@@ -15,15 +15,12 @@ interface ConnectionInterface
     /**
      * Returns the AMQP channel, creating it if necessary.
      *
-     * @return \AMQPChannel
      * @throws \AMQPConnectionException When connection fails
      */
     public function getChannel(): \AMQPChannel;
 
     /**
      * Returns the underlying AMQP connection.
-     *
-     * @return \AMQPConnection
      */
     public function getConnection(): \AMQPConnection;
 
@@ -48,8 +45,6 @@ interface ConnectionInterface
 
     /**
      * Checks if connection is active.
-     *
-     * @return bool
      */
     public function isConnected(): bool;
 

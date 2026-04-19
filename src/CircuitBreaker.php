@@ -107,8 +107,6 @@ final class CircuitBreaker
 
     /**
      * Returns current circuit state.
-     *
-     * @return CircuitState
      */
     public function getState(): CircuitState
     {

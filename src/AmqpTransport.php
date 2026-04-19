@@ -59,8 +59,6 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
 
     /**
      * {@inheritdoc}
-     *
-     * @return Envelope
      */
     public function send(Envelope $envelope): Envelope
     {
@@ -69,8 +67,6 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
 
     /**
      * {@inheritdoc}
-     *
-     * @return int
      */
     public function getMessageCount(): int
     {

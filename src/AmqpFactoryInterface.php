@@ -15,7 +15,6 @@ interface AmqpFactoryInterface
      * Creates an AMQP connection.
      *
      * @param array{heartbeat?: int} $options Connection options
-     * @return \AMQPConnection
      */
     public function createConnection(array $options = []): \AMQPConnection;
 
@@ -23,7 +22,6 @@ interface AmqpFactoryInterface
      * Creates an AMQP channel on the given connection.
      *
      * @param \AMQPConnection $connection AMQP connection
-     * @return \AMQPChannel
      */
     public function createChannel(\AMQPConnection $connection): \AMQPChannel;
 
@@ -31,7 +29,6 @@ interface AmqpFactoryInterface
      * Creates an AMQP queue on the given channel.
      *
      * @param \AMQPChannel $channel AMQP channel
-     * @return \AMQPQueue
      */
     public function createQueue(\AMQPChannel $channel): \AMQPQueue;
 
@@ -39,7 +36,6 @@ interface AmqpFactoryInterface
      * Creates an AMQP exchange on the given channel.
      *
      * @param \AMQPChannel $channel AMQP channel
-     * @return \AMQPExchange
      */
     public function createExchange(\AMQPChannel $channel): \AMQPExchange;
 

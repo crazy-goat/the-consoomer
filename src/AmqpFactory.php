@@ -17,7 +17,6 @@ class AmqpFactory implements AmqpFactoryInterface
      * {@inheritdoc}
      *
      * @param array{heartbeat?: int} $options Connection options
-     * @return \AMQPConnection
      */
     public function createConnection(array $options = []): \AMQPConnection
     {
@@ -33,7 +32,6 @@ class AmqpFactory implements AmqpFactoryInterface
      * {@inheritdoc}
      *
      * @param \AMQPConnection $connection AMQP connection
-     * @return \AMQPChannel
      */
     public function createChannel(\AMQPConnection $connection): \AMQPChannel
     {
@@ -44,7 +42,6 @@ class AmqpFactory implements AmqpFactoryInterface
      * {@inheritdoc}
      *
      * @param \AMQPChannel $channel AMQP channel
-     * @return \AMQPQueue
      */
     public function createQueue(\AMQPChannel $channel): \AMQPQueue
     {
@@ -55,7 +52,6 @@ class AmqpFactory implements AmqpFactoryInterface
      * {@inheritdoc}
      *
      * @param \AMQPChannel $channel AMQP channel
-     * @return \AMQPExchange
      */
     public function createExchange(\AMQPChannel $channel): \AMQPExchange
     {

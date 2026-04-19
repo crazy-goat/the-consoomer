@@ -51,8 +51,6 @@ final class RetryMetrics
 
     /**
      * Returns total number of attempts.
-     *
-     * @return int
      */
     public function getTotalAttempts(): int
     {
@@ -61,8 +59,6 @@ final class RetryMetrics
 
     /**
      * Returns number of successful retries.
-     *
-     * @return int
      */
     public function getSuccessfulRetries(): int
     {
@@ -71,8 +67,6 @@ final class RetryMetrics
 
     /**
      * Returns number of failed retries.
-     *
-     * @return int
      */
     public function getFailedRetries(): int
     {
@@ -81,8 +75,6 @@ final class RetryMetrics
 
     /**
      * Returns number of circuit breaker open events.
-     *
-     * @return int
      */
     public function getCircuitBreakerOpens(): int
     {

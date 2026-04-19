@@ -24,22 +24,16 @@ interface ConnectionRetryInterface
 
     /**
      * Checks if circuit breaker is open.
-     *
-     * @return bool
      */
     public function isCircuitOpen(): bool;
 
     /**
      * Returns current circuit state.
-     *
-     * @return CircuitState
      */
     public function getState(): CircuitState;
 
     /**
      * Returns retry metrics.
-     *
-     * @return RetryMetrics
      */
     public function getMetrics(): RetryMetrics;
 

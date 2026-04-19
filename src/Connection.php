@@ -54,7 +54,6 @@ final class Connection implements ConnectionInterface
     /**
      * {@inheritdoc}
      *
-     * @return \AMQPChannel
      * @throws \AMQPConnectionException When connection fails
      */
     public function getChannel(): \AMQPChannel
@@ -77,8 +76,6 @@ final class Connection implements ConnectionInterface
 
     /**
      * {@inheritdoc}
-     *
-     * @return \AMQPConnection
      */
     public function getConnection(): \AMQPConnection
     {
@@ -145,8 +142,6 @@ final class Connection implements ConnectionInterface
 
     /**
      * {@inheritdoc}
-     *
-     * @return bool
      */
     public function isConnected(): bool
     {

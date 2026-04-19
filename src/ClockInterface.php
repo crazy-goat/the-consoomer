@@ -13,8 +13,6 @@ interface ClockInterface
 {
     /**
      * Returns current DateTimeImmutable.
-     *
-     * @return \DateTimeImmutable
      */
     public function now(): \DateTimeImmutable;
 }

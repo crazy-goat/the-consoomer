@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Exception;
 
-use Throwable;
-
 /**
  * Exception thrown when all retry attempts have been exhausted.
  */
@@ -28,7 +26,6 @@ class RetryExhaustedException extends \RuntimeException
      * Creates exception from a previous exception.
      *
      * @param \Throwable $exception Previous exception
-     * @return self
      */
     public static function fromPrevious(\Throwable $exception): self
     {
