@@ -33,7 +33,7 @@ class Connection
 
     public function getChannel(): \AMQPChannel
     {
-        if ($this->channel === null || !$this->channel->isConnected()) {
+        if (!$this->channel instanceof \AMQPChannel || !$this->channel->isConnected()) {
             $this->channel = $this->factory->createChannel($this->amqpConnection);
         }
 
