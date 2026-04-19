@@ -81,6 +81,10 @@ class RetryTest extends TestCase
         $messages = iterator_to_array($messages);
 
         $this->assertCount(1, $messages);
+
+        /** @var Envelope $receivedEnvelope */
+        $receivedEnvelope = $messages[0];
+        $transport->ack($receivedEnvelope);
     }
 
     public function testTransportWithCircuitBreaker(): void
@@ -106,5 +110,9 @@ class RetryTest extends TestCase
         $messages = iterator_to_array($messages);
 
         $this->assertCount(1, $messages);
+
+        /** @var Envelope $receivedEnvelope */
+        $receivedEnvelope = $messages[0];
+        $transport->ack($receivedEnvelope);
     }
 }
