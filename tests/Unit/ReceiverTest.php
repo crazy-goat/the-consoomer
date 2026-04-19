@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\Connection;
+use CrazyGoat\TheConsoomer\Exception\MissingStampException;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
 use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
@@ -183,7 +184,7 @@ class ReceiverTest extends TestCase
 
         $envelope = new Envelope(new \stdClass());
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(MissingStampException::class);
         $this->expectExceptionMessage('No raw message stamp');
 
         $receiver->ack($envelope);
@@ -197,7 +198,7 @@ class ReceiverTest extends TestCase
 
         $envelope = new Envelope(new \stdClass());
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(MissingStampException::class);
         $this->expectExceptionMessage('No raw message stamp');
 
         $receiver->reject($envelope);

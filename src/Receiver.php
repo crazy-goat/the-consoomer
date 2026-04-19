@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use CrazyGoat\TheConsoomer\Exception\MissingStampException;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
@@ -102,7 +103,7 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $stamp = $envelope->last(RawMessageStamp::class);
         if (!$stamp instanceof RawMessageStamp) {
-            throw new \RuntimeException('No raw message stamp');
+            throw new MissingStampException('No raw message stamp');
         }
 
         if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
@@ -122,7 +123,7 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $stamp = $envelope->last(RawMessageStamp::class);
         if (!$stamp instanceof RawMessageStamp) {
-            throw new \RuntimeException('No raw message stamp');
+            throw new MissingStampException('No raw message stamp');
         }
 
         if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
