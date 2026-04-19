@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Message\RawMessage;
+use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use CrazyGoat\TheConsoomer\AmqpStamp;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\Messenger\Envelope;
