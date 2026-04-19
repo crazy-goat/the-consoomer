@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer;
 
 use CrazyGoat\TheConsoomer\Clock\SystemClock;
+use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
+use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
+use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use Psr\Log\LoggerInterface;
 
 class ConnectionRetry implements ConnectionRetryInterface
@@ -49,7 +52,7 @@ class ConnectionRetry implements ConnectionRetryInterface
         if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker && !$this->circuitBreaker->isAvailable()) {
             $this->logger?->error('Circuit breaker is open, rejecting operation');
             $this->metrics->recordCircuitBreakerOpen();
-            throw new \RuntimeException('Circuit breaker is open');
+            throw new CircuitBreakerOpenException('Circuit breaker is open');
         }
 
         $attempt = 0;
@@ -96,6 +99,11 @@ class ConnectionRetry implements ConnectionRetryInterface
                 ]);
 
                 usleep($delay);
+            } catch (\Throwable $exception) {
+                $this->logger?->warning('Non-AMQP exception during retry', [
+                    'error' => $exception->getMessage(),
+                ]);
+                throw UnexpectedOperationException::fromPrevious($exception);
             }
         }
 
@@ -110,7 +118,9 @@ class ConnectionRetry implements ConnectionRetryInterface
             'error' => $lastException?->getMessage(),
         ]);
 
-        throw $lastException ?? new \RuntimeException('Operation failed with no retries configured');
+        throw $lastException instanceof \AMQPException
+            ? RetryExhaustedException::fromPrevious($lastException)
+            : new RetryExhaustedException();
     }
 
     public function isCircuitOpen(): bool
