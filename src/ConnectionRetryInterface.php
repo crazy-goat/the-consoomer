@@ -15,10 +15,9 @@ interface ConnectionRetryInterface
      * @template T
      * @param callable(): T $operation Operation to execute
      * @return T
-     * @throws CircuitBreakerOpenException  When circuit breaker is open
-     * @throws RetryExhaustedException      When all retry attempts fail
-     * @throws UnexpectedOperationException When non-AMQP exception occurs
-     * @throws \AMQPException               When permanent AMQP failure occurs
+     * @throws \CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException  When circuit breaker is open
+     * @throws \CrazyGoat\TheConsoomer\Exception\RetryExhaustedException      When all retry attempts fail
+     * @throws \CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException When non-AMQP exception occurs
      */
     public function withRetry(callable $operation): mixed;
 
