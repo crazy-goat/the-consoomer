@@ -7,6 +7,7 @@ namespace CrazyGoat\TheConsoomer;
 use CrazyGoat\TheConsoomer\Clock\SystemClock;
 use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
 use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
+use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use Psr\Log\LoggerInterface;
 
 class ConnectionRetry implements ConnectionRetryInterface
@@ -102,7 +103,7 @@ class ConnectionRetry implements ConnectionRetryInterface
                 $this->logger?->warning('Non-AMQP exception during retry', [
                     'error' => $exception->getMessage(),
                 ]);
-                throw new RetryExhaustedException(
+                throw new UnexpectedOperationException(
                     $exception->getMessage(),
                     $exception->getCode(),
                     $exception

@@ -8,6 +8,7 @@ use CrazyGoat\TheConsoomer\CircuitState;
 use CrazyGoat\TheConsoomer\ConnectionRetry;
 use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
 use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
+use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use CrazyGoat\TheConsoomer\Tests\Unit\Clock\FrozenClock;
 use PHPUnit\Framework\TestCase;
 
@@ -75,7 +76,7 @@ class ConnectionRetryTest extends TestCase
     {
         $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $this->expectException(UnexpectedOperationException::class);
 
         $retry->withRetry(function (): void {
             throw new \RuntimeException('Other error');
