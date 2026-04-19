@@ -82,9 +82,9 @@ class Connection
             }
             $this->lastActivityTime = time();
             $this->logger?->debug('Reconnected successfully');
-        } catch (\Exception $e) {
+        } catch (\AMQPConnectionException $e) {
             $this->logger?->error('Reconnect failed: {error}', ['error' => $e->getMessage()]);
-            throw new \AMQPConnectionException('Reconnect failed: ' . $e->getMessage(), 0, $e);
+            throw $e;
         }
 
         // Clear channel cache only after successful reconnect
