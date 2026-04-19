@@ -12,6 +12,14 @@ class Sender implements SenderInterface
 {
     private ?\AMQPExchange $exchange = null;
 
+    /**
+     * @param array{
+     *     exchange?: string,
+     *     routing_key?: string,
+     *     auto_setup?: bool,
+     *     retry?: bool,
+     * } $options
+     */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
         private readonly Connection $connection,

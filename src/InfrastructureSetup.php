@@ -10,6 +10,17 @@ class InfrastructureSetup
 {
     private bool $setupPerformed = false;
 
+    /**
+     * @param array{
+     *     exchange: string,
+     *     queue: string,
+     *     exchange_type?: string,
+     *     routing_key?: string,
+     *     queue_arguments?: array<string, mixed>,
+     *     exchange_flags?: int,
+     *     queue_flags?: int,
+     * } $options
+     */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
         private readonly Connection $connection,

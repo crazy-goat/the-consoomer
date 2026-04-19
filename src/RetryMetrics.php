@@ -68,6 +68,15 @@ class RetryMetrics
         $this->circuitBreakerOpens = 0;
     }
 
+    /**
+     * @return array{
+     *     total_attempts: int,
+     *     successful_retries: int,
+     *     failed_retries: int,
+     *     circuit_breaker_opens: int,
+     *     retry_success_rate: float,
+     * }
+     */
     public function toArray(): array
     {
         return [

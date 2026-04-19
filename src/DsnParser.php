@@ -9,6 +9,46 @@ class DsnParser
     /** @var list<string> */
     private static ?array $validExchangeTypes = null;
 
+    /**
+     * @param string $dsn DSN in format: amqp-consoomer://host/vhost/exchange?query=params
+     * @return array{
+     *     host: string,
+     *     port: int,
+     *     user: string,
+     *     password: string,
+     *     vhost: string,
+     *     exchange: string,
+     *     ssl?: bool,
+     *     timeout?: float|int,
+     *     read_timeout?: float|int,
+     *     write_timeout?: float|int,
+     *     connect_timeout?: float|int,
+     *     exchange_type?: string,
+     *     queue?: string,
+     *     routing_key?: string,
+     *     queues?: array<string, array{binding_keys?: list<string>}>,
+     *     queue_arguments?: array<string, mixed>,
+     *     max_unacked_messages?: int,
+     *     auto_setup?: bool,
+     *     retry?: bool,
+     *     retry_count?: int,
+     *     retry_delay?: int,
+     *     retry_backoff?: bool,
+     *     retry_max_delay?: int,
+     *     retry_jitter?: bool,
+     *     retry_circuit_breaker?: bool,
+     *     retry_circuit_breaker_threshold?: int,
+     *     retry_circuit_breaker_timeout?: int,
+     *     retry_circuit_breaker_success_threshold?: int,
+     *     heartbeat?: int,
+     *     ssl_cert?: string,
+     *     ssl_key?: string,
+     *     ssl_cacert?: string,
+     *     ssl_verify?: bool,
+     *     exchange_flags?: int,
+     *     queue_flags?: int,
+     * }
+     */
     public function parse(string $dsn): array
     {
         $info = parse_url($dsn);
@@ -69,6 +109,30 @@ class DsnParser
         return $this->validateParsedOptions($result);
     }
 
+    /**
+     * @param array{
+     *     host: string,
+     *     port: int,
+     *     user: string,
+     *     password: string,
+     *     vhost: string,
+     *     exchange: string,
+     *     ssl?: bool,
+     *     exchange_type?: string,
+     *     queue_arguments?: array<string, mixed>,
+     * } $options
+     * @return array{
+     *     host: string,
+     *     port: int,
+     *     user: string,
+     *     password: string,
+     *     vhost: string,
+     *     exchange: string,
+     *     ssl?: bool,
+     *     exchange_type?: string,
+     *     queue_arguments?: array<string, mixed>,
+     * }
+     */
     private function validateParsedOptions(array $options): array
     {
         if (empty($options['exchange'])) {
@@ -96,6 +160,9 @@ class DsnParser
         return $options;
     }
 
+    /**
+     * @return array{vhost: string, exchange: string}
+     */
     private function parsePath(string $path): array
     {
         $items = explode('/', trim($path, " \n\r\t\v\0/"));
@@ -122,6 +189,10 @@ class DsnParser
         return $value;
     }
 
+    /**
+     * @param array<string, mixed> $arguments
+     * @return array<string, mixed>
+     */
     public function normalizeQueueArguments(array $arguments): array
     {
         $normalized = [];
@@ -137,6 +208,17 @@ class DsnParser
     }
 
     /**
+     * @param array{
+     *     host: string,
+     *     port: int,
+     *     user: string,
+     *     password: string,
+     *     vhost: string,
+     *     exchange: string,
+     *     ssl?: bool,
+     *     exchange_type?: string,
+     *     queue_arguments?: array<string, mixed>,
+     * } $options
      * @deprecated This method is deprecated and will be removed in 0.2.
      *             Validation now happens automatically in parse().
      *             This method always returns true for backward compatibility.

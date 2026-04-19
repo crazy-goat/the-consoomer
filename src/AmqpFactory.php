@@ -8,11 +8,14 @@ use Psr\Log\LoggerInterface;
 
 class AmqpFactory implements AmqpFactoryInterface
 {
+    /**
+     * @param array{heartbeat?: int} $options
+     */
     public function createConnection(array $options = []): \AMQPConnection
     {
         $connectionOptions = [];
         if (isset($options['heartbeat'])) {
-            $connectionOptions['heartbeat'] = (int) $options['heartbeat'];
+            $connectionOptions['heartbeat'] = $options['heartbeat'];
         }
 
         return new \AMQPConnection($connectionOptions);
@@ -33,6 +36,15 @@ class AmqpFactory implements AmqpFactoryInterface
         return new \AMQPExchange($channel);
     }
 
+    /**
+     * @param array{
+     *     ssl?: bool,
+     *     ssl_cert?: string,
+     *     ssl_key?: string,
+     *     ssl_cacert?: string,
+     *     ssl_verify?: bool,
+     * } $options
+     */
     public function configureSsl(\AMQPConnection $connection, array $options, ?LoggerInterface $logger = null): void
     {
         if (empty($options['ssl'])) {
@@ -76,6 +88,9 @@ class AmqpFactory implements AmqpFactoryInterface
         $logger?->info('SSL handshake configured successfully');
     }
 
+    /**
+     * @param array{ssl_cacert?: string} $options
+     */
     public function hasCaCertConfigured(array $options): bool
     {
         return !empty($options['ssl_cacert']);
