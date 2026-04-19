@@ -8,7 +8,7 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
-class Sender implements SenderInterface
+final class Sender implements SenderInterface
 {
     private ?\AMQPExchange $exchange = null;
 
@@ -22,10 +22,10 @@ class Sender implements SenderInterface
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
-        private readonly Connection $connection,
+        private readonly ConnectionInterface $connection,
         private readonly SerializerInterface $serializer,
         private readonly array $options,
-        private readonly InfrastructureSetup $setup,
+        private readonly InfrastructureSetupInterface $setup,
         private readonly ?ConnectionRetryInterface $retry = null,
     ) {
     }

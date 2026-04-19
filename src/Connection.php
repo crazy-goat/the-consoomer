@@ -6,7 +6,7 @@ namespace CrazyGoat\TheConsoomer;
 
 use Psr\Log\LoggerInterface;
 
-class Connection
+final class Connection implements ConnectionInterface
 {
     private int $heartbeat = 0;
     private int $lastActivityTime;

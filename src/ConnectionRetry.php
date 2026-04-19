@@ -10,7 +10,7 @@ use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
 use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use Psr\Log\LoggerInterface;
 
-class ConnectionRetry implements ConnectionRetryInterface
+final class ConnectionRetry implements ConnectionRetryInterface
 {
     /** Jitter variation factor - 25% of delay is used as max variation range */
     public const JITTER_VARIATION_FACTOR = 0.25;

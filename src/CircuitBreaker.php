@@ -7,7 +7,7 @@ namespace CrazyGoat\TheConsoomer;
 use CrazyGoat\TheConsoomer\Clock\SystemClock;
 use Psr\Log\LoggerInterface;
 
-class CircuitBreaker
+final class CircuitBreaker
 {
     private int $failureCount = 0;
     private int $successCount = 0;

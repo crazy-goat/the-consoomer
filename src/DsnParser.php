@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
-class DsnParser
+final class DsnParser
 {
     /** @var list<string> */
     private static ?array $validExchangeTypes = null;

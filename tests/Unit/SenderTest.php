@@ -6,8 +6,8 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\AmqpStamp;
-use CrazyGoat\TheConsoomer\Connection;
-use CrazyGoat\TheConsoomer\InfrastructureSetup;
+use CrazyGoat\TheConsoomer\ConnectionInterface;
+use CrazyGoat\TheConsoomer\InfrastructureSetupInterface;
 use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -17,18 +17,18 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 class SenderTest extends TestCase
 {
     private AmqpFactory&MockObject $factory;
-    private Connection&MockObject $connection;
+    private ConnectionInterface&MockObject $connection;
     private SerializerInterface&MockObject $serializer;
     private \AMQPExchange&MockObject $exchange;
-    private InfrastructureSetup&MockObject $setup;
+    private InfrastructureSetupInterface&MockObject $setup;
 
     protected function setUp(): void
     {
         $this->factory = $this->createMock(AmqpFactory::class);
-        $this->connection = $this->createMock(Connection::class);
+        $this->connection = $this->createMock(ConnectionInterface::class);
         $this->serializer = $this->createMock(SerializerInterface::class);
         $this->exchange = $this->createMock(\AMQPExchange::class);
-        $this->setup = $this->createMock(InfrastructureSetup::class);
+        $this->setup = $this->createMock(InfrastructureSetupInterface::class);
     }
 
     public function testSendPublishesToExchange(): void
@@ -276,7 +276,7 @@ class SenderTest extends TestCase
 
     public function testSendCallsSetupFirst(): void
     {
-        $setup = $this->createMock(InfrastructureSetup::class);
+        $setup = $this->createMock(InfrastructureSetupInterface::class);
         $setup->expects($this->once())->method('setup');
 
         $channel = $this->createMock(\AMQPChannel::class);
