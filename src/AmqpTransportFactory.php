@@ -31,6 +31,40 @@ class AmqpTransportFactory implements TransportFactoryInterface
     /**
      * Convenience method for direct instantiation outside Symfony DI.
      * Use createTransport() when integrating with Symfony Messenger transport factory system.
+     *
+     * @param array{
+     *     host?: string,
+     *     port?: int,
+     *     user?: string,
+     *     password?: string,
+     *     vhost?: string,
+     *     exchange?: string,
+     *     queue?: string,
+     *     routing_key?: string,
+     *     timeout?: float|int,
+     *     exchange_type?: string,
+     *     queue_arguments?: array<string, mixed>,
+     *     max_unacked_messages?: int,
+     *     auto_setup?: bool,
+     *     retry?: bool,
+     *     retry_count?: int,
+     *     retry_delay?: int,
+     *     retry_backoff?: bool,
+     *     retry_max_delay?: int,
+     *     retry_jitter?: bool,
+     *     retry_circuit_breaker?: bool,
+     *     retry_circuit_breaker_threshold?: int,
+     *     retry_circuit_breaker_timeout?: int,
+     *     retry_circuit_breaker_success_threshold?: int,
+     *     heartbeat?: int,
+     *     ssl?: bool,
+     *     ssl_cert?: string,
+     *     ssl_key?: string,
+     *     ssl_cacert?: string,
+     *     ssl_verify?: bool,
+     *     exchange_flags?: int,
+     *     queue_flags?: int,
+     * } $options
      */
     public static function create(
         string $dsn,
@@ -64,7 +98,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
         // Client-side heartbeat tracking for auto-reconnect detection
         $amqpConnection = new Connection($factory, $connection);
         if (isset($mergedOptions['heartbeat'])) {
-            $amqpConnection->setHeartbeat((int) $mergedOptions['heartbeat']);
+            $amqpConnection->setHeartbeat($mergedOptions['heartbeat']);
         }
         if ($logger instanceof LoggerInterface) {
             $amqpConnection->setLogger($logger);
@@ -84,6 +118,20 @@ class AmqpTransportFactory implements TransportFactoryInterface
         );
     }
 
+    /**
+     * @param array{
+     *     retry?: bool,
+     *     retry_count?: int,
+     *     retry_delay?: int,
+     *     retry_backoff?: bool,
+     *     retry_max_delay?: int,
+     *     retry_jitter?: bool,
+     *     retry_circuit_breaker?: bool,
+     *     retry_circuit_breaker_threshold?: int,
+     *     retry_circuit_breaker_timeout?: int,
+     *     retry_circuit_breaker_success_threshold?: int,
+     * } $options
+     */
     private static function createRetry(array $options, ?LoggerInterface $logger = null): ?ConnectionRetryInterface
     {
         if ($options['retry'] ?? false) {

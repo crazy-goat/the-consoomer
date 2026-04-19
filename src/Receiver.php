@@ -20,6 +20,14 @@ class Receiver implements ReceiverInterface, MessageCountAwareInterface
     private ?\AMQPQueue $queue = null;
     private \Closure $callback;
 
+    /**
+     * @param array{
+     *     queue?: string,
+     *     max_unacked_messages?: int,
+     *     auto_setup?: bool,
+     *     retry?: bool,
+     * } $options
+     */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
         private readonly Connection $connection,
