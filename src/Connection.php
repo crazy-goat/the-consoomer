@@ -11,6 +11,7 @@ class Connection
     private int $heartbeat = 0;
     private int $lastActivityTime;
     private ?LoggerInterface $logger = null;
+    private ?\AMQPChannel $channel = null;
 
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
@@ -32,7 +33,17 @@ class Connection
 
     public function getChannel(): \AMQPChannel
     {
-        return $this->factory->createChannel($this->amqpConnection);
+        if ($this->channel === null || !$this->channel->isConnected()) {
+            $this->channel = $this->factory->createChannel($this->amqpConnection);
+        }
+
+        return $this->channel;
+    }
+
+    public function clearChannelCache(): void
+    {
+        $this->channel = null;
+        $this->logger?->debug('Channel cache cleared');
     }
 
     public function getConnection(): \AMQPConnection
@@ -75,6 +86,9 @@ class Connection
             $this->logger?->error('Reconnect failed: {error}', ['error' => $e->getMessage()]);
             throw new \AMQPConnectionException('Reconnect failed: ' . $e->getMessage(), 0, $e);
         }
+
+        // Clear channel cache only after successful reconnect
+        $this->channel = null;
     }
 
     public function updateActivity(): void

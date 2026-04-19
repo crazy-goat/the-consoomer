@@ -177,4 +177,154 @@ class ConnectionTest extends TestCase
 
         $this->assertTrue($connection->isConnected());
     }
+
+    public function testGetChannelCachesChannel(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        // isConnected called on each getChannel when channel is cached
+        $channel
+            ->expects($this->any())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturn($channel);
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        $result1 = $connection->getChannel();
+        $this->assertSame($channel, $result1);
+
+        $result2 = $connection->getChannel();
+        $this->assertSame($channel, $result2);
+    }
+
+    public function testReconnectInvalidatesChannelCache(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+        $newChannel = $this->createMock(\AMQPChannel::class);
+
+        $this->factory
+            ->expects($this->exactly(2))
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturnOnConsecutiveCalls($channel, $newChannel);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        // First call creates the channel
+        $result1 = $connection->getChannel();
+        $this->assertSame($channel, $result1);
+
+        // Reconnect should invalidate the cache (after successful reconnect)
+        $connection->reconnect();
+
+        // Next call should create a new channel
+        $result2 = $connection->getChannel();
+        $this->assertSame($newChannel, $result2);
+    }
+
+    public function testGetChannelCreatesNewChannelWhenCachedChannelIsDisconnected(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+        $newChannel = $this->createMock(\AMQPChannel::class);
+
+        // First channel is disconnected - this triggers recreation
+        $channel
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        // New channel stays connected
+        $newChannel
+            ->expects($this->never())
+            ->method('isConnected');
+
+        $this->factory
+            ->expects($this->exactly(2))
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturnOnConsecutiveCalls($channel, $newChannel);
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        // First call creates the channel
+        $result1 = $connection->getChannel();
+        $this->assertSame($channel, $result1);
+
+        // Second call detects disconnected channel and creates new one
+        $result2 = $connection->getChannel();
+        $this->assertSame($newChannel, $result2);
+    }
+
+    public function testClearChannelCacheManuallyClearsCache(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+        $newChannel = $this->createMock(\AMQPChannel::class);
+
+        // isConnected is NOT called on first getChannel because channel is null
+        // New channel is also not checked because cache was manually cleared
+        $this->factory
+            ->expects($this->exactly(2))
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturnOnConsecutiveCalls($channel, $newChannel);
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        // First call creates the channel
+        $result1 = $connection->getChannel();
+        $this->assertSame($channel, $result1);
+
+        // Manually clear cache
+        $connection->clearChannelCache();
+
+        // Next call should create a new channel (cache is null, no isConnected check)
+        $result2 = $connection->getChannel();
+        $this->assertSame($newChannel, $result2);
+    }
+
+    public function testReconnectDoesNotClearCacheOnFailure(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturn($channel);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('connect')
+            ->willThrowException(new \AMQPConnectionException('Connection failed'));
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        // First call creates the channel
+        $result1 = $connection->getChannel();
+        $this->assertSame($channel, $result1);
+
+        // Reconnect fails - cache should NOT be cleared
+        $this->expectException(\AMQPConnectionException::class);
+        $connection->reconnect();
+    }
 }
