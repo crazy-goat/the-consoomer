@@ -110,6 +110,10 @@ final class DsnParser
     }
 
     /**
+     * Validates parsed DSN options.
+     *
+     * Checks for required exchange name and validates exchange_type if provided.
+     *
      * @param array{
      *     host: string,
      *     port: int,
@@ -132,6 +136,7 @@ final class DsnParser
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
      * }
+     * @throws \InvalidArgumentException When exchange is missing or exchange_type is invalid
      */
     private function validateParsedOptions(array $options): array
     {
@@ -161,6 +166,12 @@ final class DsnParser
     }
 
     /**
+     * Parses DSN path to extract vhost and exchange.
+     *
+     * Note: Queue name must be provided as a query parameter (?queue=name),
+     * not in the path. Path only contains vhost and exchange.
+     *
+     * @param string $path DSN path (e.g., /vhost/exchange)
      * @return array{vhost: string, exchange: string}
      */
     private function parsePath(string $path): array
@@ -173,6 +184,14 @@ final class DsnParser
         ];
     }
 
+    /**
+     * Normalizes a value from string to appropriate type.
+     *
+     * Converts numeric strings to int/float and 'true'/'false' to booleans.
+     *
+     * @param mixed $value Value to normalize
+     * @return mixed Normalized value (int, float, bool, or original string)
+     */
     private function normalizeValue(mixed $value): mixed
     {
         if (is_numeric($value)) {
@@ -190,8 +209,13 @@ final class DsnParser
     }
 
     /**
-     * @param array<string, mixed> $arguments
-     * @return array<string, mixed>
+     * Normalizes queue arguments from query parameters.
+     *
+     * This method is public but only used internally by parse().
+     * Kept public for backward compatibility - may be deprecated in future.
+     *
+     * @param array<string, mixed> $arguments Queue arguments
+     * @return array<string, mixed> Normalized arguments
      */
     public function normalizeQueueArguments(array $arguments): array
     {
@@ -202,6 +226,15 @@ final class DsnParser
         return $normalized;
     }
 
+    /**
+     * Normalizes a single queue argument value.
+     *
+     * This method is redundant - it just delegates to normalizeValue().
+     * Kept for potential future customization.
+     *
+     * @param mixed $value Value to normalize
+     * @return mixed Normalized value
+     */
     private function normalizeQueueArgumentValue(mixed $value): mixed
     {
         return $this->normalizeValue($value);

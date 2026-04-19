@@ -9,6 +9,12 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\TransportFactoryInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
 
+/**
+ * Factory for creating AMQP transport instances.
+ *
+ * Supports both Symfony Messenger transport factory interface and
+ * direct instantiation via static create() method.
+ */
 class AmqpTransportFactory implements TransportFactoryInterface
 {
     private const DEFAULT_READ_TIMEOUT = 0.1;
@@ -18,11 +24,26 @@ class AmqpTransportFactory implements TransportFactoryInterface
 
     private static ?DsnParser $dsnParser = null;
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param string $dsn     DSN string
+     * @param array  $options Additional options
+     * @return bool True if DSN is supported (amqp-consoomer:// or amqps-consoomer://)
+     */
     public function supports(string $dsn, array $options): bool
     {
         return str_starts_with($dsn, 'amqp-consoomer://') || str_starts_with($dsn, 'amqps-consoomer://');
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param string              $dsn        DSN string
+     * @param array               $options    Additional options
+     * @param SerializerInterface $serializer Message serializer
+     * @return TransportInterface
+     */
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
     {
         return self::create($dsn, $options, $serializer);
@@ -32,6 +53,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      * Convenience method for direct instantiation outside Symfony DI.
      * Use createTransport() when integrating with Symfony Messenger transport factory system.
      *
+     * @param string                 $dsn        DSN string
      * @param array{
      *     host?: string,
      *     port?: int,
@@ -65,6 +87,11 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     exchange_flags?: int,
      *     queue_flags?: int,
      * } $options
+     * @param SerializerInterface  $serializer Message serializer
+     * @param AmqpFactoryInterface|null $factory    AMQP factory (optional)
+     * @param LoggerInterface|null      $logger     Logger (optional)
+     * @return TransportInterface
+     * @throws \InvalidArgumentException When DSN is invalid
      */
     public static function create(
         string $dsn,
@@ -119,6 +146,8 @@ class AmqpTransportFactory implements TransportFactoryInterface
     }
 
     /**
+     * Creates retry configuration based on options.
+     *
      * @param array{
      *     retry?: bool,
      *     retry_count?: int,
@@ -130,7 +159,9 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     retry_circuit_breaker_threshold?: int,
      *     retry_circuit_breaker_timeout?: int,
      *     retry_circuit_breaker_success_threshold?: int,
-     * } $options
+     * } $options Retry configuration options
+     * @param LoggerInterface|null $logger Logger instance
+     * @return ConnectionRetryInterface|null
      */
     private static function createRetry(array $options, ?LoggerInterface $logger = null): ?ConnectionRetryInterface
     {

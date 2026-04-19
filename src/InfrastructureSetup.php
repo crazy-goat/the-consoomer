@@ -6,6 +6,12 @@ namespace CrazyGoat\TheConsoomer;
 
 use CrazyGoat\TheConsoomer\Enum\ExchangeType;
 
+/**
+ * Handles AMQP infrastructure setup (exchanges, queues, bindings).
+ *
+ * Declares durable exchanges and queues with configurable options.
+ * Idempotent - safe to call multiple times (setup runs only once).
+ */
 final class InfrastructureSetup implements InfrastructureSetupInterface
 {
     private bool $setupPerformed = false;
@@ -31,6 +37,12 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         }
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @throws \InvalidArgumentException When exchange or queue is not configured
+     * @throws \AMQPException When AMQP declaration fails
+     */
     public function setup(): void
     {
         if ($this->setupPerformed) {

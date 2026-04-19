@@ -8,6 +8,12 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
+/**
+ * AMQP message sender for Symfony Messenger.
+ *
+ * Handles publishing messages to AMQP exchange with support for
+ * retry logic and connection recovery.
+ */
 final class Sender implements SenderInterface
 {
     private ?\AMQPExchange $exchange = null;
@@ -30,6 +36,10 @@ final class Sender implements SenderInterface
     ) {
     }
 
+    /**
+     * Initializes AMQP exchange connection.
+     * Idempotent - safe to call multiple times.
+     */
     private function connect(): void
     {
         if ($this->exchange instanceof \AMQPExchange) {
@@ -40,6 +50,9 @@ final class Sender implements SenderInterface
         $this->exchange->setName($this->options['exchange'] ?? '');
     }
 
+    /**
+     * Checks connection heartbeat and reconnects if stale.
+     */
     private function ensureConnected(): void
     {
         if ($this->connection->checkHeartbeat()) {
@@ -49,6 +62,13 @@ final class Sender implements SenderInterface
         }
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param Envelope $envelope The envelope to send
+     * @return Envelope The sent envelope
+     * @throws \AMQPException When connection or publish fails
+     */
     public function send(Envelope $envelope): Envelope
     {
         if ($this->options['auto_setup'] ?? true) {

@@ -36,7 +36,6 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         private readonly InfrastructureSetupInterface $setup,
         private readonly ?ConnectionRetryInterface $retry = null,
     ) {
-        $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
 
     /**
@@ -79,6 +78,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->queue->consume();
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @return iterable<Envelope>
+     * @throws \AMQPException When connection fails
+     */
     public function get(): iterable
     {
         $this->message = null;
@@ -105,6 +110,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return $this->message instanceof Envelope ? [$this->message] : [];
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @throws MissingStampException When envelope does not contain RawMessageStamp
+     * @throws \AMQPException        When connection fails
+     */
     public function ack(Envelope $envelope): void
     {
         $this->ensureConnected();
@@ -125,6 +136,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @throws MissingStampException When envelope does not contain RawMessageStamp
+     * @throws \AMQPException        When connection fails
+     */
     public function reject(Envelope $envelope): void
     {
         $this->ensureConnected();
@@ -147,6 +164,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
     }
 
+    /**
+     * Acknowledges all pending messages up to the last unacked message.
+     *
+     * Uses AMQP_MULTIPLE flag to ack all messages in batch.
+     * Resets internal tracking state after batch acknowledgment.
+     */
     public function ackPending(): void
     {
         if ($this->lastUnacked instanceof \AMQPEnvelope) {
@@ -162,6 +185,8 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * Uses AMQP_MULTIPLE flag to ack all messages up to the delivery tag,
      * which is more efficient than ack'ing one by one. The ackPending()
      * resets internal state after each batch.
+     *
+     * @param \AMQPEnvelope $message Message to acknowledge
      */
     private function ackMessage(\AMQPEnvelope $message): void
     {
@@ -174,13 +199,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     }
 
     /**
-     * Returns the number of messages in the queue.
+     * {@inheritdoc}
      *
-     * Uses AMQP_PASSIVE flag to safely query queue depth without re-declaring.
-     * If auto_setup is enabled, will first ensure the queue exists.
-     *
-     * @throws \AMQPException When connection fails
-     * @throws \AMQPQueueException When queue does not exist (with auto_setup disabled)
+     * @return int Number of messages in the queue
+     * @throws \AMQPException       When connection fails
+     * @throws \AMQPQueueException  When queue does not exist (with auto_setup disabled)
      */
     public function getMessageCount(): int
     {

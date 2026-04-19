@@ -10,5 +10,13 @@ namespace CrazyGoat\TheConsoomer;
  */
 interface InfrastructureSetupInterface
 {
+    /**
+     * Sets up AMQP infrastructure (exchange, queue, binding).
+     *
+     * Idempotent - safe to call multiple times.
+     *
+     * @throws \InvalidArgumentException When exchange or queue is not configured
+     * @throws \AMQPException When AMQP declaration fails
+     */
     public function setup(): void;
 }

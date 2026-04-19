@@ -7,6 +7,15 @@ namespace CrazyGoat\TheConsoomer;
 use CrazyGoat\TheConsoomer\Clock\SystemClock;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Circuit breaker implementation for retry logic.
+ *
+ * Tracks failures and successes to prevent cascading failures.
+ * States:
+ * - CLOSED: Normal operation, requests flow through
+ * - OPEN: Circuit tripped, requests blocked until timeout
+ * - HALF_OPEN: Testing if service recovered, limited requests allowed
+ */
 final class CircuitBreaker
 {
     private int $failureCount = 0;
@@ -14,6 +23,14 @@ final class CircuitBreaker
     private ?\DateTimeImmutable $lastFailureTime = null;
     private CircuitState $state = CircuitState::CLOSED;
 
+    /**
+     * @param int                  $threshold       Failures before opening circuit
+     * @param int                  $timeout         Seconds circuit stays open before half-open
+     * @param int                  $successThreshold Successes in half-open to close circuit
+     * @param LoggerInterface|null $logger          Logger instance
+     * @param ClockInterface|null  $clock           Clock for time tracking
+     * @throws \InvalidArgumentException When successThreshold < 2
+     */
     public function __construct(
         private readonly int $threshold = 10,
         private readonly int $timeout = 60,
@@ -26,6 +43,11 @@ final class CircuitBreaker
         }
     }
 
+    /**
+     * Records a successful operation.
+     *
+     * In HALF_OPEN state, transitions to CLOSED after reaching success threshold.
+     */
     public function recordSuccess(): void
     {
         $this->successCount++;
@@ -37,6 +59,12 @@ final class CircuitBreaker
         }
     }
 
+    /**
+     * Records a failed operation.
+     *
+     * Opens circuit when failure threshold is reached.
+     * Immediately opens circuit if failure occurs in HALF_OPEN state.
+     */
     public function recordFailure(): void
     {
         $this->failureCount++;
@@ -50,6 +78,11 @@ final class CircuitBreaker
         }
     }
 
+    /**
+     * Checks if circuit breaker allows requests.
+     *
+     * @return bool True if requests are allowed (CLOSED or HALF_OPEN after timeout)
+     */
     public function isAvailable(): bool
     {
         if ($this->state === CircuitState::CLOSED) {
@@ -72,11 +105,19 @@ final class CircuitBreaker
         return true;
     }
 
+    /**
+     * Returns current circuit state.
+     *
+     * @return CircuitState
+     */
     public function getState(): CircuitState
     {
         return $this->state;
     }
 
+    /**
+     * Resets circuit breaker to initial CLOSED state.
+     */
     public function reset(): void
     {
         $this->failureCount = 0;
@@ -85,6 +126,11 @@ final class CircuitBreaker
         $this->lastFailureTime = null;
     }
 
+    /**
+     * Transitions to a new state and logs the change.
+     *
+     * @param CircuitState $newState New state to transition to
+     */
     private function transitionTo(CircuitState $newState): void
     {
         if ($this->state !== $newState) {

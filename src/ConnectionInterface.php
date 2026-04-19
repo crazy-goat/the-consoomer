@@ -12,21 +12,63 @@ use Psr\Log\LoggerInterface;
  */
 interface ConnectionInterface
 {
+    /**
+     * Returns the AMQP channel, creating it if necessary.
+     *
+     * @return \AMQPChannel
+     * @throws \AMQPConnectionException When connection fails
+     */
     public function getChannel(): \AMQPChannel;
 
+    /**
+     * Returns the underlying AMQP connection.
+     *
+     * @return \AMQPConnection
+     */
     public function getConnection(): \AMQPConnection;
 
+    /**
+     * Checks if heartbeat timeout indicates stale connection.
+     *
+     * @return bool True if reconnection is needed
+     */
     public function checkHeartbeat(): bool;
 
+    /**
+     * Reconnects to the AMQP broker.
+     *
+     * @throws \AMQPConnectionException When reconnection fails
+     */
     public function reconnect(): void;
 
+    /**
+     * Updates the last activity timestamp.
+     */
     public function updateActivity(): void;
 
+    /**
+     * Checks if connection is active.
+     *
+     * @return bool
+     */
     public function isConnected(): bool;
 
+    /**
+     * Sets the heartbeat interval.
+     *
+     * @param int $seconds Heartbeat interval in seconds
+     */
     public function setHeartbeat(int $seconds): void;
 
+    /**
+     * Sets the logger instance.
+     *
+     * @param LoggerInterface $logger Logger instance
+     */
     public function setLogger(LoggerInterface $logger): void;
 
+    /**
+     * Clears the channel cache.
+     */
     public function clearChannelCache(): void;
 }
