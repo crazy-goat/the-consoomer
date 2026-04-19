@@ -103,11 +103,7 @@ class ConnectionRetry implements ConnectionRetryInterface
                 $this->logger?->warning('Non-AMQP exception during retry', [
                     'error' => $exception->getMessage(),
                 ]);
-                throw new UnexpectedOperationException(
-                    $exception->getMessage(),
-                    $exception->getCode(),
-                    $exception
-                );
+                throw UnexpectedOperationException::fromPrevious($exception);
             }
         }
 
