@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-use CrazyGoat\TheConsoomer\AmqpStamp;
+use App\Message\RawMessage;
 use CrazyGoat\TheConsoomer\AmqpTransportFactory;
+use CrazyGoat\TheConsoomer\AmqpStamp;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBus;
@@ -18,13 +19,13 @@ $dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=test';
 $transport = AmqpTransportFactory::create($dsn, [], new PhpSerializer());
 
 $container = new ServiceLocator(['consoomer' => fn() => $transport]);
-$senders = new SendersLocator([MyMessage::class => ['consoomer']], $container);
+$senders = new SendersLocator([RawMessage::class => ['consoomer']], $container);
 
 $bus = new MessageBus([
     new SendMessageMiddleware($senders),
 ]);
 
 foreach (range(1, intval($argv[1] ?? 1)) as $i) {
-    $bus->dispatch(new Envelope(new MyMessage('hello'), [new AmqpStamp('test')]));
+    $bus->dispatch(new Envelope(new RawMessage('hello'), [new AmqpStamp('test')]));
 }
-$bus->dispatch(new Envelope(new MyMessage('exit'), [new AmqpStamp('test')]));
+$bus->dispatch(new Envelope(new RawMessage('exit'), [new AmqpStamp('test')]));

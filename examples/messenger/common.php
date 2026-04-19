@@ -2,7 +2,9 @@
 
 declare(strict_types=1);
 
-final readonly class MyMessage
+namespace App\Message;
+
+final readonly class RawMessage
 {
     public function __construct(public string $content)
     {

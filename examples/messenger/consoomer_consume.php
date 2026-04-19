@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Message\RawMessage;
 use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use Symfony\Component\Messenger\Exception\StopWorkerException;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
@@ -13,11 +14,11 @@ use Symfony\Component\Stopwatch\Stopwatch;
 include __DIR__ . '/../../vendor/autoload.php';
 include __DIR__ . '/common.php';
 
-class MyMessageHandler
+class RawMessageHandler
 {
     public static $counter = 0;
 
-    public function __invoke(MyMessage $message): void
+    public function __invoke(RawMessage $message): void
     {
         self::$counter++;
 
@@ -32,7 +33,7 @@ $transport = AmqpTransportFactory::create($dsn, [], new PhpSerializer());
 
 $bus = new MessageBus([
     new HandleMessageMiddleware(
-        new HandlersLocator([MyMessage::class => [new MyMessageHandler()]]),
+        new HandlersLocator([RawMessage::class => [new RawMessageHandler()]]),
     )
 ]);
 
@@ -51,4 +52,4 @@ try {
 }
 
 $time = $stopwatch->stop('consumer')->getDuration();
-printf("Messages processed: %d, time: %.3fs, rate: %d msg/s", MyMessageHandler::$counter, $time / 1000.0, floor((MyMessageHandler::$counter / $time) * 1000));
+printf("Messages processed: %d, time: %.3fs, rate: %d msg/s", RawMessageHandler::$counter, $time / 1000.0, floor((RawMessageHandler::$counter / $time) * 1000));
