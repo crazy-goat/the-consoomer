@@ -11,7 +11,7 @@ class RetryExhaustedException extends \RuntimeException
     public function __construct(
         string $message = 'Operation failed with no retries configured',
         int $code = 0,
-        ?Throwable $previous = null
+        ?Throwable $previous = null,
     ) {
         parent::__construct($message, $code, $previous);
     }

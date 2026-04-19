@@ -118,7 +118,7 @@ class ConnectionRetry implements ConnectionRetryInterface
             'error' => $lastException?->getMessage(),
         ]);
 
-        throw $lastException !== null
+        throw $lastException instanceof \AMQPException
             ? RetryExhaustedException::fromPrevious($lastException)
             : new RetryExhaustedException();
     }

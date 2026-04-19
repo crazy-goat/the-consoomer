@@ -6,7 +6,6 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\CircuitState;
 use CrazyGoat\TheConsoomer\ConnectionRetry;
-use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
 use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
 use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use CrazyGoat\TheConsoomer\Tests\Unit\Clock\FrozenClock;
@@ -253,7 +252,7 @@ class ConnectionRetryTest extends TestCase
             $retry->withRetry(function (): void {
                 throw new \AMQPConnectionException('Connection failed');
             });
-        } catch (RetryExhaustedException $e) {
+        } catch (RetryExhaustedException) {
         }
 
         $this->assertTrue($retry->isCircuitOpen());
@@ -280,7 +279,7 @@ class ConnectionRetryTest extends TestCase
             $retry->withRetry(function (): void {
                 throw new \AMQPConnectionException('Connection failed');
             });
-        } catch (RetryExhaustedException $e) {
+        } catch (RetryExhaustedException) {
         }
 
         $totalTime = (microtime(true) - $startTime) * 1000000;
@@ -305,7 +304,7 @@ class ConnectionRetryTest extends TestCase
                     $attempt++;
                     throw new \AMQPConnectionException('Connection failed');
                 });
-            } catch (RetryExhaustedException $e) {
+            } catch (RetryExhaustedException) {
             }
         }
 
@@ -325,7 +324,7 @@ class ConnectionRetryTest extends TestCase
             $retry->withRetry(function (): void {
                 throw new \AMQPConnectionException('Connection failed');
             });
-        } catch (RetryExhaustedException $e) {
+        } catch (RetryExhaustedException) {
         }
 
         $this->assertTrue($retry->isCircuitOpen());
@@ -376,7 +375,7 @@ class ConnectionRetryTest extends TestCase
             $retry->withRetry(function (): void {
                 throw new \AMQPConnectionException('Connection failed');
             });
-        } catch (RetryExhaustedException $e) {
+        } catch (RetryExhaustedException) {
         }
 
         $this->assertTrue($retry->isCircuitOpen());
@@ -411,7 +410,7 @@ class ConnectionRetryTest extends TestCase
             $retry->withRetry(function (): void {
                 throw new \AMQPConnectionException('Connection failed');
             });
-        } catch (RetryExhaustedException $e) {
+        } catch (RetryExhaustedException) {
         }
 
         $clock->advance(3);
