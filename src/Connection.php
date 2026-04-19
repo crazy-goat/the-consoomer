@@ -6,6 +6,12 @@ namespace CrazyGoat\TheConsoomer;
 
 use Psr\Log\LoggerInterface;
 
+/**
+ * AMQP connection wrapper with heartbeat tracking and channel lifecycle management.
+ *
+ * Provides connection management, heartbeat monitoring for stale connection detection,
+ * and automatic channel recreation when connection is lost.
+ */
 final class Connection implements ConnectionInterface
 {
     private int $heartbeat = 0;
@@ -13,6 +19,10 @@ final class Connection implements ConnectionInterface
     private ?LoggerInterface $logger = null;
     private ?\AMQPChannel $channel = null;
 
+    /**
+     * @param AmqpFactoryInterface $factory      Factory for creating AMQP channels
+     * @param \AMQPConnection      $amqpConnection Underlying AMQP connection
+     */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
         private readonly \AMQPConnection $amqpConnection,
@@ -20,17 +30,32 @@ final class Connection implements ConnectionInterface
         $this->lastActivityTime = time();
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param int $seconds Heartbeat interval in seconds
+     */
     public function setHeartbeat(int $seconds): void
     {
         $this->heartbeat = $seconds;
         $this->logger?->debug('Heartbeat set to {heartbeat} seconds (client-side tracking)', ['heartbeat' => $seconds]);
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param LoggerInterface $logger Logger instance
+     */
     public function setLogger(LoggerInterface $logger): void
     {
         $this->logger = $logger;
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @throws \AMQPConnectionException When connection fails
+     */
     public function getChannel(): \AMQPChannel
     {
         if (!$this->channel instanceof \AMQPChannel || !$this->channel->isConnected()) {
@@ -40,17 +65,28 @@ final class Connection implements ConnectionInterface
         return $this->channel;
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function clearChannelCache(): void
     {
         $this->channel = null;
         $this->logger?->debug('Channel cache cleared');
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function getConnection(): \AMQPConnection
     {
         return $this->amqpConnection;
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @return bool True if heartbeat timeout detected (connection needs reconnection)
+     */
     public function checkHeartbeat(): bool
     {
         if ($this->heartbeat === 0) {
@@ -70,6 +106,11 @@ final class Connection implements ConnectionInterface
         return $elapsed > $threshold;
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @throws \AMQPConnectionException When reconnection fails
+     */
     public function reconnect(): void
     {
         $this->logger?->info('Connection stale, reconnecting...');
@@ -91,11 +132,17 @@ final class Connection implements ConnectionInterface
         $this->channel = null;
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function updateActivity(): void
     {
         $this->lastActivityTime = time();
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function isConnected(): bool
     {
         return $this->amqpConnection->isConnected();

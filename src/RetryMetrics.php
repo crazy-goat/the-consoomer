@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+/**
+ * Tracks retry metrics and statistics.
+ *
+ * Records attempts, successes, failures, and circuit breaker events
+ * for monitoring and debugging retry behavior.
+ */
 final class RetryMetrics
 {
     private int $totalAttempts = 0;
@@ -11,46 +17,75 @@ final class RetryMetrics
     private int $failedRetries = 0;
     private int $circuitBreakerOpens = 0;
 
+    /**
+     * Records a retry attempt.
+     */
     public function recordAttempt(): void
     {
         $this->totalAttempts++;
     }
 
+    /**
+     * Records a successful retry.
+     */
     public function recordSuccess(): void
     {
         $this->successfulRetries++;
     }
 
+    /**
+     * Records a failed retry.
+     */
     public function recordFailure(): void
     {
         $this->failedRetries++;
     }
 
+    /**
+     * Records a circuit breaker open event.
+     */
     public function recordCircuitBreakerOpen(): void
     {
         $this->circuitBreakerOpens++;
     }
 
+    /**
+     * Returns total number of attempts.
+     */
     public function getTotalAttempts(): int
     {
         return $this->totalAttempts;
     }
 
+    /**
+     * Returns number of successful retries.
+     */
     public function getSuccessfulRetries(): int
     {
         return $this->successfulRetries;
     }
 
+    /**
+     * Returns number of failed retries.
+     */
     public function getFailedRetries(): int
     {
         return $this->failedRetries;
     }
 
+    /**
+     * Returns number of circuit breaker open events.
+     */
     public function getCircuitBreakerOpens(): int
     {
         return $this->circuitBreakerOpens;
     }
 
+    /**
+     * Returns retry success rate as percentage.
+     *
+     * @return float Success rate (0-100)
+     */
     public function getRetrySuccessRate(): float
     {
         if ($this->totalAttempts === 0) {
@@ -60,6 +95,9 @@ final class RetryMetrics
         return ($this->successfulRetries / $this->totalAttempts) * 100;
     }
 
+    /**
+     * Resets all metrics to zero.
+     */
     public function reset(): void
     {
         $this->totalAttempts = 0;
@@ -69,6 +107,8 @@ final class RetryMetrics
     }
 
     /**
+     * Returns all metrics as an associative array.
+     *
      * @return array{
      *     total_attempts: int,
      *     successful_retries: int,

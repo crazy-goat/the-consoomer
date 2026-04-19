@@ -6,10 +6,17 @@ namespace CrazyGoat\TheConsoomer;
 
 use Psr\Log\LoggerInterface;
 
+/**
+ * Factory for creating AMQP resources (connections, channels, queues, exchanges).
+ *
+ * Provides SSL/TLS configuration support and centralized resource creation.
+ */
 class AmqpFactory implements AmqpFactoryInterface
 {
     /**
-     * @param array{heartbeat?: int} $options
+     * {@inheritdoc}
+     *
+     * @param array{heartbeat?: int} $options Connection options
      */
     public function createConnection(array $options = []): \AMQPConnection
     {
@@ -21,29 +28,51 @@ class AmqpFactory implements AmqpFactoryInterface
         return new \AMQPConnection($connectionOptions);
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param \AMQPConnection $connection AMQP connection
+     */
     public function createChannel(\AMQPConnection $connection): \AMQPChannel
     {
         return new \AMQPChannel($connection);
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param \AMQPChannel $channel AMQP channel
+     */
     public function createQueue(\AMQPChannel $channel): \AMQPQueue
     {
         return new \AMQPQueue($channel);
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @param \AMQPChannel $channel AMQP channel
+     */
     public function createExchange(\AMQPChannel $channel): \AMQPExchange
     {
         return new \AMQPExchange($channel);
     }
 
     /**
+     * {@inheritdoc}
+     *
+     * Configures SSL/TLS settings on the AMQP connection.
+     *
+     * @param \AMQPConnection      $connection AMQP connection to configure
      * @param array{
      *     ssl?: bool,
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
      *     ssl_verify?: bool,
-     * } $options
+     * } $options SSL configuration options
+     * @param LoggerInterface|null $logger    Logger instance
+     * @throws \InvalidArgumentException When SSL certificate files are not found or not readable
      */
     public function configureSsl(\AMQPConnection $connection, array $options, ?LoggerInterface $logger = null): void
     {
@@ -89,7 +118,10 @@ class AmqpFactory implements AmqpFactoryInterface
     }
 
     /**
-     * @param array{ssl_cacert?: string} $options
+     * {@inheritdoc}
+     *
+     * @param array{ssl_cacert?: string} $options SSL configuration options
+     * @return bool True if CA certificate is configured
      */
     public function hasCaCertConfigured(array $options): bool
     {

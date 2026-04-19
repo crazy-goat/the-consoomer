@@ -10,6 +10,15 @@ use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
 use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Retry mechanism with exponential backoff, jitter, and circuit breaker support.
+ *
+ * Provides resilient retry logic for AMQP operations with configurable:
+ * - Retry count and delay
+ * - Exponential backoff
+ * - Random jitter to prevent thundering herd
+ * - Circuit breaker pattern for failure isolation
+ */
 final class ConnectionRetry implements ConnectionRetryInterface
 {
     /** Jitter variation factor - 25% of delay is used as max variation range */
@@ -21,6 +30,19 @@ final class ConnectionRetry implements ConnectionRetryInterface
     private ?CircuitBreaker $circuitBreaker = null;
     private readonly RetryMetrics $metrics;
 
+    /**
+     * @param int                    $retryCount                        Number of retry attempts
+     * @param int                    $retryDelay                        Base delay between retries in microseconds
+     * @param bool                   $retryBackoff                      Enable exponential backoff
+     * @param int                    $retryMaxDelay                     Maximum delay cap in microseconds
+     * @param bool                   $retryJitter                       Enable random jitter
+     * @param bool                   $retryCircuitBreaker               Enable circuit breaker
+     * @param int                    $retryCircuitBreakerThreshold      Failures before circuit opens
+     * @param int                    $retryCircuitBreakerTimeout        Seconds circuit stays open
+     * @param int                    $retryCircuitBreakerSuccessThreshold Successes to close circuit
+     * @param LoggerInterface|null   $logger                            Logger instance
+     * @param ClockInterface|null    $clock                             Clock for time tracking
+     */
     public function __construct(
         private readonly int $retryCount = 3,
         private readonly int $retryDelay = 100000,
@@ -47,6 +69,17 @@ final class ConnectionRetry implements ConnectionRetryInterface
         }
     }
 
+    /**
+     * {@inheritdoc}
+     *
+     * @template T
+     * @param callable(): T $operation Operation to execute with retry
+     * @return T
+     * @throws CircuitBreakerOpenException    When circuit breaker is open
+     * @throws RetryExhaustedException        When all retry attempts fail
+     * @throws UnexpectedOperationException   When non-AMQP exception occurs
+     * @throws \AMQPException                 When permanent AMQP failure occurs
+     */
     public function withRetry(callable $operation): mixed
     {
         if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker && !$this->circuitBreaker->isAvailable()) {
@@ -123,6 +156,9 @@ final class ConnectionRetry implements ConnectionRetryInterface
             : new RetryExhaustedException();
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function isCircuitOpen(): bool
     {
         if (!$this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
@@ -132,6 +168,9 @@ final class ConnectionRetry implements ConnectionRetryInterface
         return !$this->circuitBreaker->isAvailable();
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function getState(): CircuitState
     {
         if (!$this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
@@ -141,17 +180,29 @@ final class ConnectionRetry implements ConnectionRetryInterface
         return $this->circuitBreaker->getState();
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function getMetrics(): RetryMetrics
     {
         return $this->metrics;
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function reset(): void
     {
         $this->circuitBreaker?->reset();
         $this->metrics->reset();
     }
 
+    /**
+     * Calculates delay between retry attempts with optional backoff and jitter.
+     *
+     * @param int $attempt Current attempt number (1-based)
+     * @return int Delay in microseconds
+     */
     private function calculateDelay(int $attempt): int
     {
         $delay = $this->retryDelay;
