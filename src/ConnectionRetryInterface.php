@@ -20,6 +20,17 @@ interface ConnectionRetryInterface
      * @throws UnexpectedOperationException When non-AMQP exception occurs
      * @throws \AMQPException               When permanent AMQP failure occurs
      */
+    /**
+     * Executes an operation with retry logic.
+     *
+     * @template T
+     * @param callable(): T $operation Operation to execute
+     * @return T
+     * @throws CircuitBreakerOpenException  When circuit breaker is open
+     * @throws RetryExhaustedException      When all retry attempts fail
+     * @throws UnexpectedOperationException When non-AMQP exception occurs
+     * @throws \AMQPException               When permanent AMQP failure occurs
+     */
     public function withRetry(callable $operation): mixed;
 
     /**

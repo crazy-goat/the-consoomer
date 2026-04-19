@@ -36,6 +36,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         private readonly InfrastructureSetupInterface $setup,
         private readonly ?ConnectionRetryInterface $retry = null,
     ) {
+        $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
     }
 
     /**
