@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use CrazyGoat\TheConsoomer\AmqpStamp;
 use App\Message\RawMessage;
+use CrazyGoat\TheConsoomer\AmqpStamp;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\MessageBus;
