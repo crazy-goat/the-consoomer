@@ -10,7 +10,6 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class Sender implements SenderInterface
 {
-    private ?\AMQPChannel $channel = null;
     private ?\AMQPExchange $exchange = null;
 
     public function __construct(
@@ -29,8 +28,7 @@ class Sender implements SenderInterface
             return;
         }
 
-        $this->channel = $this->connection->getChannel();
-        $this->exchange = $this->factory->createExchange($this->channel);
+        $this->exchange = $this->factory->createExchange($this->connection->getChannel());
         $this->exchange->setName($this->options['exchange'] ?? '');
     }
 
@@ -38,7 +36,6 @@ class Sender implements SenderInterface
     {
         if ($this->connection->checkHeartbeat()) {
             $this->connection->reconnect();
-            $this->channel = null;
             $this->exchange = null;
             $this->connect();
         }
