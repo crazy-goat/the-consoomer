@@ -221,23 +221,9 @@ final class DsnParser
     {
         $normalized = [];
         foreach ($arguments as $key => $value) {
-            $normalized[$key] = $this->normalizeQueueArgumentValue($value);
+            $normalized[$key] = $this->normalizeValue($value);
         }
         return $normalized;
-    }
-
-    /**
-     * Normalizes a single queue argument value.
-     *
-     * This method is redundant - it just delegates to normalizeValue().
-     * Kept for potential future customization.
-     *
-     * @param mixed $value Value to normalize
-     * @return mixed Normalized value
-     */
-    private function normalizeQueueArgumentValue(mixed $value): mixed
-    {
-        return $this->normalizeValue($value);
     }
 
     /**
