@@ -211,13 +211,10 @@ final class DsnParser
     /**
      * Normalizes queue arguments from query parameters.
      *
-     * This method is public but only used internally by parse().
-     * Kept public for backward compatibility - may be deprecated in future.
-     *
      * @param array<string, mixed> $arguments Queue arguments
      * @return array<string, mixed> Normalized arguments
      */
-    public function normalizeQueueArguments(array $arguments): array
+    private function normalizeQueueArguments(array $arguments): array
     {
         $normalized = [];
         foreach ($arguments as $key => $value) {
