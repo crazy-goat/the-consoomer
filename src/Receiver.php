@@ -126,7 +126,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             throw new MissingStampException('No raw message stamp');
         }
 
-        if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
+        if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($stamp): void {
                 $this->ackMessage($stamp->amqpMessage);
                 $this->connection->updateActivity();
@@ -152,7 +152,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             throw new MissingStampException('No raw message stamp');
         }
 
-        if ($this->retry instanceof \CrazyGoat\TheConsoomer\ConnectionRetryInterface) {
+        if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($stamp): void {
                 $this->ackPending();
                 $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
