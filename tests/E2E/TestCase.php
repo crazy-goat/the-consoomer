@@ -28,10 +28,6 @@ abstract class TestCase extends BaseTestCase
 
     protected function tearDown(): void
     {
-        if ($this->channel instanceof \AMQPChannel) {
-            // Channel cleanup happens automatically
-        }
-
         if ($this->connection instanceof \AMQPConnection && $this->connection->isConnected()) {
             $this->connection->disconnect();
         }
