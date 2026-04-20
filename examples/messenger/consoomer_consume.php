@@ -16,7 +16,7 @@ include __DIR__ . '/common.php';
 
 class RawMessageHandler
 {
-    public static $counter = 0;
+    public static int $counter = 0;
 
     public function __invoke(RawMessage $message): void
     {
