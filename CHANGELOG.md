@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [v0.1.0] - 2026-04-20
+
 ### Added
 - `AmqpTransport` now implements `SetupableTransportInterface` - enables `bin/console messenger:setup-transports` command
 
