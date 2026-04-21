@@ -29,7 +29,7 @@ gh api "repos/crazy-goat/the-consoomer/issues?milestone=<NUMBER>&state=open" --j
 |---|------|------------|--------------|
 | | | | |
 
-Provide this table to the user and ask which issue number they want to work on.
+**Wait for the user to choose an issue number. Never pick an issue yourself.**
 
 ### 2. Start Working on an Issue
 
@@ -95,7 +95,13 @@ gh pr create --title "#<NUMBER> <title>" --body "Closes #<NUMBER>"
 
 ### 4. CI Loop
 
-Wait for CI to complete. **Never use `git commit --amend` to fix CI failures.**
+**Always wait for CI to complete before proceeding.** Use `gh run watch` to monitor:
+
+```bash
+gh run watch
+```
+
+**Never merge or ask the user to merge while CI is still running.**
 
 **If CI fails:**
 
@@ -117,9 +123,11 @@ git push
 
 ### 5. Code Review
 
-The user reviews the PR and provides feedback. They can:
+**The user must review the PR before merging.** The user can:
 - Add comments in the GitHub PR
 - Or just type the feedback in the terminal
+
+**You must wait for explicit user approval before merging.** Do not merge on your own initiative.
 
 **If there are review comments:**
 
@@ -129,7 +137,11 @@ The user reviews the PR and provides feedback. They can:
 
 ### 6. Merge
 
-When CI passes and there are no review comments:
+**Only merge when:**
+- CI passes ✅
+- The user explicitly approves the PR ✅
+
+**Never use `--admin` or any bypass flag to merge.** Respect branch protection rules.
 
 1. **Squash and merge** the PR via GitHub UI.
 2. The PR will auto-close the linked issue.
