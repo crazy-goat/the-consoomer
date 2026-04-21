@@ -15,8 +15,6 @@
   - `routing_key` is now exclusively used by `Receiver` for queue binding
   - `default_publish_routing_key` is exclusively used by `Sender` for publish routing
   - This prevents unintended coupling between consumer binding and publisher routing
-
-### Changed
 - **BC BREAK**: `AmqpStamp` properties changed from `public` to `private` (#23)
   - Direct property access (`$stamp->routingKey`) no longer works — use `$stamp->getRoutingKey()` instead
   - Default `routingKey` changed from `''` to `null`
