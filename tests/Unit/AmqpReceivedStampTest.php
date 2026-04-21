@@ -14,8 +14,8 @@ class AmqpReceivedStampTest extends TestCase
         $envelope = $this->createMock(\AMQPEnvelope::class);
         $stamp = new AmqpReceivedStamp($envelope, 'test_queue');
 
-        $this->assertSame($envelope, $stamp->amqpMessage);
-        $this->assertSame('test_queue', $stamp->queueName);
+        $this->assertSame($envelope, $stamp->getAmqpEnvelope());
+        $this->assertSame('test_queue', $stamp->getQueueName());
     }
 
     public function testIsNonSendable(): void

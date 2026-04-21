@@ -16,14 +16,14 @@ use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 final readonly class AmqpReceivedStamp implements NonSendableStampInterface
 {
     public function __construct(
-        public \AMQPEnvelope $amqpMessage,
-        public string $queueName,
+        private \AMQPEnvelope $envelope,
+        private string $queueName,
     ) {
     }
 
     public function getAmqpEnvelope(): \AMQPEnvelope
     {
-        return $this->amqpMessage;
+        return $this->envelope;
     }
 
     public function getQueueName(): string
@@ -33,46 +33,46 @@ final readonly class AmqpReceivedStamp implements NonSendableStampInterface
 
     public function getMessageId(): ?string
     {
-        return $this->amqpMessage->getMessageId();
+        return $this->envelope->getMessageId();
     }
 
     public function getTimestamp(): ?int
     {
-        return $this->amqpMessage->getTimestamp();
+        return $this->envelope->getTimestamp();
     }
 
     public function getAppId(): ?string
     {
-        return $this->amqpMessage->getAppId();
+        return $this->envelope->getAppId();
     }
 
     public function getHeaders(): array
     {
-        return $this->amqpMessage->getHeaders();
+        return $this->envelope->getHeaders();
     }
 
     public function getCorrelationId(): ?string
     {
-        return $this->amqpMessage->getCorrelationId();
+        return $this->envelope->getCorrelationId();
     }
 
     public function getReplyTo(): ?string
     {
-        return $this->amqpMessage->getReplyTo();
+        return $this->envelope->getReplyTo();
     }
 
     public function getContentType(): ?string
     {
-        return $this->amqpMessage->getContentType();
+        return $this->envelope->getContentType();
     }
 
     public function getDeliveryMode(): int
     {
-        return $this->amqpMessage->getDeliveryMode();
+        return $this->envelope->getDeliveryMode();
     }
 
     public function getPriority(): int
     {
-        return $this->amqpMessage->getPriority();
+        return $this->envelope->getPriority();
     }
 }
