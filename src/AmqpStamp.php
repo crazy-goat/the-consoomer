@@ -15,9 +15,21 @@ use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 final readonly class AmqpStamp implements NonSendableStampInterface
 {
     /**
-     * @param string|null $routingKey Routing key for message
-     * @param int         $flags      AMQP flags (e.g. AMQP_MANDATORY)
-     * @param array       $attributes AMQP message attributes (content_type, priority, headers, etc.)
+     * @param array{
+     *     content_type?: string,
+     *     content_encoding?: string,
+     *     message_id?: string,
+     *     delivery_mode?: int,
+     *     priority?: int,
+     *     timestamp?: int,
+     *     app_id?: string,
+     *     user_id?: string,
+     *     expiration?: string,
+     *     type?: string,
+     *     reply_to?: string,
+     *     correlation_id?: string,
+     *     headers?: array<string, mixed>,
+     * } $attributes
      */
     public function __construct(
         private ?string $routingKey = null,
@@ -36,6 +48,23 @@ final readonly class AmqpStamp implements NonSendableStampInterface
         return $this->flags;
     }
 
+    /**
+     * @return array{
+     *     content_type?: string,
+     *     content_encoding?: string,
+     *     message_id?: string,
+     *     delivery_mode?: int,
+     *     priority?: int,
+     *     timestamp?: int,
+     *     app_id?: string,
+     *     user_id?: string,
+     *     expiration?: string,
+     *     type?: string,
+     *     reply_to?: string,
+     *     correlation_id?: string,
+     *     headers?: array<string, mixed>,
+     * }
+     */
     public function getAttributes(): array
     {
         return $this->attributes;
@@ -93,6 +122,22 @@ final readonly class AmqpStamp implements NonSendableStampInterface
      * Creates a new stamp with the given attributes, replacing any existing ones.
      *
      * Routing key and flags from the original stamp are preserved.
+     *
+     * @param array{
+     *     content_type?: string,
+     *     content_encoding?: string,
+     *     message_id?: string,
+     *     delivery_mode?: int,
+     *     priority?: int,
+     *     timestamp?: int,
+     *     app_id?: string,
+     *     user_id?: string,
+     *     expiration?: string,
+     *     type?: string,
+     *     reply_to?: string,
+     *     correlation_id?: string,
+     *     headers?: array<string, mixed>,
+     * } $attributes
      */
     public static function createWithAttributes(array $attributes, ?self $stamp = null): self
     {
