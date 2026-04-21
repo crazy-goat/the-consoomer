@@ -81,11 +81,15 @@ final class Sender implements SenderInterface
 
         $data = $this->serializer->encode($envelope);
 
+        $routingKey = $stamp?->getRoutingKey() ?? $this->options['routing_key'] ?? '';
+        $flags = $stamp?->getFlags() ?? \AMQP_NOPARAM;
+        $attributes = array_merge($data['headers'] ?? [], $stamp?->getAttributes() ?? []);
+
         $publishCallback = fn() => $this->exchange->publish(
             $data['body'],
-            $stamp?->routingKey ?? $this->options['routing_key'] ?? '',
-            null,
-            $data['headers'] ?? [],
+            $routingKey,
+            $flags,
+            $attributes,
         );
 
         if ($this->retry instanceof ConnectionRetryInterface) {

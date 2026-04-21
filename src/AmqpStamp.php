@@ -7,17 +7,99 @@ namespace CrazyGoat\TheConsoomer;
 use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 
 /**
- * AMQP stamp for attaching routing information to messages.
+ * AMQP stamp for attaching routing information and message attributes.
  *
- * Used to specify custom routing keys when publishing messages.
+ * Provides fine-grained control over AMQP message behavior including
+ * routing key, flags, and all AMQP message attributes.
  */
 final readonly class AmqpStamp implements NonSendableStampInterface
 {
     /**
-     * @param string $routingKey Routing key for message
+     * @param string|null $routingKey Routing key for message
+     * @param int         $flags      AMQP flags (e.g. AMQP_MANDATORY)
+     * @param array       $attributes AMQP message attributes (content_type, priority, headers, etc.)
      */
     public function __construct(
-        public string $routingKey = '',
+        private ?string $routingKey = null,
+        private int $flags = \AMQP_NOPARAM,
+        private array $attributes = [],
     ) {
+    }
+
+    public function getRoutingKey(): ?string
+    {
+        return $this->routingKey;
+    }
+
+    public function getFlags(): int
+    {
+        return $this->flags;
+    }
+
+    public function getAttributes(): array
+    {
+        return $this->attributes;
+    }
+
+    public function withRoutingKey(?string $routingKey): self
+    {
+        return new self($routingKey, $this->flags, $this->attributes);
+    }
+
+    public function withFlags(int $flags): self
+    {
+        return new self($this->routingKey, $flags, $this->attributes);
+    }
+
+    public function withAttribute(string $key, mixed $value): self
+    {
+        $attributes = $this->attributes;
+        $attributes[$key] = $value;
+
+        return new self($this->routingKey, $this->flags, $attributes);
+    }
+
+    public static function createFromAmqpEnvelope(\AMQPEnvelope $envelope): self
+    {
+        $attributes = [];
+        $attributeMap = [
+            'content_type' => $envelope->getContentType(),
+            'content_encoding' => $envelope->getContentEncoding(),
+            'message_id' => $envelope->getMessageId(),
+            'delivery_mode' => $envelope->getDeliveryMode(),
+            'priority' => $envelope->getPriority(),
+            'timestamp' => $envelope->getTimestamp(),
+            'app_id' => $envelope->getAppId(),
+            'user_id' => $envelope->getUserId(),
+            'expiration' => $envelope->getExpiration(),
+            'type' => $envelope->getType(),
+            'reply_to' => $envelope->getReplyTo(),
+            'correlation_id' => $envelope->getCorrelationId(),
+            'headers' => $envelope->getHeaders(),
+        ];
+
+        foreach ($attributeMap as $key => $value) {
+            if (null === $value || [] === $value || '' === $value || false === $value) {
+                continue;
+            }
+
+            $attributes[$key] = $value;
+        }
+
+        return new self($envelope->getRoutingKey(), \AMQP_NOPARAM, $attributes);
+    }
+
+    /**
+     * Creates a new stamp with the given attributes, replacing any existing ones.
+     *
+     * Routing key and flags from the original stamp are preserved.
+     */
+    public static function createWithAttributes(array $attributes, ?self $stamp = null): self
+    {
+        return new self(
+            $stamp?->getRoutingKey(),
+            $stamp?->getFlags() ?? \AMQP_NOPARAM,
+            $attributes,
+        );
     }
 }
