@@ -59,6 +59,14 @@ class DsnParserTest extends TestCase
         $this->assertSame('my.key', $result['routing_key']);
     }
 
+    public function testParsesDefaultPublishRoutingKey(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?default_publish_routing_key=my.default.key');
+
+        $this->assertSame('my.default.key', $result['default_publish_routing_key']);
+    }
+
     public function testNormalizesQueueArguments(): void
     {
         $parser = new DsnParser();

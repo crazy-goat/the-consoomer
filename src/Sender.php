@@ -22,6 +22,7 @@ final class Sender implements SenderInterface
      * @param array{
      *     exchange?: string,
      *     routing_key?: string,
+     *     default_publish_routing_key?: string,
      *     auto_setup?: bool,
      *     retry?: bool,
      * } $options
@@ -63,6 +64,20 @@ final class Sender implements SenderInterface
     }
 
     /**
+     * Resolves the routing key for a message.
+     *
+     * Priority: Stamp routing key > Default publish routing key > Empty string
+     */
+    private function getRoutingKeyForMessage(?AmqpStamp $stamp): string
+    {
+        if ($stamp instanceof AmqpStamp && $stamp->getRoutingKey() !== null) {
+            return $stamp->getRoutingKey();
+        }
+
+        return $this->options['default_publish_routing_key'] ?? '';
+    }
+
+    /**
      * {@inheritdoc}
      *
      * @param Envelope $envelope The envelope to send
@@ -81,7 +96,7 @@ final class Sender implements SenderInterface
 
         $data = $this->serializer->encode($envelope);
 
-        $routingKey = $stamp?->getRoutingKey() ?? $this->options['routing_key'] ?? '';
+        $routingKey = $this->getRoutingKeyForMessage($stamp);
         $flags = $stamp?->getFlags() ?? \AMQP_NOPARAM;
         $attributes = array_merge($data['headers'] ?? [], $stamp?->getAttributes() ?? []);
 

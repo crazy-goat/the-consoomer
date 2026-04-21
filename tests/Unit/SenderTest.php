@@ -150,26 +150,26 @@ class SenderTest extends TestCase
     public static function routingKeyPrecedenceProvider(): array
     {
         return [
-            'stamp routing key takes precedence over options' => [
+            'stamp routing key takes precedence over default_publish_routing_key' => [
                 'options' => [
                     'exchange' => 'test_exchange',
-                    'routing_key' => 'options.routing.key',
+                    'default_publish_routing_key' => 'default.routing.key',
                 ],
                 'stampRoutingKey' => 'stamp.routing.key',
                 'expectedRoutingKey' => 'stamp.routing.key',
             ],
-            'options routing key used when no stamp' => [
+            'default_publish_routing_key used when no stamp' => [
                 'options' => [
                     'exchange' => 'test_exchange',
-                    'routing_key' => 'options.routing.key',
+                    'default_publish_routing_key' => 'default.routing.key',
                 ],
                 'stampRoutingKey' => null,
-                'expectedRoutingKey' => 'options.routing.key',
+                'expectedRoutingKey' => 'default.routing.key',
             ],
-            'empty stamp routing key takes precedence over options' => [
+            'empty stamp routing key takes precedence over default_publish_routing_key' => [
                 'options' => [
                     'exchange' => 'test_exchange',
-                    'routing_key' => 'options.routing.key',
+                    'default_publish_routing_key' => 'default.routing.key',
                 ],
                 'stampRoutingKey' => '',
                 'expectedRoutingKey' => '',
