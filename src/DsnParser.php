@@ -26,6 +26,7 @@ final class DsnParser
      *     exchange_type?: string,
      *     queue?: string,
      *     routing_key?: string,
+     *     default_publish_routing_key?: string,
      *     queues?: array<string, array{binding_keys?: list<string>}>,
      *     queue_arguments?: array<string, mixed>,
      *     max_unacked_messages?: int,
