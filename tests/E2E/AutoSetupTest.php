@@ -31,6 +31,7 @@ class AutoSetupTest extends TestCase
     {
         $dsn = $this->buildDsn(self::EXCHANGE_NAME, $this->queueName, [
             'routing_key' => self::ROUTING_KEY,
+            'default_publish_routing_key' => self::ROUTING_KEY,
         ]);
 
         $serializer = new PhpSerializer();
