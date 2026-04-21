@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer;
 
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\CloseableTransportInterface;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
@@ -17,7 +18,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
  * Combines receiver, sender and setup components into a single transport
  * that implements the Symfony Messenger TransportInterface.
  */
-final readonly class AmqpTransport implements TransportInterface, MessageCountAwareInterface, SetupableTransportInterface
+final readonly class AmqpTransport implements TransportInterface, MessageCountAwareInterface, SetupableTransportInterface, CloseableTransportInterface
 {
     /**
      * @param ReceiverInterface $receiver Receiver for consuming messages

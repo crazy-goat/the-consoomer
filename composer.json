@@ -13,7 +13,10 @@
     "autoload":{
         "psr-4": {
             "CrazyGoat\\TheConsoomer\\": "src/"
-        }
+        },
+        "files": [
+            "src/Compatibility/CloseableTransportPolyfill.php"
+        ]
     },
     "autoload-dev":{
         "psr-4": {
