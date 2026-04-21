@@ -78,6 +78,7 @@ class DsnParserOptionsTest extends TestCase
         try {
             $dsn = $this->buildDsn(self::EXCHANGE_NAME, $routingKeyQueue, [
                 'routing_key' => 'custom.routing.key',
+                'default_publish_routing_key' => 'custom.routing.key',
             ]);
 
             $serializer = new PhpSerializer();
