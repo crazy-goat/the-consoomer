@@ -62,6 +62,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     exchange?: string,
      *     queue?: string,
      *     routing_key?: string,
+     *     default_publish_routing_key?: string,
      *     timeout?: float|int,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,

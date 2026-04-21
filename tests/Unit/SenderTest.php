@@ -191,6 +191,14 @@ class SenderTest extends TestCase
                 'stampRoutingKey' => null,
                 'expectedRoutingKey' => 'options.routing.key',
             ],
+            'stamp routing key takes precedence over default_publish_routing_key' => [
+                'options' => [
+                    'exchange' => 'test_exchange',
+                    'default_publish_routing_key' => 'default.routing.key',
+                ],
+                'stampRoutingKey' => 'stamp.routing.key',
+                'expectedRoutingKey' => 'stamp.routing.key',
+            ],
         ];
     }
 
