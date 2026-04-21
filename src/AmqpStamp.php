@@ -79,14 +79,21 @@ final readonly class AmqpStamp implements NonSendableStampInterface
         ];
 
         foreach ($attributeMap as $key => $value) {
-            if (null !== $value && [] !== $value && '' !== $value && false !== $value && 0 !== $value) {
-                $attributes[$key] = $value;
+            if (null === $value || [] === $value || '' === $value || false === $value) {
+                continue;
             }
+
+            $attributes[$key] = $value;
         }
 
         return new self($envelope->getRoutingKey(), \AMQP_NOPARAM, $attributes);
     }
 
+    /**
+     * Creates a new stamp with the given attributes, replacing any existing ones.
+     *
+     * Routing key and flags from the original stamp are preserved.
+     */
     public static function createWithAttributes(array $attributes, ?self $stamp = null): self
     {
         return new self(

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Added
+- `AmqpStamp` extended with full AMQP message attributes support (#23)
+  - Added `$flags` (int) and `$attributes` (array) parameters
+  - Added getters: `getRoutingKey()`, `getFlags()`, `getAttributes()`
+  - Added immutable withers: `withRoutingKey()`, `withFlags()`, `withAttribute()`
+  - Added factory methods: `createFromAmqpEnvelope()`, `createWithAttributes()`
+- `Sender::send()` now uses stamp flags and merges stamp attributes with headers
+
+### Changed
+- **BC BREAK**: `AmqpStamp` properties changed from `public` to `private` (#23)
+  - Direct property access (`$stamp->routingKey`) no longer works — use `$stamp->getRoutingKey()` instead
+  - Default `routingKey` changed from `''` to `null`
+
 ## [v0.1.0] - 2026-04-20
 
 ### Added
