@@ -11,6 +11,12 @@
 - `Sender::send()` now uses stamp flags and merges stamp attributes with headers
 
 ### Changed
+- **BC BREAK**: `Sender` no longer reads `routing_key` option — use `default_publish_routing_key` for publish defaults (#180)
+  - `routing_key` is now exclusively used by `Receiver` for queue binding
+  - `default_publish_routing_key` is exclusively used by `Sender` for publish routing
+  - This prevents unintended coupling between consumer binding and publisher routing
+
+### Changed
 - **BC BREAK**: `AmqpStamp` properties changed from `public` to `private` (#23)
   - Direct property access (`$stamp->routingKey`) no longer works — use `$stamp->getRoutingKey()` instead
   - Default `routingKey` changed from `''` to `null`

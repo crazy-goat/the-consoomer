@@ -70,6 +70,22 @@ Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=tes
 | `max_unacked_messages` | Prefetch count / batch size | 100 |
 | `timeout` | Consumer timeout in seconds | 0.1 |
 | `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
+| `routing_key` | **Consumer-side**: binding key used when declaring/binding the queue | `''` |
+| `default_publish_routing_key` | **Sender-side**: default routing key used when publishing messages | `''` |
+
+### Routing Key Resolution
+
+The transport uses separate routing keys for consuming and sending:
+
+- **Consumer (Receiver)**: Uses `routing_key` as the binding key when declaring/binding the queue to an exchange. This determines which messages are routed to the queue.
+- **Sender**: Uses `default_publish_routing_key` as the default routing key when publishing messages. This determines how messages are routed through the exchange.
+
+When sending a message, the routing key precedence is:
+1. `AmqpStamp::getRoutingKey()` — message-specific routing key (highest priority)
+2. `default_publish_routing_key` — configured default for publishing
+3. `''` — empty string (no routing key)
+
+This separation prevents unintended coupling: setting `routing_key` for consumer binding does not affect how messages are published.
 
 ### Heartbeat
 

@@ -21,7 +21,6 @@ final class Sender implements SenderInterface
     /**
      * @param array{
      *     exchange?: string,
-     *     routing_key?: string,
      *     default_publish_routing_key?: string,
      *     auto_setup?: bool,
      *     retry?: bool,
@@ -66,7 +65,7 @@ final class Sender implements SenderInterface
     /**
      * Resolves the routing key for a message.
      *
-     * Priority: Stamp routing key > routing_key option > default_publish_routing_key option > Empty string
+     * Priority: Stamp routing key > default_publish_routing_key option > Empty string
      */
     private function getRoutingKeyForMessage(?AmqpStamp $stamp): string
     {
@@ -75,7 +74,7 @@ final class Sender implements SenderInterface
             return $routingKey;
         }
 
-        return $this->options['routing_key'] ?? $this->options['default_publish_routing_key'] ?? '';
+        return $this->options['default_publish_routing_key'] ?? '';
     }
 
     /**
