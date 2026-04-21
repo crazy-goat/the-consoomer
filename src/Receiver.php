@@ -129,11 +129,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($stamp): void {
-                $this->ackMessage($stamp->amqpMessage);
+                $this->ackMessage($stamp->getAmqpEnvelope());
                 $this->connection->updateActivity();
             });
         } else {
-            $this->ackMessage($stamp->amqpMessage);
+            $this->ackMessage($stamp->getAmqpEnvelope());
             $this->connection->updateActivity();
         }
     }
@@ -156,12 +156,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($stamp): void {
                 $this->ackPending();
-                $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+                $this->queue->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
                 $this->connection->updateActivity();
             });
         } else {
             $this->ackPending();
-            $this->queue->reject($stamp->amqpMessage->getDeliveryTag());
+            $this->queue->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
             $this->connection->updateActivity();
         }
     }
