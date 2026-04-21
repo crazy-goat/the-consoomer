@@ -22,6 +22,15 @@ class DsnParserTest extends TestCase
         $this->assertSame('my_exchange', $result['exchange']);
     }
 
+    public function testNonSslDsnDoesNotIncludeSslKey(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange');
+
+        $this->assertArrayNotHasKey('ssl', $result);
+        $this->assertSame(5672, $result['port']);
+    }
+
     public function testParsesQueryOptions(): void
     {
         $parser = new DsnParser();
