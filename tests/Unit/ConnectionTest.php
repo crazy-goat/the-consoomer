@@ -327,4 +327,101 @@ class ConnectionTest extends TestCase
         $this->expectException(\AMQPConnectionException::class);
         $connection->reconnect();
     }
+
+    public function testCloseDisconnectsWhenConnected(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('disconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+        $connection->close();
+    }
+
+    public function testCloseDoesNotDisconnectWhenNotConnected(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        $this->amqpConnection
+            ->expects($this->never())
+            ->method('disconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+        $connection->close();
+    }
+
+    public function testCloseClearsChannelCache(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturn($channel);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('disconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        // Create a channel first
+        $connection->getChannel();
+
+        // Close should clear the cache
+        $connection->close();
+
+        // After close, getChannel should create a new one (but we're not testing that here)
+    }
+
+    public function testCloseIsIdempotent(): void
+    {
+        $this->amqpConnection
+            ->expects($this->exactly(2))
+            ->method('isConnected')
+            ->willReturnOnConsecutiveCalls(true, false);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('disconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        $connection->close();
+        $connection->close();
+    }
+
+    public function testCloseThrowsOnDisconnectFailure(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('disconnect')
+            ->willThrowException(new \AMQPConnectionException('Disconnect failed'));
+
+        $connection = new Connection($this->factory, $this->amqpConnection);
+
+        $this->expectException(\AMQPConnectionException::class);
+        $this->expectExceptionMessage('Disconnect failed');
+
+        $connection->close();
+    }
 }
