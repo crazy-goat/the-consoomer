@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
+use CrazyGoat\TheConsoomer\AmqpReceivedStamp;
 use CrazyGoat\TheConsoomer\ConnectionInterface;
 use CrazyGoat\TheConsoomer\Exception\MissingStampException;
 use CrazyGoat\TheConsoomer\InfrastructureSetupInterface;
-use CrazyGoat\TheConsoomer\RawMessageStamp;
 use CrazyGoat\TheConsoomer\Receiver;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -149,7 +149,7 @@ class ReceiverTest extends TestCase
             $envelope = $serializer->getValue($receiver)->decode(['body' => $message->getBody()]);
             $messagesProperty = $reflection->getProperty('messages');
             $messages = $messagesProperty->getValue($receiver);
-            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messages[] = $envelope->with(new AmqpReceivedStamp($message, 'test_queue'));
             $messagesProperty->setValue($receiver, $messages);
 
             return false;
@@ -175,7 +175,7 @@ class ReceiverTest extends TestCase
 
         $this->assertCount(1, $result);
         $this->assertInstanceOf(Envelope::class, $result[0]);
-        $this->assertInstanceOf(RawMessageStamp::class, $result[0]->last(RawMessageStamp::class));
+        $this->assertInstanceOf(AmqpReceivedStamp::class, $result[0]->last(AmqpReceivedStamp::class));
     }
 
     public function testAckThrowsExceptionWithoutStamp(): void
@@ -217,7 +217,7 @@ class ReceiverTest extends TestCase
             ->method('getDeliveryTag')
             ->willReturn(123);
 
-        $stamp = new RawMessageStamp($amqpEnvelope);
+        $stamp = new AmqpReceivedStamp($amqpEnvelope, 'test_queue');
         $envelope = new Envelope(new \stdClass(), [$stamp]);
 
         $this->queue
@@ -238,7 +238,7 @@ class ReceiverTest extends TestCase
         for ($i = 1; $i <= 6; $i++) {
             $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
             $amqpEnvelope->method('getDeliveryTag')->willReturn($i);
-            $stamps = [new RawMessageStamp($amqpEnvelope)];
+            $stamps = [new AmqpReceivedStamp($amqpEnvelope, 'test_queue')];
             $envelopes[] = new Envelope(new \stdClass(), $stamps);
         }
 
@@ -275,7 +275,7 @@ class ReceiverTest extends TestCase
             ->method('getDeliveryTag')
             ->willReturn(456);
 
-        $stamp = new RawMessageStamp($amqpEnvelope);
+        $stamp = new AmqpReceivedStamp($amqpEnvelope, 'test_queue');
         $envelope = new Envelope(new \stdClass(), [$stamp]);
 
         $this->queue
@@ -748,7 +748,7 @@ class ReceiverTest extends TestCase
 
             $messagesProperty = $reflection->getProperty('messages');
             $messages = $messagesProperty->getValue($receiver);
-            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messages[] = $envelope->with(new AmqpReceivedStamp($message, 'test_queue'));
             $messagesProperty->setValue($receiver, $messages);
 
             return count($messages) < 5;
@@ -780,7 +780,7 @@ class ReceiverTest extends TestCase
         $this->assertCount(3, $result);
         foreach ($result as $envelope) {
             $this->assertInstanceOf(Envelope::class, $envelope);
-            $this->assertInstanceOf(RawMessageStamp::class, $envelope->last(RawMessageStamp::class));
+            $this->assertInstanceOf(AmqpReceivedStamp::class, $envelope->last(AmqpReceivedStamp::class));
         }
     }
 
@@ -816,7 +816,7 @@ class ReceiverTest extends TestCase
 
             $messagesProperty = $reflection->getProperty('messages');
             $messages = $messagesProperty->getValue($receiver);
-            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messages[] = $envelope->with(new AmqpReceivedStamp($message, 'test_queue'));
             $messagesProperty->setValue($receiver, $messages);
 
             return count($messages) < 2;
@@ -879,7 +879,7 @@ class ReceiverTest extends TestCase
 
             $messagesProperty = $reflection->getProperty('messages');
             $messages = $messagesProperty->getValue($receiver);
-            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messages[] = $envelope->with(new AmqpReceivedStamp($message, 'test_queue'));
             $messagesProperty->setValue($receiver, $messages);
 
             return true;
@@ -917,7 +917,7 @@ class ReceiverTest extends TestCase
         for ($i = 1; $i <= 6; $i++) {
             $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
             $amqpEnvelope->method('getDeliveryTag')->willReturn($i);
-            $stamps = [new RawMessageStamp($amqpEnvelope)];
+            $stamps = [new AmqpReceivedStamp($amqpEnvelope, 'test_queue')];
             $envelopes[] = new Envelope(new \stdClass(), $stamps);
         }
 
