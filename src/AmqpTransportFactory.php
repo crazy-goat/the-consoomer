@@ -140,6 +140,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
             new Receiver($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
             new Sender($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
             $setup,
+            $amqpConnection,
         );
     }
 

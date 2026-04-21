@@ -66,4 +66,11 @@ interface ConnectionInterface
      * Clears the channel cache.
      */
     public function clearChannelCache(): void;
+
+    /**
+     * Closes the AMQP connection and releases all resources.
+     *
+     * Idempotent - safe to call multiple times.
+     */
+    public function close(): void;
 }

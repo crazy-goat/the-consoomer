@@ -147,4 +147,22 @@ final class Connection implements ConnectionInterface
     {
         return $this->amqpConnection->isConnected();
     }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function close(): void
+    {
+        $this->channel = null;
+
+        if ($this->amqpConnection->isConnected()) {
+            try {
+                $this->amqpConnection->disconnect();
+                $this->logger?->debug('Connection closed');
+            } catch (\AMQPConnectionException $e) {
+                $this->logger?->error('Connection close failed: {error}', ['error' => $e->getMessage()]);
+                throw $e;
+            }
+        }
+    }
 }

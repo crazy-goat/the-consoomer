@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpTransport;
+use CrazyGoat\TheConsoomer\ConnectionInterface;
 use CrazyGoat\TheConsoomer\InfrastructureSetupInterface;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -18,12 +19,14 @@ class AmqpTransportTest extends TestCase
     private ReceiverInterface&MockObject $receiver;
     private SenderInterface&MockObject $sender;
     private InfrastructureSetupInterface&MockObject $setup;
+    private ConnectionInterface&MockObject $connection;
 
     protected function setUp(): void
     {
         $this->receiver = $this->createMock(ReceiverInterface::class);
         $this->sender = $this->createMock(SenderInterface::class);
         $this->setup = $this->createMock(InfrastructureSetupInterface::class);
+        $this->connection = $this->createMock(ConnectionInterface::class);
     }
 
     public function testGetDelegatesToReceiver(): void
@@ -35,7 +38,7 @@ class AmqpTransportTest extends TestCase
             ->method('get')
             ->willReturn([$envelope]);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
 
         $result = iterator_to_array($transport->get());
 
@@ -49,7 +52,7 @@ class AmqpTransportTest extends TestCase
             ->method('get')
             ->willReturn([]);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
 
         $result = iterator_to_array($transport->get());
 
@@ -65,7 +68,7 @@ class AmqpTransportTest extends TestCase
             ->method('ack')
             ->with($envelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
 
         $transport->ack($envelope);
     }
@@ -79,7 +82,7 @@ class AmqpTransportTest extends TestCase
             ->method('reject')
             ->with($envelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
 
         $transport->reject($envelope);
     }
@@ -95,7 +98,7 @@ class AmqpTransportTest extends TestCase
             ->with($envelope)
             ->willReturn($returnedEnvelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
 
         $result = $transport->send($envelope);
 
@@ -112,7 +115,7 @@ class AmqpTransportTest extends TestCase
             ->with($envelope)
             ->willReturn($envelope);
 
-        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
 
         $result = $transport->send($envelope);
 
@@ -143,7 +146,7 @@ class AmqpTransportTest extends TestCase
             }
         };
 
-        $transport = new AmqpTransport($receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($receiver, $this->sender, $this->setup, $this->connection);
 
         $this->assertSame(42, $transport->getMessageCount());
     }
@@ -152,7 +155,7 @@ class AmqpTransportTest extends TestCase
     {
         $receiver = $this->createMock(ReceiverInterface::class);
 
-        $transport = new AmqpTransport($receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($receiver, $this->sender, $this->setup, $this->connection);
 
         $this->assertSame(0, $transport->getMessageCount());
     }
@@ -163,8 +166,19 @@ class AmqpTransportTest extends TestCase
             ->expects($this->once())
             ->method('setup');
 
-        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup);
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
 
         $transport->setup();
+    }
+
+    public function testCloseDelegatesToConnection(): void
+    {
+        $this->connection
+            ->expects($this->once())
+            ->method('close');
+
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
+
+        $transport->close();
     }
 }
