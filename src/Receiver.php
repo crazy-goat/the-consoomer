@@ -68,7 +68,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $this->callback = function (\AMQPEnvelope $message): bool {
             $envelope = $this->serializer->decode(['body' => $message->getBody()]);
-            $this->messages[] = $envelope->with(new RawMessageStamp($message));
+            $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $this->options['queue'] ?? ''));
 
             return count($this->messages) < $this->maxUnackedMessages;
         };
@@ -115,16 +115,16 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     /**
      * {@inheritdoc}
      *
-     * @throws MissingStampException When envelope does not contain RawMessageStamp
+     * @throws MissingStampException When envelope does not contain AmqpReceivedStamp
      * @throws \AMQPException        When connection fails
      */
     public function ack(Envelope $envelope): void
     {
         $this->ensureConnected();
 
-        $stamp = $envelope->last(RawMessageStamp::class);
-        if (!$stamp instanceof RawMessageStamp) {
-            throw new MissingStampException('No raw message stamp');
+        $stamp = $envelope->last(AmqpReceivedStamp::class);
+        if (!$stamp instanceof AmqpReceivedStamp) {
+            throw new MissingStampException('No AMQP received stamp');
         }
 
         if ($this->retry instanceof ConnectionRetryInterface) {
@@ -141,16 +141,16 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     /**
      * {@inheritdoc}
      *
-     * @throws MissingStampException When envelope does not contain RawMessageStamp
+     * @throws MissingStampException When envelope does not contain AmqpReceivedStamp
      * @throws \AMQPException        When connection fails
      */
     public function reject(Envelope $envelope): void
     {
         $this->ensureConnected();
 
-        $stamp = $envelope->last(RawMessageStamp::class);
-        if (!$stamp instanceof RawMessageStamp) {
-            throw new MissingStampException('No raw message stamp');
+        $stamp = $envelope->last(AmqpReceivedStamp::class);
+        if (!$stamp instanceof AmqpReceivedStamp) {
+            throw new MissingStampException('No AMQP received stamp');
         }
 
         if ($this->retry instanceof ConnectionRetryInterface) {
