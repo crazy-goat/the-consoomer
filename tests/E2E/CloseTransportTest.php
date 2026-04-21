@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\E2E;
 
 use CrazyGoat\TheConsoomer\AmqpTransportFactory;
+use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
 class CloseTransportTest extends TestCase
@@ -26,7 +27,7 @@ class CloseTransportTest extends TestCase
         parent::tearDown();
     }
 
-    public function testCloseMethodDisconnectsTransport(): void
+    public function testCloseDisconnectsConnection(): void
     {
         $dsn = $this->buildDsn(self::EXCHANGE_NAME, $this->queueName, [
             'routing_key' => self::ROUTING_KEY,
@@ -36,16 +37,13 @@ class CloseTransportTest extends TestCase
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
         $transport->setup();
+
+        $connection = $this->extractConnection($transport);
+        $this->assertTrue($connection->isConnected(), 'Connection should be active after setup');
+
         $transport->close();
 
-        // After close, the connection should be closed - we verify this
-        // by asserting that a new transport can be created and used
-        $transport2 = AmqpTransportFactory::create($dsn, [], $serializer);
-        $transport2->setup();
-
-        $this->assertExchangeAndQueueExist();
-
-        $transport2->close();
+        $this->assertFalse($connection->isConnected(), 'Connection should be closed after close()');
     }
 
     public function testCloseIsIdempotent(): void
@@ -65,19 +63,35 @@ class CloseTransportTest extends TestCase
         $this->assertTrue(true);
     }
 
-    private function assertExchangeAndQueueExist(): void
+    public function testSendAfterCloseThrowsException(): void
     {
-        $exchange = new \AMQPExchange($this->channel);
-        $exchange->setName(self::EXCHANGE_NAME);
-        $exchange->setType('direct');
-        $exchange->setFlags(\AMQP_DURABLE);
-        $exchange->declareExchange();
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, $this->queueName, [
+            'routing_key' => self::ROUTING_KEY,
+        ]);
 
-        $queue = new \AMQPQueue($this->channel);
-        $queue->setName($this->queueName);
-        $queue->setFlags(\AMQP_DURABLE);
-        $messageCount = $queue->declareQueue();
+        $serializer = new PhpSerializer();
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
-        $this->assertGreaterThanOrEqual(0, $messageCount, 'Queue should exist after setup()');
+        $transport->setup();
+        $transport->close();
+
+        $this->expectException(\AMQPException::class);
+
+        $envelope = new Envelope(new \stdClass());
+        $transport->send($envelope);
+    }
+
+    /**
+     * Extracts the connection from AmqpTransport via reflection.
+     */
+    private function extractConnection(object $transport): \CrazyGoat\TheConsoomer\ConnectionInterface
+    {
+        $reflection = new \ReflectionClass($transport);
+        $property = $reflection->getProperty('connection');
+
+        $connection = $property->getValue($transport);
+        $this->assertInstanceOf(\CrazyGoat\TheConsoomer\ConnectionInterface::class, $connection);
+
+        return $connection;
     }
 }
