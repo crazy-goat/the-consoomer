@@ -115,16 +115,16 @@ class AmqpStampTest extends TestCase
 
         $this->assertSame('test.routing.key', $stamp->getRoutingKey());
         $this->assertSame(\AMQP_NOPARAM, $stamp->getFlags());
-        $this->assertSame([
-            'content_type' => 'application/json',
-            'message_id' => 'msg-123',
-            'delivery_mode' => 2,
-            'priority' => 5,
-            'timestamp' => 1234567890,
-            'app_id' => 'test-app',
-            'correlation_id' => 'corr-456',
-            'headers' => ['x-custom' => 'value'],
-        ], $stamp->getAttributes());
+        $attributes = $stamp->getAttributes();
+        $this->assertSame('application/json', $attributes['content_type']);
+        $this->assertSame('msg-123', $attributes['message_id']);
+        $this->assertSame(2, $attributes['delivery_mode']);
+        $this->assertSame(5, $attributes['priority']);
+        $this->assertSame(1234567890, $attributes['timestamp']);
+        $this->assertSame('test-app', $attributes['app_id']);
+        $this->assertSame('corr-456', $attributes['correlation_id']);
+        $this->assertSame(['x-custom' => 'value'], $attributes['headers']);
+        $this->assertCount(8, $attributes);
     }
 
     public function testCreateFromAmqpEnvelopeFiltersEmptyValues(): void
@@ -148,23 +148,19 @@ class AmqpStampTest extends TestCase
         $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
 
         $this->assertSame('', $stamp->getRoutingKey());
-        $this->assertSame([
-            'delivery_mode' => 0,
-            'priority' => 0,
-            'timestamp' => 0,
-        ], $stamp->getAttributes());
+        $this->assertSame([], $stamp->getAttributes());
     }
 
-    public function testCreateFromAmqpEnvelopePreservesPriorityZero(): void
+    public function testCreateFromAmqpEnvelopeFiltersNumericZeroValues(): void
     {
         $envelope = $this->createMock(\AMQPEnvelope::class);
-        $envelope->method('getRoutingKey')->willReturn('');
+        $envelope->method('getRoutingKey')->willReturn('test.key');
         $envelope->method('getContentType')->willReturn(null);
         $envelope->method('getContentEncoding')->willReturn(null);
         $envelope->method('getMessageId')->willReturn(null);
-        $envelope->method('getDeliveryMode')->willReturn(2);
+        $envelope->method('getDeliveryMode')->willReturn(0);
         $envelope->method('getPriority')->willReturn(0);
-        $envelope->method('getTimestamp')->willReturn(null);
+        $envelope->method('getTimestamp')->willReturn(0);
         $envelope->method('getAppId')->willReturn(null);
         $envelope->method('getUserId')->willReturn(null);
         $envelope->method('getExpiration')->willReturn(null);
@@ -175,7 +171,35 @@ class AmqpStampTest extends TestCase
 
         $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
 
-        $this->assertSame(['delivery_mode' => 2, 'priority' => 0], $stamp->getAttributes());
+        $this->assertSame('test.key', $stamp->getRoutingKey());
+        $this->assertSame([], $stamp->getAttributes());
+    }
+
+    public function testCreateFromAmqpEnvelopeIncludesNumericValuesWhenPositive(): void
+    {
+        $envelope = $this->createMock(\AMQPEnvelope::class);
+        $envelope->method('getRoutingKey')->willReturn('');
+        $envelope->method('getContentType')->willReturn(null);
+        $envelope->method('getContentEncoding')->willReturn(null);
+        $envelope->method('getMessageId')->willReturn(null);
+        $envelope->method('getDeliveryMode')->willReturn(2);
+        $envelope->method('getPriority')->willReturn(5);
+        $envelope->method('getTimestamp')->willReturn(1234567890);
+        $envelope->method('getAppId')->willReturn(null);
+        $envelope->method('getUserId')->willReturn(null);
+        $envelope->method('getExpiration')->willReturn(null);
+        $envelope->method('getType')->willReturn(null);
+        $envelope->method('getReplyTo')->willReturn(null);
+        $envelope->method('getCorrelationId')->willReturn(null);
+        $envelope->method('getHeaders')->willReturn([]);
+
+        $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
+
+        $this->assertSame([
+            'delivery_mode' => 2,
+            'priority' => 5,
+            'timestamp' => 1234567890,
+        ], $stamp->getAttributes());
     }
 
     public function testCreateWithAttributes(): void
