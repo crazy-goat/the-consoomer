@@ -124,7 +124,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $stamp = $envelope->last(AmqpReceivedStamp::class);
         if (!$stamp instanceof AmqpReceivedStamp) {
-            throw new MissingStampException('No raw message stamp');
+            throw new MissingStampException('No AMQP received stamp');
         }
 
         if ($this->retry instanceof ConnectionRetryInterface) {
@@ -150,7 +150,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $stamp = $envelope->last(AmqpReceivedStamp::class);
         if (!$stamp instanceof AmqpReceivedStamp) {
-            throw new MissingStampException('No raw message stamp');
+            throw new MissingStampException('No AMQP received stamp');
         }
 
         if ($this->retry instanceof ConnectionRetryInterface) {

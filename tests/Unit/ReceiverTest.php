@@ -187,7 +187,7 @@ class ReceiverTest extends TestCase
         $envelope = new Envelope(new \stdClass());
 
         $this->expectException(MissingStampException::class);
-        $this->expectExceptionMessage('No raw message stamp');
+        $this->expectExceptionMessage('No AMQP received stamp');
 
         $receiver->ack($envelope);
     }
@@ -201,7 +201,7 @@ class ReceiverTest extends TestCase
         $envelope = new Envelope(new \stdClass());
 
         $this->expectException(MissingStampException::class);
-        $this->expectExceptionMessage('No raw message stamp');
+        $this->expectExceptionMessage('No AMQP received stamp');
 
         $receiver->reject($envelope);
     }
