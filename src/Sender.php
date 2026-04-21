@@ -70,8 +70,9 @@ final class Sender implements SenderInterface
      */
     private function getRoutingKeyForMessage(?AmqpStamp $stamp): string
     {
-        if ($stamp instanceof AmqpStamp && $stamp->getRoutingKey() !== null) {
-            return $stamp->getRoutingKey();
+        $routingKey = $stamp?->getRoutingKey();
+        if ($routingKey !== null) {
+            return $routingKey;
         }
 
         return $this->options['routing_key'] ?? $this->options['default_publish_routing_key'] ?? '';
