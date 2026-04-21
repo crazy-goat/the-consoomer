@@ -72,7 +72,7 @@ class HeartbeatTest extends TestCase
 
     public function testMultipleMessagesWithHeartbeat(): void
     {
-        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 30]);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 30, 'max_unacked_messages' => 1]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
@@ -111,7 +111,7 @@ class HeartbeatTest extends TestCase
 
     public function testReconnectsAfterHeartbeatTimeout(): void
     {
-        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 1]);
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['heartbeat' => 1, 'max_unacked_messages' => 1]);
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 

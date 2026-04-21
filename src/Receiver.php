@@ -16,7 +16,8 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     private int $unacked = 0;
     private int $maxUnackedMessages = self::DEFAULT_MAX_UNACKED_MESSAGES;
     private ?\AMQPEnvelope $lastUnacked = null;
-    private ?Envelope $message = null;
+    /** @var array<Envelope> */
+    private array $messages = [];
     private ?\AMQPQueue $queue = null;
     private \Closure $callback;
 
@@ -65,11 +66,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             return;
         }
 
-        $this->callback = function (\AMQPEnvelope $message): false {
+        $this->callback = function (\AMQPEnvelope $message): bool {
             $envelope = $this->serializer->decode(['body' => $message->getBody()]);
-            $this->message = $envelope->with(new RawMessageStamp($message));
+            $this->messages[] = $envelope->with(new RawMessageStamp($message));
 
-            return false;
+            return count($this->messages) < $this->maxUnackedMessages;
         };
 
         $channel = $this->connection->getChannel();
@@ -87,7 +88,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      */
     public function get(): iterable
     {
-        $this->message = null;
+        $this->messages = [];
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
@@ -108,7 +109,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $this->connection->updateActivity();
 
-        return $this->message instanceof Envelope ? [$this->message] : [];
+        return $this->messages;
     }
 
     /**

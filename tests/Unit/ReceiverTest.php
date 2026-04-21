@@ -143,12 +143,14 @@ class ReceiverTest extends TestCase
         $queueProperty->setValue($receiver, $this->queue);
 
         $callbackProperty = $reflection->getProperty('callback');
-        $callbackProperty->setValue($receiver, function (\AMQPEnvelope $message) use ($receiver, $reflection): false {
+        $callbackProperty->setValue($receiver, function (\AMQPEnvelope $message) use ($receiver, $reflection): bool {
             $serializer = $reflection->getProperty('serializer');
 
             $envelope = $serializer->getValue($receiver)->decode(['body' => $message->getBody()]);
-            $messageProperty = $reflection->getProperty('message');
-            $messageProperty->setValue($receiver, $envelope->with(new RawMessageStamp($message)));
+            $messagesProperty = $reflection->getProperty('messages');
+            $messages = $messagesProperty->getValue($receiver);
+            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messagesProperty->setValue($receiver, $messages);
 
             return false;
         });
@@ -431,7 +433,7 @@ class ReceiverTest extends TestCase
         $queueProperty->setValue($receiver, $this->queue);
 
         $callbackProperty = $reflection->getProperty('callback');
-        $callbackProperty->setValue($receiver, fn(\AMQPEnvelope $message): false => false);
+        $callbackProperty->setValue($receiver, fn(\AMQPEnvelope $message): bool => false);
 
         return $receiver;
     }
@@ -712,5 +714,232 @@ class ReceiverTest extends TestCase
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
         $receiver->getMessageCount();
+    }
+
+    public function testGetReturnsMultipleMessagesWhenAvailable(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 5];
+
+        $amqpEnvelopes = [];
+        for ($i = 0; $i < 3; $i++) {
+            $envelope = $this->createMock(\AMQPEnvelope::class);
+            $envelope->method('getBody')->willReturn('{"data":"test' . $i . '"}');
+            $amqpEnvelopes[] = $envelope;
+        }
+
+        $this->serializer
+            ->expects($this->exactly(3))
+            ->method('decode')
+            ->willReturnCallback(fn(array $data): \Symfony\Component\Messenger\Envelope => new Envelope(new \stdClass()));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queueProperty = $reflection->getProperty('queue');
+        $queueProperty->setValue($receiver, $this->queue);
+
+        $messagesProperty = $reflection->getProperty('messages');
+        $messagesProperty->setValue($receiver, []);
+
+        $callbackProperty = $reflection->getProperty('callback');
+        $callbackProperty->setValue($receiver, function (\AMQPEnvelope $message) use ($receiver, $reflection): bool {
+            $serializer = $reflection->getProperty('serializer');
+            $envelope = $serializer->getValue($receiver)->decode(['body' => $message->getBody()]);
+
+            $messagesProperty = $reflection->getProperty('messages');
+            $messages = $messagesProperty->getValue($receiver);
+            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messagesProperty->setValue($receiver, $messages);
+
+            return count($messages) < 5;
+        });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function ($callback) use ($amqpEnvelopes): void {
+                foreach ($amqpEnvelopes as $envelope) {
+                    $shouldContinue = $callback($envelope);
+                    if (!$shouldContinue) {
+                        break;
+                    }
+                }
+            });
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $result = $receiver->get();
+
+        $this->assertCount(3, $result);
+        foreach ($result as $envelope) {
+            $this->assertInstanceOf(Envelope::class, $envelope);
+            $this->assertInstanceOf(RawMessageStamp::class, $envelope->last(RawMessageStamp::class));
+        }
+    }
+
+    public function testGetStopsAtMaxUnackedMessages(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 2];
+
+        $amqpEnvelopes = [];
+        for ($i = 0; $i < 5; $i++) {
+            $envelope = $this->createMock(\AMQPEnvelope::class);
+            $envelope->method('getBody')->willReturn('{"data":"test' . $i . '"}');
+            $amqpEnvelopes[] = $envelope;
+        }
+
+        $this->serializer
+            ->expects($this->exactly(2))
+            ->method('decode')
+            ->willReturnCallback(fn(array $data): \Symfony\Component\Messenger\Envelope => new Envelope(new \stdClass()));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queueProperty = $reflection->getProperty('queue');
+        $queueProperty->setValue($receiver, $this->queue);
+
+        $messagesProperty = $reflection->getProperty('messages');
+        $messagesProperty->setValue($receiver, []);
+
+        $callbackProperty = $reflection->getProperty('callback');
+        $callbackProperty->setValue($receiver, function (\AMQPEnvelope $message) use ($receiver, $reflection): bool {
+            $serializer = $reflection->getProperty('serializer');
+            $envelope = $serializer->getValue($receiver)->decode(['body' => $message->getBody()]);
+
+            $messagesProperty = $reflection->getProperty('messages');
+            $messages = $messagesProperty->getValue($receiver);
+            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messagesProperty->setValue($receiver, $messages);
+
+            return count($messages) < 2;
+        });
+
+        $callbackCalls = 0;
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function ($callback) use ($amqpEnvelopes, &$callbackCalls): void {
+                foreach ($amqpEnvelopes as $envelope) {
+                    $shouldContinue = $callback($envelope);
+                    $callbackCalls++;
+                    if (!$shouldContinue) {
+                        break;
+                    }
+                }
+            });
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $result = $receiver->get();
+
+        $this->assertCount(2, $result);
+        $this->assertSame(2, $callbackCalls);
+    }
+
+    public function testGetReturnsCollectedMessagesOnTimeout(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 10];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('{"data":"test"}');
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->willReturnCallback(fn(array $data): \Symfony\Component\Messenger\Envelope => new Envelope(new \stdClass()));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queueProperty = $reflection->getProperty('queue');
+        $queueProperty->setValue($receiver, $this->queue);
+
+        $messagesProperty = $reflection->getProperty('messages');
+        $messagesProperty->setValue($receiver, []);
+
+        $callbackProperty = $reflection->getProperty('callback');
+        $callbackProperty->setValue($receiver, function (\AMQPEnvelope $message) use ($receiver, $reflection): bool {
+            $serializer = $reflection->getProperty('serializer');
+            $envelope = $serializer->getValue($receiver)->decode(['body' => $message->getBody()]);
+
+            $messagesProperty = $reflection->getProperty('messages');
+            $messages = $messagesProperty->getValue($receiver);
+            $messages[] = $envelope->with(new RawMessageStamp($message));
+            $messagesProperty->setValue($receiver, $messages);
+
+            return true;
+        });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function ($callback) use ($amqpEnvelope): void {
+                $callback($amqpEnvelope);
+                throw new \AMQPException('Consumer timeout exceed');
+            });
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $result = $receiver->get();
+
+        $this->assertCount(1, $result);
+    }
+
+    public function testBatchAckWorksWithBatchFetching(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 3];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $envelopes = [];
+        for ($i = 1; $i <= 6; $i++) {
+            $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+            $amqpEnvelope->method('getDeliveryTag')->willReturn($i);
+            $stamps = [new RawMessageStamp($amqpEnvelope)];
+            $envelopes[] = new Envelope(new \stdClass(), $stamps);
+        }
+
+        $ackCallCount = 0;
+        $ackedTags = [];
+
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('ack')
+            ->willReturnCallback(function ($tag, $flags) use (&$ackCallCount, &$ackedTags): void {
+                $ackCallCount++;
+                $ackedTags[] = $tag;
+                $this->assertSame(AMQP_MULTIPLE, $flags);
+            });
+
+        $receiver->ack($envelopes[0]);
+        $receiver->ack($envelopes[1]);
+        $receiver->ack($envelopes[2]);
+        $receiver->ack($envelopes[3]);
+        $receiver->ack($envelopes[4]);
+        $receiver->ack($envelopes[5]);
+
+        $this->assertSame([3, 6], $ackedTags);
     }
 }
