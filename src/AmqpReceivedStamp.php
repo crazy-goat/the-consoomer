@@ -46,6 +46,9 @@ final readonly class AmqpReceivedStamp implements NonSendableStampInterface
         return $this->envelope->getAppId();
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function getHeaders(): array
     {
         return $this->envelope->getHeaders();
