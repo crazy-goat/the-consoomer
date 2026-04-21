@@ -13,14 +13,14 @@ class AmqpStampTest extends TestCase
     {
         $stamp = new AmqpStamp('my.routing.key');
 
-        $this->assertSame('my.routing.key', $stamp->routingKey);
+        $this->assertSame('my.routing.key', $stamp->getRoutingKey());
     }
 
     public function testConstructorWithDefaultRoutingKey(): void
     {
         $stamp = new AmqpStamp();
 
-        $this->assertSame('', $stamp->routingKey);
+        $this->assertNull($stamp->getRoutingKey());
     }
 
     public function testIsNonSendable(): void
@@ -28,5 +28,145 @@ class AmqpStampTest extends TestCase
         $stamp = new AmqpStamp('test');
 
         $this->assertInstanceOf(\Symfony\Component\Messenger\Stamp\NonSendableStampInterface::class, $stamp);
+    }
+
+    public function testConstructorWithFlags(): void
+    {
+        $stamp = new AmqpStamp('key', \AMQP_MANDATORY);
+
+        $this->assertSame(\AMQP_MANDATORY, $stamp->getFlags());
+    }
+
+    public function testDefaultFlagsIsNoParam(): void
+    {
+        $stamp = new AmqpStamp();
+
+        $this->assertSame(\AMQP_NOPARAM, $stamp->getFlags());
+    }
+
+    public function testConstructorWithAttributes(): void
+    {
+        $stamp = new AmqpStamp('key', \AMQP_NOPARAM, ['content_type' => 'application/json']);
+
+        $this->assertSame(['content_type' => 'application/json'], $stamp->getAttributes());
+    }
+
+    public function testDefaultAttributesIsEmptyArray(): void
+    {
+        $stamp = new AmqpStamp();
+
+        $this->assertSame([], $stamp->getAttributes());
+    }
+
+    public function testWithRoutingKeyReturnsNewInstance(): void
+    {
+        $stamp = new AmqpStamp('old.key');
+        $newStamp = $stamp->withRoutingKey('new.key');
+
+        $this->assertSame('old.key', $stamp->getRoutingKey());
+        $this->assertSame('new.key', $newStamp->getRoutingKey());
+    }
+
+    public function testWithFlagsReturnsNewInstance(): void
+    {
+        $stamp = new AmqpStamp('key', \AMQP_NOPARAM);
+        $newStamp = $stamp->withFlags(\AMQP_MANDATORY);
+
+        $this->assertSame(\AMQP_NOPARAM, $stamp->getFlags());
+        $this->assertSame(\AMQP_MANDATORY, $newStamp->getFlags());
+    }
+
+    public function testWithAttributeReturnsNewInstance(): void
+    {
+        $stamp = new AmqpStamp('key', \AMQP_NOPARAM, ['existing' => 'value']);
+        $newStamp = $stamp->withAttribute('new', 'attribute');
+
+        $this->assertSame(['existing' => 'value'], $stamp->getAttributes());
+        $this->assertSame(['existing' => 'value', 'new' => 'attribute'], $newStamp->getAttributes());
+    }
+
+    public function testWithAttributeOverwritesExistingKey(): void
+    {
+        $stamp = new AmqpStamp('key', \AMQP_NOPARAM, ['priority' => 5]);
+        $newStamp = $stamp->withAttribute('priority', 10);
+
+        $this->assertSame(['priority' => 10], $newStamp->getAttributes());
+    }
+
+    public function testCreateFromAmqpEnvelope(): void
+    {
+        $envelope = $this->createMock(\AMQPEnvelope::class);
+        $envelope->method('getRoutingKey')->willReturn('test.routing.key');
+        $envelope->method('getContentType')->willReturn('application/json');
+        $envelope->method('getContentEncoding')->willReturn(null);
+        $envelope->method('getMessageId')->willReturn('msg-123');
+        $envelope->method('getDeliveryMode')->willReturn(2);
+        $envelope->method('getPriority')->willReturn(5);
+        $envelope->method('getTimestamp')->willReturn(1234567890);
+        $envelope->method('getAppId')->willReturn('test-app');
+        $envelope->method('getUserId')->willReturn(null);
+        $envelope->method('getExpiration')->willReturn(null);
+        $envelope->method('getType')->willReturn(null);
+        $envelope->method('getReplyTo')->willReturn(null);
+        $envelope->method('getCorrelationId')->willReturn('corr-456');
+        $envelope->method('getHeaders')->willReturn(['x-custom' => 'value']);
+
+        $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
+
+        $this->assertSame('test.routing.key', $stamp->getRoutingKey());
+        $this->assertSame(\AMQP_NOPARAM, $stamp->getFlags());
+        $this->assertSame([
+            'content_type' => 'application/json',
+            'message_id' => 'msg-123',
+            'delivery_mode' => 2,
+            'priority' => 5,
+            'timestamp' => 1234567890,
+            'app_id' => 'test-app',
+            'correlation_id' => 'corr-456',
+            'headers' => ['x-custom' => 'value'],
+        ], $stamp->getAttributes());
+    }
+
+    public function testCreateFromAmqpEnvelopeFiltersEmptyValues(): void
+    {
+        $envelope = $this->createMock(\AMQPEnvelope::class);
+        $envelope->method('getRoutingKey')->willReturn('');
+        $envelope->method('getContentType')->willReturn('');
+        $envelope->method('getContentEncoding')->willReturn('');
+        $envelope->method('getMessageId')->willReturn('');
+        $envelope->method('getDeliveryMode')->willReturn(0);
+        $envelope->method('getPriority')->willReturn(0);
+        $envelope->method('getTimestamp')->willReturn(0);
+        $envelope->method('getAppId')->willReturn('');
+        $envelope->method('getUserId')->willReturn('');
+        $envelope->method('getExpiration')->willReturn('');
+        $envelope->method('getType')->willReturn('');
+        $envelope->method('getReplyTo')->willReturn('');
+        $envelope->method('getCorrelationId')->willReturn('');
+        $envelope->method('getHeaders')->willReturn([]);
+
+        $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
+
+        $this->assertSame('', $stamp->getRoutingKey());
+        $this->assertSame([], $stamp->getAttributes());
+    }
+
+    public function testCreateWithAttributes(): void
+    {
+        $stamp = AmqpStamp::createWithAttributes(['content_type' => 'text/plain']);
+
+        $this->assertNull($stamp->getRoutingKey());
+        $this->assertSame(\AMQP_NOPARAM, $stamp->getFlags());
+        $this->assertSame(['content_type' => 'text/plain'], $stamp->getAttributes());
+    }
+
+    public function testCreateWithAttributesPreservesStampValues(): void
+    {
+        $original = new AmqpStamp('original.key', \AMQP_MANDATORY, ['old' => 'value']);
+        $stamp = AmqpStamp::createWithAttributes(['new' => 'attribute'], $original);
+
+        $this->assertSame('original.key', $stamp->getRoutingKey());
+        $this->assertSame(\AMQP_MANDATORY, $stamp->getFlags());
+        $this->assertSame(['new' => 'attribute'], $stamp->getAttributes());
     }
 }
