@@ -95,9 +95,6 @@ final readonly class AmqpStamp implements NonSendableStampInterface
             'content_type' => $envelope->getContentType(),
             'content_encoding' => $envelope->getContentEncoding(),
             'message_id' => $envelope->getMessageId(),
-            'delivery_mode' => $envelope->getDeliveryMode(),
-            'priority' => $envelope->getPriority(),
-            'timestamp' => $envelope->getTimestamp(),
             'app_id' => $envelope->getAppId(),
             'user_id' => $envelope->getUserId(),
             'expiration' => $envelope->getExpiration(),
@@ -113,6 +110,18 @@ final readonly class AmqpStamp implements NonSendableStampInterface
             }
 
             $attributes[$key] = $value;
+        }
+
+        if ($envelope->getDeliveryMode() > 0) {
+            $attributes['delivery_mode'] = $envelope->getDeliveryMode();
+        }
+
+        if ($envelope->getPriority() > 0) {
+            $attributes['priority'] = $envelope->getPriority();
+        }
+
+        if ($envelope->getTimestamp() > 0) {
+            $attributes['timestamp'] = $envelope->getTimestamp();
         }
 
         return new self($envelope->getRoutingKey(), \AMQP_NOPARAM, $attributes);
