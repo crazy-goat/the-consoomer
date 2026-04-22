@@ -151,7 +151,7 @@ class AmqpStampTest extends TestCase
         $this->assertSame([], $stamp->getAttributes());
     }
 
-    public function testCreateFromAmqpEnvelopePreservesPriorityZero(): void
+    public function testCreateFromAmqpEnvelopeFiltersPriorityZero(): void
     {
         $envelope = $this->createMock(\AMQPEnvelope::class);
         $envelope->method('getRoutingKey')->willReturn('');
