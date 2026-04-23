@@ -363,4 +363,34 @@ class InfrastructureSetupTest extends TestCase
         $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
         $setup->setup();
     }
+
+    public function testSetupThrowsWhenQueuesIsEmptyArray(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('queues option must not be empty');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'queues' => [],
+        ];
+
+        new InfrastructureSetup($this->factory, $this->connection, $options);
+    }
+
+    public function testSetupWithEmptyBindingKeysThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('queues[orders].binding_keys must not be empty');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'queues' => [
+                new \CrazyGoat\TheConsoomer\QueueConfiguration('orders', []),
+            ],
+        ];
+
+        new InfrastructureSetup($this->factory, $this->connection, $options);
+    }
 }

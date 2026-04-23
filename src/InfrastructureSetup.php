@@ -20,6 +20,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      * @param array{
      *     exchange: string,
      *     queue: string,
+     *     queues?: list<QueueConfiguration>,
      *     exchange_type?: string,
      *     routing_key?: string,
      *     queue_arguments?: array<string, mixed>,
@@ -41,6 +42,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
 
         if (isset($options['exchange_bindings'])) {
             $this->validateExchangeBindings($options['exchange_bindings']);
+        }
+
+        if (isset($options['queues'])) {
+            $this->validateQueues($options['queues']);
         }
     }
 
@@ -120,6 +125,26 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         ]);
         $retryQueue->declareQueue();
         $retryQueue->bind($retryExchangeName, $routingKey . '_retry');
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     */
+    private function validateQueues(array $queues): void
+    {
+        if ($queues === []) {
+            throw new \InvalidArgumentException('queues option must not be empty');
+        }
+
+        foreach ($queues as $queue) {
+            if (!$queue instanceof QueueConfiguration) {
+                throw new \InvalidArgumentException('queues must contain QueueConfiguration objects');
+            }
+
+            if ($queue->bindingKeys() === ['']) {
+                throw new \InvalidArgumentException(sprintf('queues[%s].binding_keys must not be empty', $queue->name()));
+            }
+        }
     }
 
     /**
