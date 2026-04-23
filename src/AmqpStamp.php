@@ -73,12 +73,12 @@ final readonly class AmqpStamp implements NonSendableStampInterface
 
     public function withRoutingKey(?string $routingKey): self
     {
-        return new self($routingKey, $this->flags, $this->attributes);
+        return new self($routingKey, $this->flags, $this->attributes, $this->retryAttempt);
     }
 
     public function withFlags(int $flags): self
     {
-        return new self($this->routingKey, $flags, $this->attributes);
+        return new self($this->routingKey, $flags, $this->attributes, $this->retryAttempt);
     }
 
     public function withAttribute(string $key, mixed $value): self
@@ -86,7 +86,7 @@ final readonly class AmqpStamp implements NonSendableStampInterface
         $attributes = $this->attributes;
         $attributes[$key] = $value;
 
-        return new self($this->routingKey, $this->flags, $attributes);
+        return new self($this->routingKey, $this->flags, $attributes, $this->retryAttempt);
     }
 
     public static function createFromAmqpEnvelope(\AMQPEnvelope $envelope): self

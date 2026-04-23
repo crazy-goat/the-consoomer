@@ -104,6 +104,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     private function setupRetryQueue(): void
     {
         $retryExchangeName = $this->options['retry_exchange'] ?? $this->options['exchange'] . '_retry';
+        $routingKey = $this->options['routing_key'] ?? '';
         $retryQueueName = $this->options['queue'] . '_retry';
         $retryExchange = $this->factory->createExchange($this->connection->getChannel());
         $retryExchange->setName($retryExchangeName);
@@ -115,10 +116,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $retryQueue->setFlags(\AMQP_DURABLE);
         $retryQueue->setArguments($this->options['retry_queue_arguments'] ?? [
             'x-dead-letter-exchange' => $this->options['exchange'],
-            'x-dead-letter-routing-key' => $this->options['routing_key'] ?? '',
+            'x-dead-letter-routing-key' => $routingKey,
         ]);
         $retryQueue->declareQueue();
-        $retryQueue->bind($retryExchangeName, $retryQueueName);
+        $retryQueue->bind($retryExchangeName, $routingKey . '_retry');
     }
 
     /**
