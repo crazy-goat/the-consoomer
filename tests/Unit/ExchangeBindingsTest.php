@@ -215,6 +215,25 @@ class ExchangeBindingsTest extends TestCase
         new InfrastructureSetup($this->factory, $this->connection, $options);
     }
 
+    public function testValidationThrowsExceptionForEmptyRoutingKeys(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('exchange_bindings[0].routing_keys must not be empty');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_bindings' => [
+                [
+                    'target' => 'target_exchange',
+                    'routing_keys' => [],
+                ],
+            ],
+        ];
+
+        new InfrastructureSetup($this->factory, $this->connection, $options);
+    }
+
     public function testValidationThrowsExceptionForInvalidRoutingKeyType(): void
     {
         $this->expectException(\InvalidArgumentException::class);

@@ -121,6 +121,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
                     throw new \InvalidArgumentException(sprintf('exchange_bindings[%d].routing_keys must be an array', $index));
                 }
 
+                if ($binding['routing_keys'] === []) {
+                    throw new \InvalidArgumentException(sprintf('exchange_bindings[%d].routing_keys must not be empty', $index));
+                }
+
                 foreach ($binding['routing_keys'] as $keyIndex => $key) {
                     if (!is_string($key)) {
                         throw new \InvalidArgumentException(sprintf('exchange_bindings[%d].routing_keys[%d] must be a string', $index, $keyIndex));
