@@ -20,6 +20,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      * @param array{
      *     exchange: string,
      *     queue: string,
+     *     queues?: list<QueueConfiguration>,
      *     exchange_type?: string,
      *     routing_key?: string,
      *     queue_arguments?: array<string, mixed>,
@@ -41,6 +42,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
 
         if (isset($options['exchange_bindings'])) {
             $this->validateExchangeBindings($options['exchange_bindings']);
+        }
+
+        if (isset($options['queues'])) {
+            $this->validateQueues($options['queues']);
         }
     }
 
@@ -70,6 +75,42 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $exchange->setFlags(\AMQP_DURABLE | ($this->options['exchange_flags'] ?? 0));
         $exchange->declareExchange();
 
+        if (isset($this->options['queues'])) {
+            $this->setupQueues($exchange);
+        } else {
+            $this->setupSingleQueue($exchange);
+        }
+
+        $this->setupExchangeBindings($exchange);
+        $this->setupRetryQueue();
+
+        $this->setupPerformed = true;
+    }
+
+    private function setupQueues(\AMQPExchange $exchange): void
+    {
+        $channel = $this->connection->getChannel();
+
+        foreach ($this->options['queues'] as $queueConfig) {
+            $queue = $this->factory->createQueue($channel);
+            $queue->setName($queueConfig->name());
+            $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
+
+            if ($queueConfig->hasArguments()) {
+                $queue->setArguments($queueConfig->arguments());
+            }
+
+            $queue->declareQueue();
+
+            foreach ($queueConfig->bindingKeys() as $bindingKey) {
+                $queue->bind($exchange->getName(), $bindingKey);
+            }
+        }
+    }
+
+    private function setupSingleQueue(\AMQPExchange $exchange): void
+    {
+        $channel = $this->connection->getChannel();
         $queue = $this->factory->createQueue($channel);
         $queue->setName($this->options['queue']);
         $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
@@ -80,11 +121,6 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
 
         $routingKey = $this->options['routing_key'] ?? '';
         $queue->bind($exchange->getName(), $routingKey);
-
-        $this->setupExchangeBindings($exchange);
-        $this->setupRetryQueue();
-
-        $this->setupPerformed = true;
     }
 
     private function setupExchangeBindings(\AMQPExchange $exchange): void
@@ -120,6 +156,26 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         ]);
         $retryQueue->declareQueue();
         $retryQueue->bind($retryExchangeName, $routingKey . '_retry');
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     */
+    private function validateQueues(array $queues): void
+    {
+        if ($queues === []) {
+            throw new \InvalidArgumentException('queues option must not be empty');
+        }
+
+        foreach ($queues as $queue) {
+            if (!$queue instanceof QueueConfiguration) {
+                throw new \InvalidArgumentException('queues must contain QueueConfiguration objects');
+            }
+
+            if ($queue->bindingKeys() === ['']) {
+                throw new \InvalidArgumentException(sprintf('queues[%s].binding_keys must not be empty', $queue->name()));
+            }
+        }
     }
 
     /**
