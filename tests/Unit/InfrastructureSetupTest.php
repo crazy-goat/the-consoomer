@@ -73,7 +73,7 @@ class InfrastructureSetupTest extends TestCase
     public function testSetupCreatesExchangeAndQueueWithCorrectParameters(): void
     {
         $this->connection
-            ->expects($this->exactly(3))
+            ->expects($this->exactly(4))
             ->method('getChannel')
             ->willReturn($this->channel);
 
@@ -392,5 +392,122 @@ class InfrastructureSetupTest extends TestCase
         ];
 
         new InfrastructureSetup($this->factory, $this->connection, $options);
+    }
+
+    public function testSetupWithMultipleQueuesAndBindingKeys(): void
+    {
+        $queue2 = $this->createMock(\AMQPQueue::class);
+
+        $this->connection
+            ->expects($this->exactly(4))
+            ->method('getChannel')
+            ->willReturn($this->channel);
+
+        $this->factory
+            ->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $queue2, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        // First queue: orders
+        $this->queue->expects($this->once())->method('setName')->with('orders');
+        $this->queue->expects($this->once())->method('declareQueue');
+        $bindCalls = [];
+        $this->queue->method('bind')->willReturnCallback(function ($exchange, $key) use (&$bindCalls) {
+            $bindCalls[] = [$exchange, $key];
+        });
+
+        // Second queue: notifications
+        $queue2->expects($this->once())->method('setName')->with('notifications');
+        $queue2->expects($this->once())->method('declareQueue');
+        $queue2->method('bind')->willReturnCallback(function ($exchange, $key) use (&$bindCalls) {
+            $bindCalls[] = [$exchange, $key];
+        });
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'orders',
+            'queues' => [
+                new \CrazyGoat\TheConsoomer\QueueConfiguration('orders', ['order.created', 'order.updated']),
+                new \CrazyGoat\TheConsoomer\QueueConfiguration('notifications', ['notification.*']),
+            ],
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+
+        $this->assertSame([
+            ['test_exchange', 'order.created'],
+            ['test_exchange', 'order.updated'],
+            ['test_exchange', 'notification.*'],
+        ], $bindCalls);
+    }
+
+    public function testSetupWithMultipleQueuesAndArguments(): void
+    {
+        $queue2 = $this->createMock(\AMQPQueue::class);
+
+        $this->connection
+            ->expects($this->exactly(4))
+            ->method('getChannel')
+            ->willReturn($this->channel);
+
+        $this->factory
+            ->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $queue2, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        // First queue with arguments
+        $this->queue->expects($this->once())->method('setName')->with('orders');
+        $this->queue->expects($this->once())->method('setArguments')->with(['x-max-priority' => 10]);
+        $this->queue->expects($this->once())->method('declareQueue');
+        $this->queue->expects($this->once())->method('bind')->with('test_exchange', 'order.*');
+
+        // Second queue with different arguments
+        $queue2->expects($this->once())->method('setName')->with('notifications');
+        $queue2->expects($this->once())->method('setArguments')->with(['x-message-ttl' => 60000]);
+        $queue2->expects($this->once())->method('declareQueue');
+        $queue2->expects($this->once())->method('bind')->with('test_exchange', 'notification.*');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'orders',
+            'queues' => [
+                new \CrazyGoat\TheConsoomer\QueueConfiguration('orders', ['order.*'], ['x-max-priority' => 10]),
+                new \CrazyGoat\TheConsoomer\QueueConfiguration('notifications', ['notification.*'], ['x-message-ttl' => 60000]),
+            ],
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
     }
 }
