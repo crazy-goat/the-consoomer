@@ -35,6 +35,7 @@ final readonly class AmqpStamp implements NonSendableStampInterface
         private ?string $routingKey = null,
         private int $flags = \AMQP_NOPARAM,
         private array $attributes = [],
+        private bool $retryAttempt = false,
     ) {
     }
 
@@ -124,7 +125,7 @@ final readonly class AmqpStamp implements NonSendableStampInterface
             $attributes['timestamp'] = $envelope->getTimestamp();
         }
 
-        return new self($envelope->getRoutingKey(), \AMQP_NOPARAM, $attributes);
+        return new self($envelope->getRoutingKey(), \AMQP_NOPARAM, $attributes, false);
     }
 
     /**
@@ -154,6 +155,17 @@ final readonly class AmqpStamp implements NonSendableStampInterface
             $stamp?->getRoutingKey(),
             $stamp?->getFlags() ?? \AMQP_NOPARAM,
             $attributes,
+            $stamp?->isRetryAttempt() ?? false,
         );
+    }
+
+    public function isRetryAttempt(): bool
+    {
+        return $this->retryAttempt;
+    }
+
+    public function withRetryAttempt(bool $retry = true): self
+    {
+        return new self($this->routingKey, $this->flags, $this->attributes, $retry);
     }
 }

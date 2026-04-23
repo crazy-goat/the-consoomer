@@ -26,6 +26,8 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      *     exchange_flags?: int,
      *     queue_flags?: int,
      *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
+     *     retry_exchange?: string,
+     *     retry_queue_arguments?: array<string, mixed>,
      * } $options
      */
     public function __construct(
@@ -80,6 +82,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $queue->bind($exchange->getName(), $routingKey);
 
         $this->setupExchangeBindings($exchange);
+        $this->setupRetryQueue();
 
         $this->setupPerformed = true;
     }
@@ -96,6 +99,26 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
                 $exchange->bind($target, $routingKey);
             }
         }
+    }
+
+    private function setupRetryQueue(): void
+    {
+        $retryExchangeName = $this->options['retry_exchange'] ?? $this->options['exchange'] . '_retry';
+        $retryQueueName = $this->options['queue'] . '_retry';
+        $retryExchange = $this->factory->createExchange($this->connection->getChannel());
+        $retryExchange->setName($retryExchangeName);
+        $retryExchange->setType(\AMQP_EX_TYPE_DIRECT);
+        $retryExchange->setFlags(\AMQP_DURABLE);
+        $retryExchange->declareExchange();
+        $retryQueue = $this->factory->createQueue($this->connection->getChannel());
+        $retryQueue->setName($retryQueueName);
+        $retryQueue->setFlags(\AMQP_DURABLE);
+        $retryQueue->setArguments($this->options['retry_queue_arguments'] ?? [
+            'x-dead-letter-exchange' => $this->options['exchange'],
+            'x-dead-letter-routing-key' => $this->options['routing_key'] ?? '',
+        ]);
+        $retryQueue->declareQueue();
+        $retryQueue->bind($retryExchangeName, $retryQueueName);
     }
 
     /**
