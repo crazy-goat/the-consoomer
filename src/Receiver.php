@@ -24,9 +24,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     /**
      * @param array{
      *     queue?: string,
+     *     exchange?: string,
      *     max_unacked_messages?: int,
      *     auto_setup?: bool,
      *     retry?: bool,
+     *     retry_exchange?: string,
+     *     routing_key?: string,
      * } $options
      */
     public function __construct(
@@ -155,15 +158,47 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($stamp): void {
-                $this->ackPending();
-                $this->queue->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
+                $this->rejectMessage($stamp);
                 $this->connection->updateActivity();
             });
         } else {
-            $this->ackPending();
-            $this->queue->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
+            $this->rejectMessage($stamp);
             $this->connection->updateActivity();
         }
+    }
+
+    private function rejectMessage(AmqpReceivedStamp $stamp): void
+    {
+        $this->ackPending();
+
+        $amqpStamp = $stamp->getAmqpStamp();
+        if ($amqpStamp && $amqpStamp->isRetryAttempt()) {
+            $this->publishToRetryQueue($stamp);
+        } else {
+            $this->queue->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
+        }
+    }
+
+    private function publishToRetryQueue(AmqpReceivedStamp $stamp): void
+    {
+        $retryExchangeName = $this->options['retry_exchange'] ?? $this->options['exchange'] . '_retry';
+        $routingKey = $this->getRoutingKeyForRetry($stamp->getAmqpStamp()?->getRoutingKey());
+
+        $retryExchange = $this->factory->createExchange($this->connection->getChannel());
+        $retryExchange->setName($retryExchangeName);
+        $retryExchange->publish(
+            $stamp->getAmqpEnvelope()->getBody(),
+            $routingKey,
+            \AMQP_NOPARAM,
+            $stamp->getAmqpEnvelope()->getHeaders(),
+        );
+    }
+
+    private function getRoutingKeyForRetry(?string $routingKey): string
+    {
+        $baseKey = $routingKey ?? $this->options['routing_key'] ?? '';
+
+        return $baseKey . '_retry';
     }
 
     /**
