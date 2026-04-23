@@ -119,7 +119,7 @@ class DsnParserTest extends TestCase
         $this->assertIsArray($result['queues']);
         $this->assertCount(2, $result['queues']);
 
-        $names = array_map(fn($q) => $q->name(), $result['queues']);
+        $names = array_map(fn(\CrazyGoat\TheConsoomer\QueueConfiguration $q): string => $q->name(), $result['queues']);
         $this->assertContains('queue1', $names);
         $this->assertContains('queue2', $names);
     }
@@ -274,8 +274,8 @@ class DsnParserTest extends TestCase
         $this->assertIsArray($result['queues']);
         $this->assertCount(2, $result['queues']);
 
-        $orders = array_filter($result['queues'], fn($q) => $q->name() === 'orders');
-        $notifications = array_filter($result['queues'], fn($q) => $q->name() === 'notifications');
+        $orders = array_filter($result['queues'], fn(\CrazyGoat\TheConsoomer\QueueConfiguration $q): bool => $q->name() === 'orders');
+        $notifications = array_filter($result['queues'], fn(\CrazyGoat\TheConsoomer\QueueConfiguration $q): bool => $q->name() === 'notifications');
 
         $ordersQueue = reset($orders);
         $this->assertSame(['order.created', 'order.updated'], $ordersQueue->bindingKeys());

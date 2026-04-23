@@ -9,7 +9,7 @@ namespace CrazyGoat\TheConsoomer;
  *
  * Immutable value object containing queue name, binding keys, and optional arguments.
  */
-final class QueueConfiguration
+final readonly class QueueConfiguration
 {
     /**
      * @param string $name Queue name
@@ -17,9 +17,9 @@ final class QueueConfiguration
      * @param array<string, mixed> $arguments Queue arguments (x-max-priority, x-message-ttl, etc.)
      */
     public function __construct(
-        private readonly string $name,
-        private readonly array $bindingKeys = [],
-        private readonly array $arguments = [],
+        private string $name,
+        private array $bindingKeys = [],
+        private array $arguments = [],
     ) {
     }
 

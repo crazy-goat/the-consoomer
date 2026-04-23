@@ -417,14 +417,14 @@ class InfrastructureSetupTest extends TestCase
         $this->queue->expects($this->once())->method('setName')->with('orders');
         $this->queue->expects($this->once())->method('declareQueue');
         $bindCalls = [];
-        $this->queue->method('bind')->willReturnCallback(function ($exchange, $key) use (&$bindCalls) {
+        $this->queue->method('bind')->willReturnCallback(function ($exchange, $key) use (&$bindCalls): void {
             $bindCalls[] = [$exchange, $key];
         });
 
         // Second queue: notifications
         $queue2->expects($this->once())->method('setName')->with('notifications');
         $queue2->expects($this->once())->method('declareQueue');
-        $queue2->method('bind')->willReturnCallback(function ($exchange, $key) use (&$bindCalls) {
+        $queue2->method('bind')->willReturnCallback(function ($exchange, $key) use (&$bindCalls): void {
             $bindCalls[] = [$exchange, $key];
         });
 
