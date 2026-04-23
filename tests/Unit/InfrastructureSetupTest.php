@@ -457,6 +457,50 @@ class InfrastructureSetupTest extends TestCase
         ], $bindCalls);
     }
 
+    public function testSetupWithSingleQueueWhenQueuesNotProvided(): void
+    {
+        $this->connection
+            ->expects($this->exactly(4))
+            ->method('getChannel')
+            ->willReturn($this->channel);
+
+        $this->factory
+            ->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        // Should use legacy single-queue logic
+        $this->queue->expects($this->once())->method('setName')->with('test_queue');
+        $this->queue->expects($this->once())->method('setArguments')->with(['x-max-priority' => 10]);
+        $this->queue->expects($this->once())->method('declareQueue');
+        $this->queue->expects($this->once())->method('bind')->with('test_exchange', 'test_key');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'routing_key' => 'test_key',
+            'queue_arguments' => ['x-max-priority' => 10],
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
     public function testSetupWithMultipleQueuesAndArguments(): void
     {
         $queue2 = $this->createMock(\AMQPQueue::class);
