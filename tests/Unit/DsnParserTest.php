@@ -117,8 +117,11 @@ class DsnParserTest extends TestCase
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queues[queue1][binding_keys][0]=key1&queues[queue2][binding_keys][0]=key2');
 
         $this->assertIsArray($result['queues']);
-        $this->assertArrayHasKey('queue1', $result['queues']);
-        $this->assertArrayHasKey('queue2', $result['queues']);
+        $this->assertCount(2, $result['queues']);
+
+        $names = array_map(fn($q) => $q->name(), $result['queues']);
+        $this->assertContains('queue1', $names);
+        $this->assertContains('queue2', $names);
     }
 
     public function testParsesTimeoutOptions(): void
@@ -248,5 +251,38 @@ class DsnParserTest extends TestCase
 
         $this->assertSame('user name', $result['user']);
         $this->assertSame('pass word', $result['password']);
+    }
+
+    public function testParsesQueuesWithArguments(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queues[orders][arguments][x-max-priority]=10&queues[orders][arguments][x-message-ttl]=60000');
+
+        $this->assertIsArray($result['queues']);
+        $this->assertCount(1, $result['queues']);
+        $this->assertInstanceOf(\CrazyGoat\TheConsoomer\QueueConfiguration::class, $result['queues'][0]);
+        $this->assertSame('orders', $result['queues'][0]->name());
+        $this->assertSame(10, $result['queues'][0]->arguments()['x-max-priority']);
+        $this->assertSame(60000, $result['queues'][0]->arguments()['x-message-ttl']);
+    }
+
+    public function testParsesQueuesWithMultipleBindingKeysAndArguments(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queues[orders][binding_keys][0]=order.created&queues[orders][binding_keys][1]=order.updated&queues[orders][arguments][x-max-priority]=10&queues[notifications][binding_keys][0]=notification.*');
+
+        $this->assertIsArray($result['queues']);
+        $this->assertCount(2, $result['queues']);
+
+        $orders = array_filter($result['queues'], fn($q) => $q->name() === 'orders');
+        $notifications = array_filter($result['queues'], fn($q) => $q->name() === 'notifications');
+
+        $ordersQueue = reset($orders);
+        $this->assertSame(['order.created', 'order.updated'], $ordersQueue->bindingKeys());
+        $this->assertSame(10, $ordersQueue->arguments()['x-max-priority']);
+
+        $notificationsQueue = reset($notifications);
+        $this->assertSame(['notification.*'], $notificationsQueue->bindingKeys());
+        $this->assertFalse($notificationsQueue->hasArguments());
     }
 }

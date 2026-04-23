@@ -27,7 +27,7 @@ final class DsnParser
      *     queue?: string,
      *     routing_key?: string,
      *     default_publish_routing_key?: string,
-     *     queues?: array<string, array{binding_keys?: list<string>}>,
+     *     queues?: list<QueueConfiguration>,
      *     queue_arguments?: array<string, mixed>,
      *     max_unacked_messages?: int,
      *     auto_setup?: bool,
@@ -105,6 +105,11 @@ final class DsnParser
             if ($queueArgs !== []) {
                 $result['queue_arguments'] = $queueArgs;
             }
+        }
+
+        $queues = $this->parseQueuesOption($query);
+        if ($queues !== []) {
+            $result['queues'] = $queues;
         }
 
         return $this->validateParsedOptions($result);
@@ -207,6 +212,80 @@ final class DsnParser
         }
 
         return $value;
+    }
+
+    /**
+     * Parses queues option from DSN query parameters.
+     *
+     * Handles both nested array format from parse_str and flat key format.
+     *
+     * @param array<string, mixed> $query Parsed query parameters
+     * @return list<QueueConfiguration>
+     */
+    private function parseQueuesOption(array $query): array
+    {
+        // If parse_str already created nested array structure
+        if (isset($query['queues']) && is_array($query['queues'])) {
+            return $this->parseQueuesFromArray($query['queues']);
+        }
+
+        // Fallback: parse flat key format (queues[name][key]=value)
+        return $this->parseQueuesFromFlatKeys($query);
+    }
+
+    /**
+     * Parse queues from nested array structure (from parse_str).
+     *
+     * @param array<string, mixed> $queuesData
+     * @return list<QueueConfiguration>
+     */
+    private function parseQueuesFromArray(array $queuesData): array
+    {
+        $queues = [];
+        foreach ($queuesData as $name => $config) {
+            if (!is_array($config)) {
+                continue;
+            }
+            $bindingKeys = isset($config['binding_keys']) && is_array($config['binding_keys'])
+                ? array_values($config['binding_keys'])
+                : [];
+            $arguments = isset($config['arguments']) && is_array($config['arguments'])
+                ? $this->normalizeQueueArguments($config['arguments'])
+                : [];
+            $queues[] = new QueueConfiguration($name, $bindingKeys, $arguments);
+        }
+
+        return $queues;
+    }
+
+    /**
+     * Parse queues from flat key format (queues[name][key]=value).
+     *
+     * @param array<string, mixed> $query
+     * @return list<QueueConfiguration>
+     */
+    private function parseQueuesFromFlatKeys(array $query): array
+    {
+        $queuesData = [];
+
+        foreach ($query as $key => $value) {
+            if (preg_match('/^queues\[([^\]]+)\]\[arguments\]\[(.+)\]$/', (string) $key, $matches)) {
+                $queuesData[$matches[1]]['arguments'][$matches[2]] = $this->normalizeValue($value);
+            }
+
+            if (preg_match('/^queues\[([^\]]+)\]\[binding_keys\]\[(\d+)\]$/', (string) $key, $matches)) {
+                $queuesData[$matches[1]]['binding_keys'][(int) $matches[2]] = $this->normalizeValue($value);
+            }
+        }
+
+        $queues = [];
+        foreach ($queuesData as $name => $config) {
+            $bindingKeys = isset($config['binding_keys']) ? array_values($config['binding_keys']) : [];
+            $arguments = $config['arguments'] ?? [];
+            $queues[] = new QueueConfiguration($name, $bindingKeys, $arguments);
+        }
+
+        return $queues;
     }
 
     /**
