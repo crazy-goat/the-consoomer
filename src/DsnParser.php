@@ -95,6 +95,10 @@ final class DsnParser
             $result[$key] = $this->normalizeValue($value);
         }
 
+        if (isset($result['queues']) && is_array($result['queues'])) {
+            $result['queues'] = $this->normalizeQueuesFromDsn($result['queues']);
+        }
+
         if (isset($query['queue_arguments']) && is_array($query['queue_arguments'])) {
             $result['queue_arguments'] = $this->normalizeQueueArguments($query['queue_arguments']);
         } else {
@@ -211,6 +215,23 @@ final class DsnParser
         }
 
         return $value;
+    }
+
+    /**
+     * @param array<mixed> $queues
+     * @return array<string, array{binding_keys?: list<string>}>
+     */
+    private function normalizeQueuesFromDsn(array $queues): array
+    {
+        $normalized = [];
+        foreach ($queues as $key => $value) {
+            if (is_string($key) && is_array($value)) {
+                $normalized[$key] = $value;
+            } elseif (is_string($value) && $value !== '') {
+                $normalized[$value] = [];
+            }
+        }
+        return $normalized;
     }
 
     /**

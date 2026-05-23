@@ -13,17 +13,19 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 {
     public const DEFAULT_MAX_UNACKED_MESSAGES = 100;
-    private int $unacked = 0;
-    private int $maxUnackedMessages = self::DEFAULT_MAX_UNACKED_MESSAGES;
-    private ?\AMQPEnvelope $lastUnacked = null;
+    /** @var array<string, int> */
+    private array $unacked = [];
+    /** @var array<string, ?\AMQPEnvelope> */
+    private array $lastUnacked = [];
     /** @var array<Envelope> */
     private array $messages = [];
-    private ?\AMQPQueue $queue = null;
-    private \Closure $callback;
+    /** @var array<string, \AMQPQueue> */
+    private array $queues = [];
 
     /**
      * @param array{
      *     queue?: string,
+     *     queues?: array<string, array{binding_keys?: list<string>}>,
      *     exchange?: string,
      *     max_unacked_messages?: int,
      *     auto_setup?: bool,
@@ -40,55 +42,55 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         private readonly InfrastructureSetupInterface $setup,
         private readonly ?ConnectionRetryInterface $retry = null,
     ) {
-        $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? $this->maxUnackedMessages));
+        $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? self::DEFAULT_MAX_UNACKED_MESSAGES));
     }
 
+    private int $maxUnackedMessages = self::DEFAULT_MAX_UNACKED_MESSAGES;
+
     /**
-     * Checks if connection needs reconnection due to heartbeat timeout.
-     * Resets internal state when reconnection occurs.
-     * This handles stale connections detected via heartbeat mechanism.
+     * @return list<string>
      */
+    private function getQueueNames(): array
+    {
+        if (isset($this->options['queues']) && $this->options['queues'] !== []) {
+            return array_keys($this->options['queues']);
+        }
+
+        $queue = $this->options['queue'] ?? '';
+        if ($queue !== '') {
+            return [$queue];
+        }
+
+        return [];
+    }
+
     private function ensureConnected(): void
     {
         if ($this->connection->checkHeartbeat()) {
             $this->connection->reconnect();
-            $this->queue = null;
-            $this->unacked = 0;
-            $this->lastUnacked = null;
+            $this->queues = [];
+            $this->unacked = [];
+            $this->lastUnacked = [];
         }
     }
 
-    /**
-     * Establishes AMQP connection and sets up queue if not already connected.
-     * Creates channel, configures QoS, and initializes queue consumer.
-     * This is idempotent - safe to call multiple times.
-     */
     private function connect(): void
     {
-        if ($this->queue instanceof \AMQPQueue) {
+        if ($this->queues !== []) {
             return;
         }
 
-        $this->callback = function (\AMQPEnvelope $message): bool {
-            $envelope = $this->serializer->decode(['body' => $message->getBody()]);
-            $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $this->options['queue'] ?? ''));
-
-            return count($this->messages) < $this->maxUnackedMessages;
-        };
-
         $channel = $this->connection->getChannel();
         $channel->qos(0, $this->maxUnackedMessages);
-        $this->queue = $this->factory->createQueue($channel);
-        $this->queue->setName($this->options['queue'] ?? '');
-        $this->queue->consume();
+
+        foreach ($this->getQueueNames() as $queueName) {
+            $queue = $this->factory->createQueue($channel);
+            $queue->setName($queueName);
+            $queue->consume(null, AMQP_NOPARAM);
+            $this->queues[$queueName] = $queue;
+        }
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @return iterable<Envelope>
-     * @throws \AMQPException When connection fails
-     */
     public function get(): iterable
     {
         $this->messages = [];
@@ -98,15 +100,20 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->ensureConnected();
         $this->connect();
 
-        try {
-            $this->queue->consume($this->callback, AMQP_JUST_CONSUME, $this->queue->getConsumerTag());
-        } catch (\AMQPException $exception) {
-            // Use substring match instead of exact string comparison to handle
-            // variations in the ext-amqp extension's error message wording
-            // (e.g., "exceed" vs "exceeded"). This is more robust against
-            // upstream changes in the C extension.
-            if (!str_contains($exception->getMessage(), 'Consumer timeout')) {
-                throw $exception;
+        foreach ($this->queues as $queueName => $queue) {
+            $callback = function (\AMQPEnvelope $message) use ($queueName): bool {
+                $envelope = $this->serializer->decode(['body' => $message->getBody()]);
+                $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $queueName));
+
+                return count($this->messages) < $this->maxUnackedMessages;
+            };
+
+            try {
+                $queue->consume($callback, AMQP_JUST_CONSUME, $queue->getConsumerTag());
+            } catch (\AMQPException $exception) {
+                if (!str_contains($exception->getMessage(), 'Consumer timeout')) {
+                    throw $exception;
+                }
             }
         }
 
@@ -115,12 +122,6 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return $this->messages;
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @throws MissingStampException When envelope does not contain AmqpReceivedStamp
-     * @throws \AMQPException        When connection fails
-     */
     public function ack(Envelope $envelope): void
     {
         $this->ensureConnected();
@@ -130,23 +131,18 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             throw new MissingStampException('No AMQP received stamp');
         }
 
-        if ($this->retry instanceof ConnectionRetryInterface) {
-            $this->retry->withRetry(function () use ($stamp): void {
-                $this->ackMessage($stamp->getAmqpEnvelope());
-                $this->connection->updateActivity();
-            });
-        } else {
-            $this->ackMessage($stamp->getAmqpEnvelope());
+        $operation = function () use ($stamp): void {
+            $this->ackMessage($stamp->getAmqpEnvelope(), $stamp->getQueueName());
             $this->connection->updateActivity();
+        };
+
+        if ($this->retry instanceof ConnectionRetryInterface) {
+            $this->retry->withRetry($operation);
+        } else {
+            $operation();
         }
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @throws MissingStampException When envelope does not contain AmqpReceivedStamp
-     * @throws \AMQPException        When connection fails
-     */
     public function reject(Envelope $envelope): void
     {
         $this->ensureConnected();
@@ -156,26 +152,32 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             throw new MissingStampException('No AMQP received stamp');
         }
 
-        if ($this->retry instanceof ConnectionRetryInterface) {
-            $this->retry->withRetry(function () use ($stamp): void {
-                $this->rejectMessage($stamp);
-                $this->connection->updateActivity();
-            });
-        } else {
+        $operation = function () use ($stamp): void {
             $this->rejectMessage($stamp);
             $this->connection->updateActivity();
+        };
+
+        if ($this->retry instanceof ConnectionRetryInterface) {
+            $this->retry->withRetry($operation);
+        } else {
+            $operation();
         }
     }
 
     private function rejectMessage(AmqpReceivedStamp $stamp): void
     {
-        $this->ackPending();
+        $queueName = $stamp->getQueueName();
+        if (!isset($this->queues[$queueName])) {
+            throw new \InvalidArgumentException(sprintf('Unknown queue "%s" in received message', $queueName));
+        }
+
+        $this->ackPending($queueName);
 
         $amqpStamp = $stamp->getAmqpStamp();
         if ($amqpStamp && $amqpStamp->isRetryAttempt()) {
             $this->publishToRetryQueue($stamp);
         } else {
-            $this->queue->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
+            $this->queues[$queueName]->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
         }
     }
 
@@ -201,50 +203,36 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return $baseKey . '_retry';
     }
 
-    /**
-     * Acknowledges all pending messages up to the last unacked message.
-     *
-     * Uses AMQP_MULTIPLE flag to ack all messages in batch.
-     * Resets internal tracking state after batch acknowledgment.
-     */
-    public function ackPending(): void
+    public function ackPending(?string $queueName = null): void
     {
-        if ($this->lastUnacked instanceof \AMQPEnvelope) {
-            $this->queue->ack($this->lastUnacked->getDeliveryTag(), AMQP_MULTIPLE);
-        }
-        $this->lastUnacked = null;
-        $this->unacked = 0;
-    }
-
-    /**
-     * Acknowledges a message and tracks batched acknowledgments.
-     *
-     * Uses AMQP_MULTIPLE flag to ack all messages up to the delivery tag,
-     * which is more efficient than ack'ing one by one. The ackPending()
-     * resets internal state after each batch.
-     *
-     * @param \AMQPEnvelope $message Message to acknowledge
-     */
-    private function ackMessage(\AMQPEnvelope $message): void
-    {
-        $this->lastUnacked = $message;
-        ++$this->unacked;
-
-        if ($this->unacked >= $this->maxUnackedMessages) {
-            $this->ackPending();
+        if ($queueName !== null) {
+            $this->ackPendingForQueue($queueName);
+        } else {
+            foreach (array_keys($this->unacked) as $name) {
+                $this->ackPendingForQueue($name);
+            }
         }
     }
 
-    /**
-     * Removes all messages from the given queue (or the configured queue if none given).
-     *
-     * @param string|null $queueName Queue name to purge, or null to use configured queue
-     *
-     * @return int Number of purged messages
-     *
-     * @throws \AMQPException       When connection fails or purge fails
-     * @throws \InvalidArgumentException When no queue name is provided
-     */
+    private function ackPendingForQueue(string $queueName): void
+    {
+        if (isset($this->lastUnacked[$queueName])) {
+            $this->queues[$queueName]->ack($this->lastUnacked[$queueName]->getDeliveryTag(), AMQP_MULTIPLE);
+        }
+        $this->lastUnacked[$queueName] = null;
+        $this->unacked[$queueName] = 0;
+    }
+
+    private function ackMessage(\AMQPEnvelope $message, string $queueName): void
+    {
+        $this->lastUnacked[$queueName] = $message;
+        $this->unacked[$queueName] = ($this->unacked[$queueName] ?? 0) + 1;
+
+        if (($this->unacked[$queueName] ?? 0) >= $this->maxUnackedMessages) {
+            $this->ackPending($queueName);
+        }
+    }
+
     public function purgeQueue(?string $queueName = null): int
     {
         if ($this->options['auto_setup'] ?? true) {
@@ -253,17 +241,22 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->ensureConnected();
 
         $queueName ??= $this->options['queue'] ?? '';
-        if ($queueName === '') {
+        if ($queueName === '' && !isset($this->options['queues'])) {
             throw new \InvalidArgumentException('Queue name must be provided either as argument or in receiver options.');
         }
 
+        if ($queueName === '' && isset($this->options['queues'])) {
+            $queueName = $this->getQueueNames()[0] ?? '';
+            if ($queueName === '') {
+                throw new \InvalidArgumentException('No queues configured for purge.');
+            }
+        }
+
         $channel = $this->connection->getChannel();
-        // Create a separate queue object for purge so we don't interfere
-        // with the consuming queue's internal state (consumer tag, flags, etc.)
         $purgeQueue = $this->factory->createQueue($channel);
         $purgeQueue->setName($queueName);
 
-        $purgeOperation = (fn(): int => $purgeQueue->purge());
+        $purgeOperation = fn(): int => $purgeQueue->purge();
 
         $result = $this->retry instanceof ConnectionRetryInterface
             ? $this->retry->withRetry($purgeOperation)
@@ -274,41 +267,35 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return $result;
     }
 
-    /**
-     * {@inheritdoc}
-     *
-     * @return int Number of messages in the queue
-     * @throws \AMQPException       When connection fails
-     * @throws \AMQPQueueException  When queue does not exist (with auto_setup disabled)
-     */
     public function getMessageCount(): int
     {
-        // Follow same pattern as get(): setup first, then ensure connection
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
         $this->ensureConnected();
         $this->connect();
 
-        $getMessageCountOperation = function (): int {
-            // Use passive flag to safely query queue depth without re-declaring
-            $flags = $this->queue->getFlags();
-            $this->queue->setFlags($flags | \AMQP_PASSIVE);
+        $total = 0;
 
-            try {
-                return $this->queue->declareQueue();
-            } finally {
-                // Restore original flags
-                $this->queue->setFlags($flags);
-            }
-        };
+        foreach ($this->queues as $queue) {
+            $getCount = function () use ($queue): int {
+                $flags = $queue->getFlags();
+                $queue->setFlags($flags | \AMQP_PASSIVE);
 
-        $result = $this->retry instanceof ConnectionRetryInterface
-            ? $this->retry->withRetry($getMessageCountOperation)
-            : $getMessageCountOperation();
+                try {
+                    return $queue->declareQueue();
+                } finally {
+                    $queue->setFlags($flags);
+                }
+            };
+
+            $total += $this->retry instanceof ConnectionRetryInterface
+                ? $this->retry->withRetry($getCount)
+                : $getCount();
+        }
 
         $this->connection->updateActivity();
 
-        return $result;
+        return $total;
     }
 }
