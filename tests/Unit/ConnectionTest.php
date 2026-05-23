@@ -424,4 +424,222 @@ class ConnectionTest extends TestCase
 
         $connection->close();
     }
+
+    public function testPersistentConnectionCloseUsesPdisconnect(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pdisconnect');
+
+        $this->amqpConnection
+            ->expects($this->never())
+            ->method('disconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+        $connection->close();
+    }
+
+    public function testPersistentConnectionReconnectUsesPconnectWhenNotConnected(): void
+    {
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pconnect');
+
+        $this->amqpConnection
+            ->expects($this->never())
+            ->method('connect');
+
+        $connection->reconnect();
+    }
+
+    public function testNonPersistentConnectionDoesNotUsePdisconnect(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('disconnect');
+
+        $this->amqpConnection
+            ->expects($this->never())
+            ->method('pdisconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection, false);
+        $connection->close();
+    }
+
+    public function testPersistentConnectionReconnectUsesPdisconnectAndPconnectWhenConnected(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pdisconnect');
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pconnect');
+
+        $this->amqpConnection
+            ->expects($this->never())
+            ->method('reconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+        $connection->reconnect();
+    }
+
+    public function testPersistentReconnectThrowsOnPconnectFailure(): void
+    {
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pconnect')
+            ->willThrowException(new \AMQPConnectionException('Connection failed'));
+
+        $this->expectException(\AMQPConnectionException::class);
+        $this->expectExceptionMessage('Connection failed');
+
+        $connection->reconnect();
+    }
+
+    public function testPersistentCloseThrowsOnPdisconnectFailure(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pdisconnect')
+            ->willThrowException(new \AMQPConnectionException('Disconnect failed'));
+
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+
+        $this->expectException(\AMQPConnectionException::class);
+        $this->expectExceptionMessage('Disconnect failed');
+
+        $connection->close();
+    }
+
+    public function testPersistentCloseIsIdempotent(): void
+    {
+        $this->amqpConnection
+            ->expects($this->exactly(2))
+            ->method('isConnected')
+            ->willReturnOnConsecutiveCalls(true, false);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pdisconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+
+        $connection->close();
+        $connection->close();
+    }
+
+    public function testPersistentCloseDoesNotPdisconnectWhenNotConnected(): void
+    {
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        $this->amqpConnection
+            ->expects($this->never())
+            ->method('pdisconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+        $connection->close();
+    }
+
+    public function testPersistentReconnectDoesNotClearCacheOnFailure(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturn($channel);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pconnect')
+            ->willThrowException(new \AMQPConnectionException('Connection failed'));
+
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+
+        // First call creates the channel
+        $result1 = $connection->getChannel();
+        $this->assertSame($channel, $result1);
+
+        // Reconnect fails - cache should NOT be cleared
+        $this->expectException(\AMQPConnectionException::class);
+        $connection->reconnect();
+    }
+
+    public function testPersistentReconnectInvalidatesChannelCache(): void
+    {
+        $channel = $this->createMock(\AMQPChannel::class);
+        $newChannel = $this->createMock(\AMQPChannel::class);
+
+        $this->factory
+            ->expects($this->exactly(2))
+            ->method('createChannel')
+            ->with($this->amqpConnection)
+            ->willReturnOnConsecutiveCalls($channel, $newChannel);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('isConnected')
+            ->willReturn(false);
+
+        $this->amqpConnection
+            ->expects($this->once())
+            ->method('pconnect');
+
+        $connection = new Connection($this->factory, $this->amqpConnection, true);
+
+        // First call creates the channel
+        $result1 = $connection->getChannel();
+        $this->assertSame($channel, $result1);
+
+        // Reconnect should invalidate the cache
+        $connection->reconnect();
+
+        // Next call should create a new channel
+        $result2 = $connection->getChannel();
+        $this->assertSame($newChannel, $result2);
+    }
 }

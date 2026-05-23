@@ -18,16 +18,20 @@ final class Connection implements ConnectionInterface
     private int $lastActivityTime;
     private ?LoggerInterface $logger = null;
     private ?\AMQPChannel $channel = null;
+    private bool $persistent = false;
 
     /**
      * @param AmqpFactoryInterface $factory      Factory for creating AMQP channels
      * @param \AMQPConnection      $amqpConnection Underlying AMQP connection
+     * @param bool                 $persistent   Whether to use persistent connection (pconnect)
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
         private readonly \AMQPConnection $amqpConnection,
+        bool $persistent = false,
     ) {
         $this->lastActivityTime = time();
+        $this->persistent = $persistent;
     }
 
     /**
@@ -117,7 +121,14 @@ final class Connection implements ConnectionInterface
 
         try {
             if ($this->amqpConnection->isConnected()) {
-                $this->amqpConnection->reconnect();
+                if ($this->persistent) {
+                    $this->amqpConnection->pdisconnect();
+                    $this->amqpConnection->pconnect();
+                } else {
+                    $this->amqpConnection->reconnect();
+                }
+            } elseif ($this->persistent) {
+                $this->amqpConnection->pconnect();
             } else {
                 $this->amqpConnection->connect();
             }
@@ -157,7 +168,11 @@ final class Connection implements ConnectionInterface
 
         if ($this->amqpConnection->isConnected()) {
             try {
-                $this->amqpConnection->disconnect();
+                if ($this->persistent) {
+                    $this->amqpConnection->pdisconnect();
+                } else {
+                    $this->amqpConnection->disconnect();
+                }
                 $this->logger?->debug('Connection closed');
             } catch (\AMQPConnectionException $e) {
                 $this->logger?->error('Connection close failed: {error}', ['error' => $e->getMessage()]);
