@@ -694,6 +694,219 @@ class ReceiverTest extends TestCase
         $this->assertSame(42, $receiver->getMessageCount());
     }
 
+    public function testPurgeQueuePurgingConfiguredQueue(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue
+            ->expects($this->once())
+            ->method('setName')
+            ->with('test_queue');
+        $purgeQueue
+            ->expects($this->once())
+            ->method('purge')
+            ->willReturn(42);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createQueue')
+            ->with($channel)
+            ->willReturn($purgeQueue);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(42, $receiver->purgeQueue());
+    }
+
+    public function testPurgeQueueWithCustomQueueName(): void
+    {
+        $options = ['queue' => 'default_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue
+            ->expects($this->once())
+            ->method('setName')
+            ->with('custom_queue');
+        $purgeQueue
+            ->expects($this->once())
+            ->method('purge')
+            ->willReturn(10);
+
+        $this->factory
+            ->expects($this->once())
+            ->method('createQueue')
+            ->with($channel)
+            ->willReturn($purgeQueue);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(10, $receiver->purgeQueue('custom_queue'));
+    }
+
+    public function testPurgeQueueCallsSetupFirst(): void
+    {
+        $setup = $this->createMock(InfrastructureSetupInterface::class);
+        $setup->expects($this->once())->method('setup');
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue->method('purge')->willReturn(0);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturn($purgeQueue);
+
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $setup);
+
+        $receiver->purgeQueue();
+    }
+
+    public function testPurgeQueueCallsUpdateActivity(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue->method('purge')->willReturn(0);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturn($purgeQueue);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $receiver->purgeQueue();
+    }
+
+    public function testPurgeQueueUsesRetryWhenConfigured(): void
+    {
+        $options = ['queue' => 'test_queue'];
+        $retry = $this->createMock(\CrazyGoat\TheConsoomer\ConnectionRetryInterface::class);
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue->method('purge')->willReturn(42);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturn($purgeQueue);
+
+        $retry
+            ->expects($this->once())
+            ->method('withRetry')
+            ->willReturnCallback(fn(\Closure $operation): int => $operation());
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
+
+        $this->assertSame(42, $receiver->purgeQueue());
+    }
+
+    public function testPurgeQueueHandlesReconnectionWhenHeartbeatStale(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue->method('purge')->willReturn(42);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturn($purgeQueue);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(true);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(42, $receiver->purgeQueue());
+    }
+
+    public function testPurgeQueueThrowsWhenPurgeFails(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue
+            ->expects($this->once())
+            ->method('purge')
+            ->willThrowException(new \AMQPException('Failed to purge queue'));
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturn($purgeQueue);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->expectException(\AMQPException::class);
+        $this->expectExceptionMessage('Failed to purge queue');
+
+        $receiver->purgeQueue();
+    }
+
+    public function testPurgeQueueSkipsSetupWhenAutoSetupDisabled(): void
+    {
+        $setup = $this->createMock(InfrastructureSetupInterface::class);
+        $setup->expects($this->never())->method('setup');
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $purgeQueue = $this->createMock(\AMQPQueue::class);
+        $purgeQueue->method('purge')->willReturn(0);
+
+        $this->factory
+            ->method('createQueue')
+            ->willReturn($purgeQueue);
+
+        $options = ['queue' => 'test_queue', 'auto_setup' => false];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $setup);
+
+        $receiver->purgeQueue();
+    }
+
+    public function testPurgeQueueThrowsWhenNoQueueName(): void
+    {
+        $options = [];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Queue name must be provided');
+
+        $receiver->purgeQueue();
+    }
+
     public function testGetMessageCountCallsUpdateActivity(): void
     {
         $options = ['queue' => 'test_queue'];
