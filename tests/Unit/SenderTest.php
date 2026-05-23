@@ -7,6 +7,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 use CrazyGoat\TheConsoomer\AmqpFactory;
 use CrazyGoat\TheConsoomer\AmqpStamp;
 use CrazyGoat\TheConsoomer\ConnectionInterface;
+use CrazyGoat\TheConsoomer\ConnectionRetryInterface;
 use CrazyGoat\TheConsoomer\InfrastructureSetupInterface;
 use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -448,9 +449,188 @@ class SenderTest extends TestCase
         $sender->send($envelope);
     }
 
+    public function testSendWithConfirmTimeoutEnablesConfirms(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 5];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $channel->expects($this->once())->method('confirmSelect');
+        $channel->expects($this->once())->method('waitForConfirm')->with(5.0);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('getChannel')
+            ->willReturn($channel);
+
+        $envelope = new Envelope(new \stdClass());
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendWithoutConfirmTimeoutDoesNotEnableConfirms(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $channel->expects($this->never())->method('confirmSelect');
+        $channel->expects($this->never())->method('waitForConfirm');
+
+        $this->connection
+            ->expects($this->never())
+            ->method('getChannel');
+
+        $envelope = new Envelope(new \stdClass());
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendWithZeroConfirmTimeoutDoesNotEnableConfirms(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 0];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $channel->expects($this->never())->method('confirmSelect');
+        $channel->expects($this->never())->method('waitForConfirm');
+
+        $this->connection
+            ->expects($this->never())
+            ->method('getChannel');
+
+        $envelope = new Envelope(new \stdClass());
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendWithConfirmTimeoutAndRetryCallsConfirmEachAttempt(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 5, 'retry' => true];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $channel->expects($this->exactly(2))->method('confirmSelect');
+        $channel->expects($this->exactly(2))->method('waitForConfirm')->with(5.0);
+
+        $this->connection
+            ->method('getChannel')
+            ->willReturn($channel);
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->expects($this->exactly(2))
+            ->method('updateActivity');
+
+        $envelope = new Envelope(new \stdClass());
+
+        $retry = $this->createMock(ConnectionRetryInterface::class);
+        $retry
+            ->method('withRetry')
+            ->willReturnCallback(function (callable $callback): void {
+                $callback();
+                $callback();
+            });
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->exactly(2))
+            ->method('publish');
+
+        $sender = $this->createSenderWithRetry($options, $retry);
+        $sender->send($envelope);
+    }
+
+    public function testSendWithNegativeConfirmTimeoutThrowsException(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'confirm_timeout' => -1];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('confirm_timeout must be a non-negative value');
+
+        new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+    }
+
+    public function testSendWithNegativeFloatConfirmTimeoutThrowsException(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'confirm_timeout' => -0.5];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('confirm_timeout must be a non-negative value');
+
+        new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+    }
+
     private function createSender(array $options): Sender
     {
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Sender::class);
+        $exchangeProperty = $reflection->getProperty('exchange');
+        $exchangeProperty->setValue($sender, $this->exchange);
+
+        return $sender;
+    }
+
+    private function createSenderWithRetry(array $options, ConnectionRetryInterface $retry): Sender
+    {
+        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
 
         $reflection = new \ReflectionClass(Sender::class);
         $exchangeProperty = $reflection->getProperty('exchange');
