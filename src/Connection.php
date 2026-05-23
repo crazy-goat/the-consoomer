@@ -18,7 +18,6 @@ final class Connection implements ConnectionInterface
     private int $lastActivityTime;
     private ?LoggerInterface $logger = null;
     private ?\AMQPChannel $channel = null;
-    private bool $persistent = false;
 
     /**
      * @param AmqpFactoryInterface $factory      Factory for creating AMQP channels
@@ -28,10 +27,9 @@ final class Connection implements ConnectionInterface
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
         private readonly \AMQPConnection $amqpConnection,
-        bool $persistent = false,
+        private readonly bool $persistent = false,
     ) {
         $this->lastActivityTime = time();
-        $this->persistent = $persistent;
     }
 
     /**
