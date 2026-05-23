@@ -86,6 +86,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     ssl_verify?: bool,
      *     exchange_flags?: int,
      *     queue_flags?: int,
+     *     persistent?: bool,
      * } $options
      * @param SerializerInterface  $serializer Message serializer
      * @param AmqpFactoryInterface|null $factory    AMQP factory (optional)
@@ -121,8 +122,10 @@ class AmqpTransportFactory implements TransportFactoryInterface
 
         $factory->configureSsl($connection, $mergedOptions, $logger);
 
+        $persistent = (bool) ($mergedOptions['persistent'] ?? false);
+
         // Client-side heartbeat tracking for auto-reconnect detection
-        $amqpConnection = new Connection($factory, $connection);
+        $amqpConnection = new Connection($factory, $connection, $persistent);
         if (isset($mergedOptions['heartbeat'])) {
             $amqpConnection->setHeartbeat($mergedOptions['heartbeat']);
         }
@@ -130,7 +133,11 @@ class AmqpTransportFactory implements TransportFactoryInterface
             $amqpConnection->setLogger($logger);
         }
 
-        $connection->connect();
+        if ($persistent) {
+            $connection->pconnect();
+        } else {
+            $connection->connect();
+        }
         $amqpConnection->updateActivity();
 
         $setup = new InfrastructureSetup($factory, $amqpConnection, $mergedOptions);

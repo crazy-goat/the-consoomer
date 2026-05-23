@@ -150,6 +150,62 @@ class AmqpTransportFactoryTest extends TestCase
         );
     }
 
+    public function testCreateTransportWithPersistentCallsPconnect(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->willReturn($connection);
+
+        $connection
+            ->expects($this->once())
+            ->method('pconnect');
+
+        $connection
+            ->expects($this->never())
+            ->method('connect');
+
+        $transport = AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange',
+            ['queue' => 'test-queue', 'persistent' => true],
+            $this->createMock(SerializerInterface::class),
+            $factory,
+        );
+
+        $this->assertInstanceOf(AmqpTransport::class, $transport);
+    }
+
+    public function testCreateTransportWithoutPersistentCallsConnect(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->willReturn($connection);
+
+        $connection
+            ->expects($this->once())
+            ->method('connect');
+
+        $connection
+            ->expects($this->never())
+            ->method('pconnect');
+
+        $transport = AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange',
+            ['queue' => 'test-queue'],
+            $this->createMock(SerializerInterface::class),
+            $factory,
+        );
+
+        $this->assertInstanceOf(AmqpTransport::class, $transport);
+    }
+
     public function testCreateTransportPassesInfrastructureSetupToReceiverAndSender(): void
     {
         [$factory, $connection] = $this->createMockFactoryAndConnection();
