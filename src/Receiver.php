@@ -236,6 +236,45 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     }
 
     /**
+     * Removes all messages from the given queue (or the configured queue if none given).
+     *
+     * @param string|null $queueName Queue name to purge, or null to use configured queue
+     *
+     * @return int Number of purged messages
+     *
+     * @throws \AMQPException       When connection fails or purge fails
+     * @throws \InvalidArgumentException When no queue name is provided
+     */
+    public function purgeQueue(?string $queueName = null): int
+    {
+        if ($this->options['auto_setup'] ?? true) {
+            $this->setup->setup();
+        }
+        $this->ensureConnected();
+
+        $queueName ??= $this->options['queue'] ?? '';
+        if ($queueName === '') {
+            throw new \InvalidArgumentException('Queue name must be provided either as argument or in receiver options.');
+        }
+
+        $channel = $this->connection->getChannel();
+        // Create a separate queue object for purge so we don't interfere
+        // with the consuming queue's internal state (consumer tag, flags, etc.)
+        $purgeQueue = $this->factory->createQueue($channel);
+        $purgeQueue->setName($queueName);
+
+        $purgeOperation = (fn(): int => $purgeQueue->purge());
+
+        $result = $this->retry instanceof ConnectionRetryInterface
+            ? $this->retry->withRetry($purgeOperation)
+            : $purgeOperation();
+
+        $this->connection->updateActivity();
+
+        return $result;
+    }
+
+    /**
      * {@inheritdoc}
      *
      * @return int Number of messages in the queue
