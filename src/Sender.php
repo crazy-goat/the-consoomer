@@ -21,8 +21,8 @@ final class Sender implements SenderInterface
     private float $confirmTimeout = 0.0;
     /** @var array<string, true> */
     private array $delayQueuesCreated = [];
-    private string $delayExchangeName;
-    private string $delayQueueNamePattern;
+    private readonly string $delayExchangeName;
+    private readonly string $delayQueueNamePattern;
 
     /**
      * @param array{
