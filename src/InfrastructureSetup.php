@@ -23,6 +23,8 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
      *     exchange_type?: string,
      *     routing_key?: string,
+     *     binding_keys?: list<string>,
+     *     binding_arguments?: array<string, mixed>,
      *     queue_arguments?: array<string, mixed>,
      *     exchange_flags?: int,
      *     queue_flags?: int,
@@ -50,6 +52,14 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
 
         if (isset($options['exchange_bindings'])) {
             $this->validateExchangeBindings($options['exchange_bindings']);
+        }
+
+        if (isset($options['binding_keys'])) {
+            $this->validateBindingKeys($options['binding_keys']);
+        }
+
+        if (isset($options['binding_arguments']) && !is_array($options['binding_arguments'])) {
+            throw new \InvalidArgumentException('binding_arguments must be an array');
         }
     }
 
@@ -112,8 +122,11 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         }
         $queue->declareQueue();
 
-        $routingKey = $this->options['routing_key'] ?? '';
-        $queue->bind($exchange->getName(), $routingKey);
+        $bindingKeys = $this->options['binding_keys'] ?? [$this->options['routing_key'] ?? ''];
+        $bindingArguments = $this->options['binding_arguments'] ?? [];
+        foreach ($bindingKeys as $bindingKey) {
+            $queue->bind($exchange->getName(), $bindingKey, $bindingArguments);
+        }
     }
 
     private function setupMultipleQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
@@ -218,6 +231,26 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         ]);
         $retryQueue->declareQueue();
         $retryQueue->bind($retryExchangeName, $routingKey . '_retry');
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     */
+    private function validateBindingKeys(mixed $bindingKeys): void
+    {
+        if (!is_array($bindingKeys)) {
+            throw new \InvalidArgumentException('binding_keys must be an array');
+        }
+
+        if ($bindingKeys === []) {
+            throw new \InvalidArgumentException('binding_keys must not be empty');
+        }
+
+        foreach ($bindingKeys as $index => $key) {
+            if (!is_string($key)) {
+                throw new \InvalidArgumentException(sprintf('binding_keys[%d] must be a string', $index));
+            }
+        }
     }
 
     /**

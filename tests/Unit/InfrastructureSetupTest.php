@@ -743,6 +743,210 @@ class InfrastructureSetupTest extends TestCase
         $setup->setup();
     }
 
+    public function testSetupWithSingleQueueAndBindingKeys(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $bindCallCount = 0;
+        $this->queue->expects($this->exactly(2))->method('bind')
+            ->willReturnCallback(function ($exchange, $key, $args = []) use (&$bindCallCount): void {
+                if ($bindCallCount === 0) {
+                    $this->assertSame('test_exchange', $exchange);
+                    $this->assertSame('order.created', $key);
+                } elseif ($bindCallCount === 1) {
+                    $this->assertSame('test_exchange', $exchange);
+                    $this->assertSame('order.updated', $key);
+                }
+                $bindCallCount++;
+            });
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'binding_keys' => ['order.created', 'order.updated'],
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupWithSingleQueueAndBindingArguments(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $this->queue->expects($this->once())->method('bind')
+            ->with('test_exchange', 'my.key', ['x-match' => 'any']);
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'binding_keys' => ['my.key'],
+            'binding_arguments' => ['x-match' => 'any'],
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testConstructorThrowsWhenTopLevelBindingKeysIsNotArray(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('binding_keys must be an array');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'binding_keys' => 'invalid',
+        ]);
+    }
+
+    public function testConstructorThrowsWhenTopLevelBindingKeyIsNotString(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('binding_keys[0] must be a string');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'binding_keys' => [42],
+        ]);
+    }
+
+    public function testConstructorThrowsWhenTopLevelBindingArgumentsIsNotArray(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('binding_arguments must be an array');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'binding_arguments' => 'invalid',
+        ]);
+    }
+
+    public function testConstructorThrowsWhenTopLevelBindingKeysIsEmpty(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('binding_keys must not be empty');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'binding_keys' => [],
+        ]);
+    }
+
+    public function testSetupWithSingleQueueFallsBackToRoutingKeyWhenNoBindingKeys(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $this->queue->expects($this->once())->method('bind')
+            ->with('test_exchange', 'fallback_key');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'routing_key' => 'fallback_key',
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupWithSingleQueuePassesBindingArgumentsWithRoutingKeyFallback(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $this->queue->expects($this->once())->method('bind')
+            ->with('test_exchange', 'routing_key_val', ['x-match' => 'all']);
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'routing_key' => 'routing_key_val',
+            'binding_arguments' => ['x-match' => 'all'],
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
     public function testSetupWithMultipleQueuesPerQueueArgumentsOverrideGlobal(): void
     {
         $this->connection->method('getChannel')->willReturn($this->channel);
