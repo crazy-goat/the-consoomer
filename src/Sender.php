@@ -17,7 +17,12 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 final class Sender implements SenderInterface
 {
     private ?\AMQPExchange $exchange = null;
+    private ?\AMQPExchange $delayExchange = null;
     private float $confirmTimeout = 0.0;
+    /** @var array<string, true> */
+    private array $delayQueuesCreated = [];
+    private readonly string $delayExchangeName;
+    private readonly string $delayQueueNamePattern;
 
     /**
      * @param array{
@@ -26,6 +31,10 @@ final class Sender implements SenderInterface
      *     auto_setup?: bool,
      *     retry?: bool,
      *     confirm_timeout?: float|int,
+     *     delay?: array{
+     *         exchange_name?: string,
+     *         queue_name_pattern?: string,
+     *     },
      * } $options
      */
     public function __construct(
@@ -41,6 +50,11 @@ final class Sender implements SenderInterface
             throw new \InvalidArgumentException('confirm_timeout must be a non-negative value');
         }
         $this->confirmTimeout = (float) $confirmTimeout;
+
+        $this->delayExchangeName = $this->options['delay']['exchange_name']
+            ?? ($this->options['exchange'] ?? '') . '_delay';
+        $this->delayQueueNamePattern = $this->options['delay']['queue_name_pattern']
+            ?? 'delay_{delay}_{queue}';
     }
 
     /**
@@ -65,6 +79,8 @@ final class Sender implements SenderInterface
         if ($this->connection->checkHeartbeat()) {
             $this->connection->reconnect();
             $this->exchange = null;
+            $this->delayExchange = null;
+            $this->delayQueuesCreated = [];
             $this->connect();
         }
     }
@@ -112,23 +128,30 @@ final class Sender implements SenderInterface
             $attributes['priority'] = $priorityStamp->getPriority();
         }
 
-        $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
-            if ($this->confirmTimeout > 0.0) {
-                $channel = $this->connection->getChannel();
-                $channel->confirmSelect();
-            }
+        $delayStamp = $envelope->last(AmqpDelayStamp::class);
+        if ($delayStamp instanceof AmqpDelayStamp) {
+            $publishCallback = function () use ($data, $routingKey, $flags, $attributes, $delayStamp): void {
+                $this->sendWithDelay($data, $routingKey, $flags, $attributes, $delayStamp);
+            };
+        } else {
+            $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
+                if ($this->confirmTimeout > 0.0) {
+                    $channel = $this->connection->getChannel();
+                    $channel->confirmSelect();
+                }
 
-            $this->exchange->publish(
-                $data['body'],
-                $routingKey,
-                $flags,
-                $attributes,
-            );
+                $this->exchange->publish(
+                    $data['body'],
+                    $routingKey,
+                    $flags,
+                    $attributes,
+                );
 
-            if (isset($channel)) {
-                $channel->waitForConfirm($this->confirmTimeout);
-            }
-        };
+                if (isset($channel)) {
+                    $channel->waitForConfirm($this->confirmTimeout);
+                }
+            };
+        }
 
         if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($publishCallback): void {
@@ -141,5 +164,72 @@ final class Sender implements SenderInterface
         }
 
         return $envelope;
+    }
+
+    private function ensureDelayExchange(): void
+    {
+        if ($this->delayExchange instanceof \AMQPExchange) {
+            return;
+        }
+
+        $this->delayExchange = $this->factory->createExchange($this->connection->getChannel());
+        $this->delayExchange->setName($this->delayExchangeName);
+        $this->delayExchange->setType(\AMQP_EX_TYPE_DIRECT);
+        $this->delayExchange->setFlags(\AMQP_DURABLE);
+        $this->delayExchange->declareExchange();
+    }
+
+    private function sendWithDelay(
+        array $data,
+        string $routingKey,
+        int $flags,
+        array $attributes,
+        AmqpDelayStamp $delayStamp,
+    ): void {
+        $this->ensureDelayExchange();
+
+        $delayQueueName = $this->getDelayQueueName($routingKey, $delayStamp->getDelay());
+
+        if (!isset($this->delayQueuesCreated[$delayQueueName])) {
+            $this->createDelayQueue($delayQueueName, $routingKey, $delayStamp->getDelay());
+            $this->delayQueuesCreated[$delayQueueName] = true;
+        }
+
+        if ($this->confirmTimeout > 0.0) {
+            $channel = $this->connection->getChannel();
+            $channel->confirmSelect();
+        }
+
+        $this->delayExchange->publish(
+            $data['body'],
+            $delayQueueName,
+            $flags,
+            $attributes,
+        );
+
+        if (isset($channel)) {
+            $channel->waitForConfirm($this->confirmTimeout);
+        }
+    }
+
+    private function getDelayQueueName(string $routingKey, int $delay): string
+    {
+        return str_replace(
+            ['{delay}', '{queue}'],
+            [(string) $delay, $routingKey],
+            $this->delayQueueNamePattern,
+        );
+    }
+
+    private function createDelayQueue(string $queueName, string $routingKey, int $delay): void
+    {
+        $queue = $this->factory->createQueue($this->connection->getChannel());
+        $queue->setName($queueName);
+        $queue->setFlags(\AMQP_DURABLE);
+        $queue->setArgument('x-message-ttl', $delay);
+        $queue->setArgument('x-dead-letter-exchange', $this->options['exchange'] ?? '');
+        $queue->setArgument('x-dead-letter-routing-key', $routingKey);
+        $queue->declareQueue();
+        $queue->bind($this->delayExchangeName, $queueName);
     }
 }
