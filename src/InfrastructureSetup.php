@@ -19,7 +19,8 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     /**
      * @param array{
      *     exchange: string,
-     *     queue: string,
+     *     queue?: string,
+     *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
      *     exchange_type?: string,
      *     routing_key?: string,
      *     queue_arguments?: array<string, mixed>,
@@ -35,8 +36,16 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         private readonly ConnectionInterface $connection,
         private readonly array $options,
     ) {
-        if (!isset($options['exchange']) || !isset($options['queue'])) {
-            throw new \InvalidArgumentException('exchange and queue options are required');
+        if (!isset($options['exchange'])) {
+            throw new \InvalidArgumentException('exchange option is required');
+        }
+
+        if (!isset($options['queue']) && !isset($options['queues'])) {
+            throw new \InvalidArgumentException('either queue or queues option is required');
+        }
+
+        if (isset($options['queues'])) {
+            $this->validateQueues($options['queues']);
         }
 
         if (isset($options['exchange_bindings'])) {
@@ -70,6 +79,31 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $exchange->setFlags(\AMQP_DURABLE | ($this->options['exchange_flags'] ?? 0));
         $exchange->declareExchange();
 
+        $this->setupQueues($channel, $exchange);
+        $this->setupExchangeBindings($exchange);
+        $this->setupRetryQueue();
+
+        $this->setupPerformed = true;
+    }
+
+    /**
+     * Creates and binds queues based on configuration.
+     *
+     * Supports both single queue (via 'queue' option) and multiple queues
+     * (via 'queues' option). When 'queues' is provided, each queue can have
+     * its own binding_keys, binding_arguments, and arguments.
+     */
+    private function setupQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    {
+        if (isset($this->options['queues'])) {
+            $this->setupMultipleQueues($channel, $exchange);
+        } else {
+            $this->setupSingleQueue($channel, $exchange);
+        }
+    }
+
+    private function setupSingleQueue(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    {
         $queue = $this->factory->createQueue($channel);
         $queue->setName($this->options['queue']);
         $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
@@ -80,11 +114,71 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
 
         $routingKey = $this->options['routing_key'] ?? '';
         $queue->bind($exchange->getName(), $routingKey);
+    }
 
-        $this->setupExchangeBindings($exchange);
-        $this->setupRetryQueue();
+    private function setupMultipleQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    {
+        foreach ($this->options['queues'] as $queueName => $queueConfig) {
+            $queue = $this->factory->createQueue($channel);
+            $queue->setName($queueName);
+            $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
 
-        $this->setupPerformed = true;
+            $queueArgs = $queueConfig['arguments'] ?? $this->options['queue_arguments'] ?? null;
+            if ($queueArgs !== null) {
+                $queue->setArguments($queueArgs);
+            }
+            $queue->declareQueue();
+
+            $bindingKeys = $queueConfig['binding_keys'] ?? [''];
+            $bindingArguments = $queueConfig['binding_arguments'] ?? [];
+            foreach ($bindingKeys as $bindingKey) {
+                $queue->bind($exchange->getName(), $bindingKey, $bindingArguments);
+            }
+        }
+    }
+
+    /**
+     * @throws \InvalidArgumentException
+     */
+    private function validateQueues(mixed $queues): void
+    {
+        if (!is_array($queues)) {
+            throw new \InvalidArgumentException('queues option must be an array');
+        }
+
+        if ($queues === []) {
+            throw new \InvalidArgumentException('queues option must not be empty');
+        }
+
+        foreach ($queues as $name => $config) {
+            if (!is_string($name) || $name === '') {
+                throw new \InvalidArgumentException('Each queue name must be a non-empty string');
+            }
+
+            if (!is_array($config)) {
+                throw new \InvalidArgumentException(sprintf('queues[%s] must be an array', $name));
+            }
+
+            if (isset($config['binding_keys'])) {
+                if (!is_array($config['binding_keys'])) {
+                    throw new \InvalidArgumentException(sprintf('queues[%s].binding_keys must be an array', $name));
+                }
+
+                foreach ($config['binding_keys'] as $keyIndex => $key) {
+                    if (!is_string($key)) {
+                        throw new \InvalidArgumentException(sprintf('queues[%s].binding_keys[%d] must be a string', $name, $keyIndex));
+                    }
+                }
+            }
+
+            if (isset($config['binding_arguments']) && !is_array($config['binding_arguments'])) {
+                throw new \InvalidArgumentException(sprintf('queues[%s].binding_arguments must be an array', $name));
+            }
+
+            if (isset($config['arguments']) && !is_array($config['arguments'])) {
+                throw new \InvalidArgumentException(sprintf('queues[%s].arguments must be an array', $name));
+            }
+        }
     }
 
     private function setupExchangeBindings(\AMQPExchange $exchange): void
@@ -103,6 +197,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
 
     private function setupRetryQueue(): void
     {
+        if (!isset($this->options['queue'])) {
+            return;
+        }
+
         $retryExchangeName = $this->options['retry_exchange'] ?? $this->options['exchange'] . '_retry';
         $routingKey = $this->options['routing_key'] ?? '';
         $retryQueueName = $this->options['queue'] . '_retry';
