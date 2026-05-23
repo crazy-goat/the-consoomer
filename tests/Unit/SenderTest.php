@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\AmqpFactory;
+use CrazyGoat\TheConsoomer\AmqpPriorityStamp;
 use CrazyGoat\TheConsoomer\AmqpStamp;
 use CrazyGoat\TheConsoomer\ConnectionInterface;
 use CrazyGoat\TheConsoomer\ConnectionRetryInterface;
@@ -615,6 +616,93 @@ class SenderTest extends TestCase
         $this->expectExceptionMessage('confirm_timeout must be a non-negative value');
 
         new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+    }
+
+    public function testSendWithPriorityStampAddsPriorityToAttributes(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+        $priorityStamp = new AmqpPriorityStamp(7);
+        $envelope = new Envelope(new \stdClass(), [$priorityStamp]);
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                'test',
+                '',
+                \AMQP_NOPARAM,
+                ['priority' => 7],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendWithPriorityStampOverridesAmqpStampPriority(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+        $amqpStamp = new AmqpStamp('key', \AMQP_NOPARAM, ['priority' => 2]);
+        $priorityStamp = new AmqpPriorityStamp(8);
+        $envelope = new Envelope(new \stdClass(), [$amqpStamp, $priorityStamp]);
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                'test',
+                'key',
+                \AMQP_NOPARAM,
+                ['priority' => 8],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendWithoutPriorityStampDoesNotAddPriority(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+        $envelope = new Envelope(new \stdClass());
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                'test',
+                '',
+                \AMQP_NOPARAM,
+                [],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
     }
 
     private function createSender(array $options): Sender

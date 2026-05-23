@@ -107,6 +107,11 @@ final class Sender implements SenderInterface
         $flags = $stamp?->getFlags() ?? \AMQP_NOPARAM;
         $attributes = array_merge($data['headers'] ?? [], $stamp?->getAttributes() ?? []);
 
+        $priorityStamp = $envelope->last(AmqpPriorityStamp::class);
+        if ($priorityStamp instanceof AmqpPriorityStamp) {
+            $attributes['priority'] = $priorityStamp->getPriority();
+        }
+
         $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
             if ($this->confirmTimeout > 0.0) {
                 $channel = $this->connection->getChannel();
