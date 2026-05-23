@@ -42,6 +42,7 @@ final class DsnParser
      *     retry_circuit_breaker_timeout?: int,
      *     retry_circuit_breaker_success_threshold?: int,
      *     heartbeat?: int,
+     *     confirm_timeout?: float|int,
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
@@ -125,6 +126,7 @@ final class DsnParser
      *     ssl?: bool,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
+     *     confirm_timeout?: float|int,
      * } $options
      * @return array{
      *     host: string,
@@ -136,6 +138,7 @@ final class DsnParser
      *     ssl?: bool,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
+     *     confirm_timeout?: float|int,
      * }
      * @throws \InvalidArgumentException When exchange is missing or exchange_type is invalid
      */
@@ -235,6 +238,7 @@ final class DsnParser
      *     ssl?: bool,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
+     *     confirm_timeout?: float|int,
      * } $options
      * @deprecated This method is deprecated and will be removed in 0.2.
      *             Validation now happens automatically in parse().

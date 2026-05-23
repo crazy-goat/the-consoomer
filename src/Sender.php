@@ -12,11 +12,12 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
  * AMQP message sender for Symfony Messenger.
  *
  * Handles publishing messages to AMQP exchange with support for
- * retry logic and connection recovery.
+ * publisher confirms, retry logic and connection recovery.
  */
 final class Sender implements SenderInterface
 {
     private ?\AMQPExchange $exchange = null;
+    private float $confirmTimeout = 0.0;
 
     /**
      * @param array{
@@ -24,6 +25,7 @@ final class Sender implements SenderInterface
      *     default_publish_routing_key?: string,
      *     auto_setup?: bool,
      *     retry?: bool,
+     *     confirm_timeout?: float|int,
      * } $options
      */
     public function __construct(
@@ -34,6 +36,11 @@ final class Sender implements SenderInterface
         private readonly InfrastructureSetupInterface $setup,
         private readonly ?ConnectionRetryInterface $retry = null,
     ) {
+        $confirmTimeout = $this->options['confirm_timeout'] ?? 0.0;
+        if ($confirmTimeout < 0) {
+            throw new \InvalidArgumentException('confirm_timeout must be a non-negative value');
+        }
+        $this->confirmTimeout = (float) $confirmTimeout;
     }
 
     /**
@@ -100,12 +107,23 @@ final class Sender implements SenderInterface
         $flags = $stamp?->getFlags() ?? \AMQP_NOPARAM;
         $attributes = array_merge($data['headers'] ?? [], $stamp?->getAttributes() ?? []);
 
-        $publishCallback = fn() => $this->exchange->publish(
-            $data['body'],
-            $routingKey,
-            $flags,
-            $attributes,
-        );
+        $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
+            if ($this->confirmTimeout > 0.0) {
+                $channel = $this->connection->getChannel();
+                $channel->confirmSelect();
+            }
+
+            $this->exchange->publish(
+                $data['body'],
+                $routingKey,
+                $flags,
+                $attributes,
+            );
+
+            if (isset($channel)) {
+                $channel->waitForConfirm($this->confirmTimeout);
+            }
+        };
 
         if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($publishCallback): void {
