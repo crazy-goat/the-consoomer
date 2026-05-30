@@ -12,7 +12,14 @@ namespace CrazyGoat\TheConsoomer;
 interface ClockInterface
 {
     /**
-     * Returns current DateTimeImmutable.
+     * Returns current DateTimeImmutable (wall-clock time).
      */
     public function now(): \DateTimeImmutable;
+
+    /**
+     * Returns a monotonic timestamp in seconds (never decreases).
+     *
+     * Use for measuring elapsed time intervals. Backed by hrtime(true) in production.
+     */
+    public function monotonic(): float;
 }

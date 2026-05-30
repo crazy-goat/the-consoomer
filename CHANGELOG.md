@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- Circuit-breaker elapsed-time now uses monotonic clock (`hrtime(true)`) instead of wall-clock `DateTimeImmutable` — prevents NTP backward step from sticking the circuit OPEN (#237)
+  - Added `ClockInterface::monotonic(): float` method backed by `hrtime(true)` in `SystemClock`
+  - `CircuitBreaker::recordFailure()` stores monotonic timestamp for elapsed measurement
+  - `CircuitBreaker::isAvailable()` computes elapsed from monotonic clock — immune to wall-clock corrections
 - Decoupled `max_unacked_messages` into three separate concerns: QoS prefetch, per-`get()` return-batch size, and ack-batch flush threshold (#238)
   - Added `batch_size` option (default: 1) for per-`get()` return-batch size
   - `max_unacked_messages` now controls only QoS prefetch and ack-batch flush threshold

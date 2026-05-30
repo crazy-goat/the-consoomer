@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\CircuitBreaker;
 use CrazyGoat\TheConsoomer\CircuitState;
+use CrazyGoat\TheConsoomer\Tests\Unit\Clock\FrozenClock;
 use PHPUnit\Framework\TestCase;
 
 class CircuitBreakerTest extends TestCase
@@ -93,6 +94,48 @@ class CircuitBreakerTest extends TestCase
 
         $cb->recordSuccess();
         $this->assertSame(CircuitState::CLOSED, $cb->getState());
+    }
+
+    public function testMonotonicClockUsedForElapsedMeasurement(): void
+    {
+        $clock = new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 0.0);
+        $cb = new CircuitBreaker(
+            threshold: 1,
+            timeout: 60,
+            clock: $clock,
+        );
+
+        $cb->recordFailure();
+        $this->assertSame(CircuitState::OPEN, $cb->getState());
+        $this->assertFalse($cb->isAvailable());
+
+        $clock->advance(60);
+
+        $this->assertTrue($cb->isAvailable());
+        $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
+    }
+
+    public function testBackwardNtpStepDoesNotStickCircuitOpen(): void
+    {
+        $clock = new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 0.0);
+        $cb = new CircuitBreaker(
+            threshold: 1,
+            timeout: 60,
+            clock: $clock,
+        );
+
+        $cb->recordFailure();
+        $this->assertSame(CircuitState::OPEN, $cb->getState());
+        $this->assertFalse($cb->isAvailable());
+
+        $clock->advance(120);
+
+        $clock->advance(-120);
+
+        $this->assertSame('2025-01-15 10:00:00', $clock->now()->format('Y-m-d H:i:s'));
+
+        $this->assertTrue($cb->isAvailable());
+        $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
     }
 
     private function getSuccessThreshold(CircuitBreaker $cb): int
