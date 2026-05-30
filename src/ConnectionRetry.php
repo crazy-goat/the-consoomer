@@ -31,7 +31,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
     private readonly RetryMetrics $metrics;
 
     /**
-     * @param int                    $retryCount                        Number of retry attempts
+     * @param int                    $maxAttempts                       Maximum number of execution attempts (including the first, minimum: 1)
      * @param int                    $retryDelay                        Base delay between retries in microseconds
      * @param bool                   $retryBackoff                      Enable exponential backoff
      * @param int                    $retryMaxDelay                     Maximum delay cap in microseconds
@@ -44,7 +44,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
      * @param ClockInterface|null    $clock                             Clock for time tracking
      */
     public function __construct(
-        private readonly int $retryCount = 3,
+        private readonly int $maxAttempts = 3,
         private readonly int $retryDelay = 100000,
         private readonly bool $retryBackoff = false,
         private readonly int $retryMaxDelay = 30000000,
@@ -56,6 +56,13 @@ final class ConnectionRetry implements ConnectionRetryInterface
         private readonly ?LoggerInterface $logger = null,
         private readonly ?ClockInterface $clock = new SystemClock(),
     ) {
+        if ($this->maxAttempts < 1) {
+            throw new \InvalidArgumentException(sprintf(
+                'maxAttempts must be at least 1, %d given',
+                $this->maxAttempts,
+            ));
+        }
+
         $this->metrics = new RetryMetrics();
 
         if ($this->retryCircuitBreaker) {
@@ -91,7 +98,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
         $attempt = 0;
         $lastException = null;
 
-        while ($attempt < $this->retryCount) {
+        while ($attempt < $this->maxAttempts) {
             try {
                 $result = $operation();
 
@@ -119,14 +126,14 @@ final class ConnectionRetry implements ConnectionRetryInterface
                 $lastException = $exception;
                 $attempt++;
 
-                if ($attempt >= $this->retryCount) {
+                if ($attempt >= $this->maxAttempts) {
                     break;
                 }
 
                 $delay = $this->calculateDelay($attempt);
                 $this->logger?->error('Retry attempt failed', [
                     'attempt' => $attempt,
-                    'max_attempts' => $this->retryCount,
+                    'max_attempts' => $this->maxAttempts,
                     'delay' => $delay,
                     'error' => $exception->getMessage(),
                 ]);
@@ -147,7 +154,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
         }
 
         $this->logger?->error('Retry failed after max attempts', [
-            'max_attempts' => $this->retryCount,
+            'max_attempts' => $this->maxAttempts,
             'error' => $lastException?->getMessage(),
         ]);
 

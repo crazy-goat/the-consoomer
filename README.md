@@ -105,6 +105,37 @@ With heartbeat enabled:
 - If stale (elapsed > 2 * heartbeat), automatic reconnect occurs
 - Activity is updated after each operation
 
+### Retry Configuration
+
+The transport supports configurable retry logic with exponential backoff, jitter, and circuit breaker.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `retry` | Enable retry mechanism | `false` |
+| `retry_count` | Maximum number of execution attempts including the first (`maxAttempts`) | `3` |
+| `retry_delay` | Base delay between retries in microseconds | `100000` |
+| `retry_backoff` | Enable exponential backoff (delay doubles each retry) | `false` |
+| `retry_max_delay` | Maximum delay cap in microseconds | `30000000` |
+| `retry_jitter` | Enable random jitter (±25%) to prevent thundering herd | `true` |
+| `retry_circuit_breaker` | Enable circuit breaker pattern | `false` |
+| `retry_circuit_breaker_threshold` | Consecutive failures before circuit opens | `10` |
+| `retry_circuit_breaker_timeout` | Seconds circuit stays open before half-open probe | `60` |
+| `retry_circuit_breaker_success_threshold` | Successful attempts needed to close circuit | `2` |
+
+```yaml
+framework:
+    messenger:
+        transports:
+            consoomer:
+                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/?queue=my_queue&retry=1&retry_count=3&retry_delay=500000&retry_backoff=1&retry_jitter=1&retry_circuit_breaker=1'
+```
+
+With retry enabled:
+- Connection and channel failures are retried automatically up to `retry_count` times (including the first attempt)
+- Non-AMQP exceptions are not retried
+- Permanent AMQP errors (403, 404, 406) are not retried
+- On exhaustion, a `RetryExhaustedException` is thrown with the last failure as previous
+
 ## Testing
 
 ### Run tests
