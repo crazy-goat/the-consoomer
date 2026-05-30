@@ -10,6 +10,7 @@
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
 
 ### Fixed
+- `AmqpPriorityStamp` priority cap relaxed from 9 to 255 — RabbitMQ supports up to 255 via `x-max-priority` queue argument (#227)
 - Topology is now re-declared after reconnect — `setupPerformed` flag is reset on reconnect so exchanges, queues, and bindings are re-declared on the new connection/channel (#229)
   - Added `InfrastructureSetupInterface::resetSetup()` to allow clearing the setup-once flag
   - `Receiver::ensureConnected()` calls `resetSetup()` after reconnecting

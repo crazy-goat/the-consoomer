@@ -32,16 +32,23 @@ class AmqpPriorityStampTest extends TestCase
 
     public function testAllowsMaxPriority(): void
     {
-        $stamp = new AmqpPriorityStamp(9);
+        $stamp = new AmqpPriorityStamp(255);
 
-        $this->assertSame(9, $stamp->getPriority());
+        $this->assertSame(255, $stamp->getPriority());
+    }
+
+    public function testAllowsHighPriority(): void
+    {
+        $stamp = new AmqpPriorityStamp(10);
+
+        $this->assertSame(10, $stamp->getPriority());
     }
 
     /** @dataProvider invalidPriorityProvider */
     public function testInvalidPriorityThrowsException(int $priority): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Priority must be between 0 and 9');
+        $this->expectExceptionMessage('Priority must be between 0 and 255');
 
         new AmqpPriorityStamp($priority);
     }
@@ -51,7 +58,7 @@ class AmqpPriorityStampTest extends TestCase
     {
         return [
             'negative' => [-1],
-            'too high' => [10],
+            'too high' => [256],
         ];
     }
 }
