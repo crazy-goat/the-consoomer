@@ -433,7 +433,12 @@ class InfrastructureSetupTest extends TestCase
         $this->factory->method('createExchange')
             ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
         $this->factory->method('createQueue')
-            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue, $this->createMock(\AMQPQueue::class));
+            ->willReturnOnConsecutiveCalls(
+                $this->queue,
+                $this->createMock(\AMQPQueue::class),
+                $this->retryQueue,
+                $this->createMock(\AMQPQueue::class),
+            );
 
         $this->exchange->method('getName')->willReturn('test_exchange');
 
@@ -447,6 +452,7 @@ class InfrastructureSetupTest extends TestCase
 
         $this->retryExchange->method('setName');
         $this->retryExchange->method('setType');
+        $this->retryExchange->method('setFlags');
         $this->retryExchange->method('declareExchange');
 
         $this->retryQueue->method('setName');
@@ -475,9 +481,10 @@ class InfrastructureSetupTest extends TestCase
 
         $queueA = $this->createMock(\AMQPQueue::class);
         $queueB = $this->createMock(\AMQPQueue::class);
+        $retryQueueB = $this->createMock(\AMQPQueue::class);
 
         $this->factory->method('createQueue')
-            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue);
+            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue, $retryQueueB);
 
         $this->exchange->method('getName')->willReturn('test_exchange');
         $this->exchange->method('setName');
@@ -503,6 +510,7 @@ class InfrastructureSetupTest extends TestCase
 
         $this->retryExchange->method('setName');
         $this->retryExchange->method('setType');
+        $this->retryExchange->method('setFlags');
         $this->retryExchange->method('declareExchange');
 
         $this->retryQueue->method('setName');
@@ -1226,9 +1234,10 @@ class InfrastructureSetupTest extends TestCase
 
         $queueA = $this->createMock(\AMQPQueue::class);
         $queueB = $this->createMock(\AMQPQueue::class);
+        $retryQueueB = $this->createMock(\AMQPQueue::class);
 
         $this->factory->method('createQueue')
-            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue);
+            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue, $retryQueueB);
 
         $this->exchange->method('getName')->willReturn('test_exchange');
         $this->exchange->method('setName');
@@ -1246,6 +1255,7 @@ class InfrastructureSetupTest extends TestCase
 
         $this->retryExchange->method('setName');
         $this->retryExchange->method('setType');
+        $this->retryExchange->method('setFlags');
         $this->retryExchange->method('declareExchange');
 
         $this->retryQueue->method('setName');
@@ -1273,9 +1283,10 @@ class InfrastructureSetupTest extends TestCase
 
         $queueA = $this->createMock(\AMQPQueue::class);
         $queueB = $this->createMock(\AMQPQueue::class);
+        $retryQueueB = $this->createMock(\AMQPQueue::class);
 
         $this->factory->method('createQueue')
-            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue);
+            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue, $retryQueueB);
 
         $this->exchange->method('getName')->willReturn('test_exchange');
         $this->exchange->method('setName');
@@ -1293,6 +1304,7 @@ class InfrastructureSetupTest extends TestCase
 
         $this->retryExchange->method('setName');
         $this->retryExchange->method('setType');
+        $this->retryExchange->method('setFlags');
         $this->retryExchange->method('declareExchange');
 
         $this->retryQueue->method('setName');
@@ -1356,6 +1368,112 @@ class InfrastructureSetupTest extends TestCase
         ];
 
         $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+        $setup->setup();
+    }
+
+    public function testSetupWithMultipleQueuesCreatesRetryTopologyForAllQueues(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+        $retryQueueB = $this->createMock(\AMQPQueue::class);
+
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue, $retryQueueB);
+
+        $this->exchange->method('getName')->willReturn('my_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $queueA->method('setName');
+        $queueA->method('declareQueue');
+        $queueA->method('bind');
+
+        $queueB->method('setName');
+        $queueB->method('declareQueue');
+        $queueB->method('bind');
+
+        $this->retryExchange->expects($this->once())->method('setName')->with('my_exchange_retry');
+        $this->retryExchange->expects($this->once())->method('setType')->with(\AMQP_EX_TYPE_DIRECT);
+        $this->retryExchange->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $this->retryExchange->expects($this->once())->method('declareExchange');
+
+        $this->retryQueue->expects($this->once())->method('setName')->with('orders_retry');
+        $this->retryQueue->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $this->retryQueue->expects($this->once())->method('setArguments')->with([
+            'x-dead-letter-exchange' => 'my_exchange',
+            'x-dead-letter-routing-key' => 'order.created',
+        ]);
+        $this->retryQueue->expects($this->once())->method('declareQueue');
+        $this->retryQueue->expects($this->once())->method('bind')->with('my_exchange_retry', 'order.created_retry');
+
+        $retryQueueB->expects($this->once())->method('setName')->with('notifications_retry');
+        $retryQueueB->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $retryQueueB->expects($this->once())->method('setArguments')->with([
+            'x-dead-letter-exchange' => 'my_exchange',
+            'x-dead-letter-routing-key' => 'notification.*',
+        ]);
+        $retryQueueB->expects($this->once())->method('declareQueue');
+        $retryQueueB->expects($this->once())->method('bind')->with('my_exchange_retry', 'notification.*_retry');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'my_exchange',
+            'queues' => [
+                'orders' => [
+                    'binding_keys' => ['order.created'],
+                ],
+                'notifications' => [
+                    'binding_keys' => ['notification.*'],
+                ],
+            ],
+        ]);
+
+        $setup->setup();
+    }
+
+    public function testSetupWithMultipleQueuesAndCustomRetryExchange(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $retryQueueA = $this->createMock(\AMQPQueue::class);
+
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($queueA, $retryQueueA);
+
+        $this->exchange->method('getName')->willReturn('my_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $queueA->method('setName');
+        $queueA->method('declareQueue');
+        $queueA->method('bind');
+
+        $this->retryExchange->expects($this->once())->method('setName')->with('custom_retry');
+        $this->retryExchange->expects($this->once())->method('setType')->with(\AMQP_EX_TYPE_DIRECT);
+        $this->retryExchange->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $this->retryExchange->expects($this->once())->method('declareExchange');
+
+        $retryQueueA->expects($this->once())->method('setName')->with('my_queue_retry');
+        $retryQueueA->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $retryQueueA->expects($this->once())->method('declareQueue');
+        $retryQueueA->expects($this->once())->method('bind')->with('custom_retry', '_retry');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'my_exchange',
+            'retry_exchange' => 'custom_retry',
+            'queues' => [
+                'my_queue' => [],
+            ],
+        ]);
+
         $setup->setup();
     }
 }
