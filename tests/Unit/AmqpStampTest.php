@@ -197,7 +197,7 @@ class AmqpStampTest extends TestCase
         $this->assertSame(['new' => 'attribute'], $stamp->getAttributes());
     }
 
-    public function testCreateFromEmptyAmqpEnvelopeReturnsEmptyAttributes(): void
+    public function testCreateFromAmqpEnvelopePreservesZeroIntValues(): void
     {
         $envelope = $this->createMock(\AMQPEnvelope::class);
         $envelope->method('getRoutingKey')->willReturn('test.routing.key');
