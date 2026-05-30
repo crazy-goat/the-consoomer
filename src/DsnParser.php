@@ -205,7 +205,11 @@ final class DsnParser
     private function normalizeValue(mixed $value): mixed
     {
         if (is_numeric($value)) {
-            return str_contains((string) $value, '.') ? (float) $value : (int) $value;
+            $strValue = (string) $value;
+            if (stripos($strValue, 'e') !== false) {
+                return (float) $strValue;
+            }
+            return str_contains($strValue, '.') ? (float) $strValue : (int) $strValue;
         }
 
         if ($value === 'true') {

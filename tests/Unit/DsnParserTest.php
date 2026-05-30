@@ -249,4 +249,63 @@ class DsnParserTest extends TestCase
         $this->assertSame('user name', $result['user']);
         $this->assertSame('pass+word', $result['password']);
     }
+
+    public function testNormalizeValueHandlesScientificNotationUpperCase(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?read_timeout=1E5');
+
+        $this->assertSame(100000.0, $result['read_timeout']);
+    }
+
+    public function testNormalizeValueHandlesScientificNotationLowerCase(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?read_timeout=1e5');
+
+        $this->assertSame(100000.0, $result['read_timeout']);
+    }
+
+    public function testNormalizeValueHandlesScientificNotationWithDecimal(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?read_timeout=2.5e3');
+
+        $this->assertSame(2500.0, $result['read_timeout']);
+    }
+
+    public function testNormalizeValueHandlesNegativeScientificNotation(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?read_timeout=1e-2');
+
+        $this->assertSame(0.01, $result['read_timeout']);
+    }
+
+    public function testNormalizeValueDoesNotAffectPlainIntegers(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?heartbeat=60');
+
+        $this->assertSame(60, $result['heartbeat']);
+        $this->assertIsInt($result['heartbeat']);
+    }
+
+    public function testNormalizeValueDoesNotAffectPlainFloats(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?read_timeout=5.5');
+
+        $this->assertSame(5.5, $result['read_timeout']);
+        $this->assertIsFloat($result['read_timeout']);
+    }
+
+    public function testNormalizeValueDoesNotAffectNonNumericStrings(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?queue=my_queue');
+
+        $this->assertSame('my_queue', $result['queue']);
+        $this->assertIsString($result['queue']);
+    }
 }
