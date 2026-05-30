@@ -72,7 +72,8 @@ class AmqpFactory implements AmqpFactoryInterface
      *     ssl_verify?: bool,
      * } $options SSL configuration options
      * @param LoggerInterface|null $logger    Logger instance
-     * @throws \InvalidArgumentException When SSL certificate files are not found or not readable
+     * @throws \InvalidArgumentException When SSL certificate files are not found, not readable,
+     *                                  or ssl_verify is not a valid boolean value
      */
     public function configureSsl(\AMQPConnection $connection, array $options, ?LoggerInterface $logger = null): void
     {
