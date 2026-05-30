@@ -71,4 +71,42 @@ final class FrozenClockTest extends TestCase
 
         $this->assertSame('2025-01-15 10:03:30', $clock->now()->format('Y-m-d H:i:s'));
     }
+
+    public function testMonotonicReturnsFloat(): void
+    {
+        $clock = new FrozenClock();
+
+        $this->assertIsFloat($clock->monotonic());
+    }
+
+    public function testMonotonicIncreasesWithPositiveAdvance(): void
+    {
+        $clock = new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 0.0);
+
+        $this->assertSame(0.0, $clock->monotonic());
+
+        $clock->advance(60);
+
+        $this->assertSame(60.0, $clock->monotonic());
+    }
+
+    public function testMonotonicDoesNotIncreaseWithNegativeAdvance(): void
+    {
+        $clock = new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 100.0);
+
+        $clock->advance(-30);
+
+        $this->assertSame(100.0, $clock->monotonic());
+    }
+
+    public function testMonotonicNeverDecreases(): void
+    {
+        $clock = new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 0.0);
+
+        $clock->advance(60);
+        $this->assertSame(60.0, $clock->monotonic());
+
+        $clock->advance(-120);
+        $this->assertSame(60.0, $clock->monotonic());
+    }
 }

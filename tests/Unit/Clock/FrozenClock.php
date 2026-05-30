@@ -8,13 +8,23 @@ use CrazyGoat\TheConsoomer\ClockInterface;
 
 final class FrozenClock implements ClockInterface
 {
-    public function __construct(private \DateTimeImmutable $time = new \DateTimeImmutable())
-    {
+    private float $monotonicTime;
+
+    public function __construct(
+        private \DateTimeImmutable $time = new \DateTimeImmutable(),
+        ?float $monotonicTime = null,
+    ) {
+        $this->monotonicTime = $monotonicTime ?? hrtime(true) / 1e9;
     }
 
     public function now(): \DateTimeImmutable
     {
         return $this->time;
+    }
+
+    public function monotonic(): float
+    {
+        return $this->monotonicTime;
     }
 
     public function advance(int $seconds): void
@@ -24,5 +34,9 @@ final class FrozenClock implements ClockInterface
             throw new \RuntimeException("Failed to advance time by {$seconds} seconds");
         }
         $this->time = $newTime;
+
+        if ($seconds > 0) {
+            $this->monotonicTime += $seconds;
+        }
     }
 }

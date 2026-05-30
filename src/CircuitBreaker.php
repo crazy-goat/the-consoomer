@@ -15,12 +15,15 @@ use Psr\Log\LoggerInterface;
  * - CLOSED: Normal operation, requests flow through
  * - OPEN: Circuit tripped, requests blocked until timeout
  * - HALF_OPEN: Testing if service recovered, limited requests allowed
+ *
+ * Elapsed time is measured using a monotonic clock (hrtime) to avoid
+ * issues with wall-clock corrections (NTP backward steps, etc.).
  */
 final class CircuitBreaker
 {
     private int $failureCount = 0;
     private int $successCount = 0;
-    private ?\DateTimeImmutable $lastFailureTime = null;
+    private float $lastFailureMonotonic = 0.0;
     private CircuitState $state = CircuitState::CLOSED;
 
     /**
@@ -68,7 +71,7 @@ final class CircuitBreaker
     public function recordFailure(): void
     {
         $this->failureCount++;
-        $this->lastFailureTime = $this->clock->now();
+        $this->lastFailureMonotonic = $this->clock->monotonic();
 
         if ($this->state === CircuitState::HALF_OPEN) {
             $this->transitionTo(CircuitState::OPEN);
@@ -81,6 +84,9 @@ final class CircuitBreaker
     /**
      * Checks if circuit breaker allows requests.
      *
+     * Uses monotonic clock for elapsed-time measurement so NTP corrections
+     * never extend or shorten the OPEN period artificially.
+     *
      * @return bool True if requests are allowed (CLOSED or HALF_OPEN after timeout)
      */
     public function isAvailable(): bool
@@ -90,10 +96,7 @@ final class CircuitBreaker
         }
 
         if ($this->state === CircuitState::OPEN) {
-            if (!$this->lastFailureTime instanceof \DateTimeImmutable) {
-                return false;
-            }
-            $elapsed = $this->clock->now()->getTimestamp() - $this->lastFailureTime->getTimestamp();
+            $elapsed = $this->clock->monotonic() - $this->lastFailureMonotonic;
             if ($elapsed >= $this->timeout) {
                 $this->transitionTo(CircuitState::HALF_OPEN);
                 $this->successCount = 0;
@@ -121,7 +124,7 @@ final class CircuitBreaker
         $this->failureCount = 0;
         $this->successCount = 0;
         $this->state = CircuitState::CLOSED;
-        $this->lastFailureTime = null;
+        $this->lastFailureMonotonic = 0.0;
     }
 
     /**
