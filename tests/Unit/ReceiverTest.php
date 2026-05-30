@@ -334,7 +334,7 @@ class ReceiverTest extends TestCase
         $receiver->get();
     }
 
-    public function testGetRethrowsNonTimeoutAmqpException(): void
+    public function testGetHandlesAmqpExceptionGracefully(): void
     {
         $options = ['queue' => 'test_queue'];
 
@@ -353,13 +353,14 @@ class ReceiverTest extends TestCase
             ->method('checkHeartbeat')
             ->willReturn(false);
 
-        $this->expectException(\AMQPException::class);
-        $this->expectExceptionMessage('Connection failed');
+        $this->connection
+            ->expects($this->once())
+            ->method('clearChannelCache');
 
         $receiver->get();
     }
 
-    public function testGetRethrowsNonTimeoutExceptionWithConsumerTimeoutInMessage(): void
+    public function testGetResetsQueuesOnAmqpException(): void
     {
         $options = ['queue' => 'test_queue'];
 
@@ -368,7 +369,7 @@ class ReceiverTest extends TestCase
         $this->queue
             ->expects($this->once())
             ->method('consume')
-            ->willThrowException(new \AMQPException('Consumer timeout in wrong context'));
+            ->willThrowException(new \AMQPException('Channel error'));
 
         $this->queue
             ->method('getConsumerTag')
@@ -378,10 +379,116 @@ class ReceiverTest extends TestCase
             ->method('checkHeartbeat')
             ->willReturn(false);
 
-        $this->expectException(\AMQPException::class);
-        $this->expectExceptionMessage('Consumer timeout in wrong context');
+        $this->connection
+            ->method('clearChannelCache');
 
         $receiver->get();
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $this->assertSame([], $queuesProperty->getValue($receiver));
+    }
+
+    public function testGetResetsUnackedMessagesOnAmqpException(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willThrowException(new \AMQPException('Consumer cancelled'));
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->method('clearChannelCache');
+
+        $receiver->get();
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $this->assertSame([], $reflection->getProperty('unacked')->getValue($receiver));
+        $this->assertSame([], $reflection->getProperty('lastUnacked')->getValue($receiver));
+    }
+
+    public function testGetReturnsMessagesWhenExceptionOccursAfterPartialConsume(): void
+    {
+        $options = ['queue' => 'test_queue', 'batch_size' => 5];
+
+        $this->serializer
+            ->method('decode')
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['test_queue' => $this->queue]);
+
+        $callbackCapture = null;
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use (&$callbackCapture): void {
+                $callbackCapture = $callback;
+                // Deliver one message via callback before throwing
+                $amqpEnvelope = new \AMQPEnvelope();
+                $refl = new \ReflectionClass(\AMQPEnvelope::class);
+                $bodyProp = $refl->getProperty('body');
+                $bodyProp->setValue($amqpEnvelope, '{"data":"test"}');
+                $callback($amqpEnvelope);
+                throw new \AMQPException('Consumer cancelled server-side');
+            });
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->method('clearChannelCache');
+
+        $result = $receiver->get();
+
+        $this->assertCount(1, $result);
+    }
+
+    public function testGetReturnsEmptyArrayOnAmqpExceptionWithoutMessages(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willThrowException(new \AMQPException('Consumer cancelled server-side'));
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->method('clearChannelCache');
+
+        $result = $receiver->get();
+
+        $this->assertSame([], $result);
     }
 
     public function testConnectIsLazy(): void

@@ -33,6 +33,9 @@
   - Added `Receiver::close()` / `AmqpTransport::close()` flush of pending acks on worker shutdown
   - Eager consumption no longer delays first message until full batch is collected
   - Lost ack redelivery on worker stop is eliminated — pending acks are flushed before disconnect
+- `Receiver::get()` no longer silently stalls on server-side consumer cancellation — catching `\AMQPException` now resets consumer state (`queues`, `unacked`, `lastUnacked`) and clears channel cache, forcing fresh consumer re‑registration on the next `get()` call (#221)
+  - Previously, `AMQP_JUST_CONSUME` against a dead consumer tag blocked forever or panicked silently
+  - Caught exceptions now trigger `ConnectionInterface::clearChannelCache()`, queue‑list reset, and unacked‑state reset
 
 ## [v0.2.0] - 2026-04-22
 

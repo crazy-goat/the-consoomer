@@ -115,7 +115,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
             try {
                 $queue->consume($callback, AMQP_JUST_CONSUME, $queue->getConsumerTag());
-            } catch (\AMQPQueueException) {
+            } catch (\AMQPException) {
+                $this->connection->clearChannelCache();
+                $this->queues = [];
+                $this->unacked = [];
+                $this->lastUnacked = [];
+
                 if ($this->messages !== []) {
                     break;
                 }
