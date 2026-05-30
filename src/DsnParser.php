@@ -67,8 +67,8 @@ final class DsnParser
         $result = [
             'host' => $info['host'] ?? 'localhost',
             'port' => $info['port'] ?? 5672,
-            'user' => urldecode($info['user'] ?? 'guest'),
-            'password' => urldecode($info['pass'] ?? 'guest'),
+            'user' => rawurldecode($info['user'] ?? 'guest'),
+            'password' => rawurldecode($info['pass'] ?? 'guest'),
             'vhost' => $pathOptions['vhost'],
             'exchange' => $pathOptions['exchange'],
         ];
@@ -189,8 +189,8 @@ final class DsnParser
         $items = explode('/', trim($path, " \n\r\t\v\0/"));
 
         return [
-            'vhost' => urldecode($items[0] ?? '/'),
-            'exchange' => urldecode($items[1] ?? ''),
+            'vhost' => rawurldecode($items[0] ?? '/'),
+            'exchange' => rawurldecode($items[1] ?? ''),
         ];
     }
 

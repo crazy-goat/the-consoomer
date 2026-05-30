@@ -239,14 +239,14 @@ class DsnParserTest extends TestCase
         $this->assertSame('pass%word', $result['password']);
     }
 
-    public function testParsesUrlEncodedSpaces(): void
+    public function testParsesUrlEncodedSpaceAndLiteralPlus(): void
     {
         $parser = new DsnParser();
-        // Test spaces encoded as %20 and +
-        // Note: urldecode() treats + as space, which is correct for URL-encoded form data
+        // %20 decodes to space; + is literal in URI userinfo (not a space)
+        // rawurldecode correctly preserves +, unlike urldecode which converts it to space
         $result = $parser->parse('amqp-consoomer://user%20name:pass+word@localhost/%2f/my_exchange');
 
         $this->assertSame('user name', $result['user']);
-        $this->assertSame('pass word', $result['password']);
+        $this->assertSame('pass+word', $result['password']);
     }
 }
