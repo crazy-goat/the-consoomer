@@ -10,6 +10,10 @@
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
 
 ### Fixed
+- Permanent-failure classification now uses exception **type** (AMQPQueueException/AMQPExchangeException) instead of unreliable `getCode()` integer matching — ext-amqp frequently returns 0 or a librabbitmq errno instead of the AMQP reply code, so a resource-not-found error with code 0 was incorrectly retried, and a connection-level error with code 404 was incorrectly treated as permanent (#224)
+  - `AMQPConnectionException` / `AMQPChannelException` are always transient (reconnectable)
+  - `AMQPQueueException` / `AMQPExchangeException` are always permanent (resource errors won't resolve on retry)
+  - Generic `AMQPException` still falls back to code matching for backward compatibility
 - Circuit-breaker HALF_OPEN single-probe semantics are no longer defeated by the retry loop — when the circuit transitions to HALF_OPEN the operation is executed exactly once (not `retryCount` times), preserving the failure-isolation the feature advertises (#223)
 - Retry jitter is now applied BEFORE the `retry_max_delay` cap — jitter no longer pushes the effective delay up to 25% above the configured maximum (#225)
 - `AmqpStamp::createFromAmqpEnvelope()` no longer drops `priority`, `delivery_mode`, or `timestamp` when their value is `0` — priority 0 is a valid AMQP level that was lost on receive→re-send round-trips (#226)
