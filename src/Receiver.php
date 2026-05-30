@@ -72,6 +72,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     {
         if ($this->connection->checkHeartbeat()) {
             $this->connection->reconnect();
+            $this->setup->resetSetup();
             $this->queues = [];
             $this->unacked = [];
             $this->lastUnacked = [];
@@ -98,10 +99,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     public function get(): iterable
     {
         $this->messages = [];
+        $this->ensureConnected();
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->ensureConnected();
         $this->connect();
 
         foreach ($this->queues as $queueName => $queue) {
@@ -244,10 +245,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
     public function purgeQueue(?string $queueName = null): int
     {
+        $this->ensureConnected();
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->ensureConnected();
 
         $queueName ??= $this->options['queue'] ?? '';
         if ($queueName === '' && !isset($this->options['queues'])) {
@@ -278,10 +279,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
     public function getMessageCount(): int
     {
+        $this->ensureConnected();
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->ensureConnected();
         $this->connect();
 
         $total = 0;

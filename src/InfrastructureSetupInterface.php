@@ -19,4 +19,12 @@ interface InfrastructureSetupInterface
      * @throws \AMQPException When AMQP declaration fails
      */
     public function setup(): void;
+
+    /**
+     * Resets the setup state so the next call to setup() re-declares topology.
+     *
+     * Should be called after reconnecting to ensure exchanges, queues,
+     * and bindings are re-declared on the new connection/channel.
+     */
+    public function resetSetup(): void;
 }
