@@ -10,6 +10,7 @@
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
 
 ### Fixed
+- "Consumer timeout" detection now uses exception **type** (`AMQPQueueException`) instead of fragile `str_contains` on message text — substring collision swallowed real errors with "Consumer timeout" in message, and wording variations caused benign timeouts to crash workers. Timeout is only swallowed when no messages were collected (true empty poll); partial batches are returned (#222)
 - Permanent-failure classification now uses exception **type** (AMQPQueueException/AMQPExchangeException) instead of unreliable `getCode()` integer matching — ext-amqp frequently returns 0 or a librabbitmq errno instead of the AMQP reply code, so a resource-not-found error with code 0 was incorrectly retried, and a connection-level error with code 404 was incorrectly treated as permanent (#224)
   - `AMQPConnectionException` / `AMQPChannelException` are always transient (reconnectable)
   - `AMQPQueueException` / `AMQPExchangeException` are always permanent (resource errors won't resolve on retry)

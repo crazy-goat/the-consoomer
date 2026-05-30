@@ -76,7 +76,7 @@ class ReceiverTest extends TestCase
         $this->queue
             ->expects($this->once())
             ->method('consume')
-            ->willThrowException(new \AMQPException('Consumer timeout exceed'));
+            ->willThrowException(new \AMQPQueueException('Consumer timeout exceeded'));
 
         $this->queue
             ->method('getConsumerTag')
@@ -90,47 +90,6 @@ class ReceiverTest extends TestCase
         $result = $receiver->get();
 
         $this->assertSame([], $result);
-    }
-
-    /**
-     * @dataProvider timeoutMessageVariationProvider
-     */
-    public function testGetReturnsEmptyArrayForTimeoutMessageVariation(string $message): void
-    {
-        $options = ['queue' => 'test_queue'];
-
-        $receiver = $this->createReceiverWithQueue($options);
-
-        $this->queue
-            ->expects($this->once())
-            ->method('consume')
-            ->willThrowException(new \AMQPException($message));
-
-        $this->queue
-            ->method('getConsumerTag')
-            ->willReturn('test_tag');
-
-        $this->connection
-            ->expects($this->once())
-            ->method('checkHeartbeat')
-            ->willReturn(false);
-
-        $result = $receiver->get();
-
-        $this->assertSame([], $result, "Failed for message: {$message}");
-    }
-
-    /**
-     * @return array<string, array{0: string}>
-     */
-    public static function timeoutMessageVariationProvider(): array
-    {
-        return [
-            'original message' => ['Consumer timeout exceed'],
-            'grammatically correct' => ['Consumer timeout exceeded'],
-            'with verb has been' => ['Consumer timeout has been exceeded'],
-            'with colon' => ['Consumer timeout: exceeded'],
-        ];
     }
 
     public function testGetReturnsMessageWhenAvailable(): void
@@ -358,7 +317,7 @@ class ReceiverTest extends TestCase
 
         $this->queue
             ->method('consume')
-            ->willThrowException(new \AMQPException('Consumer timeout exceed'));
+            ->willThrowException(new \AMQPQueueException('Consumer timeout exceeded'));
 
         $this->queue
             ->method('getConsumerTag')
@@ -396,6 +355,31 @@ class ReceiverTest extends TestCase
 
         $this->expectException(\AMQPException::class);
         $this->expectExceptionMessage('Connection failed');
+
+        $receiver->get();
+    }
+
+    public function testGetRethrowsNonTimeoutExceptionWithConsumerTimeoutInMessage(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willThrowException(new \AMQPException('Consumer timeout in wrong context'));
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->expectException(\AMQPException::class);
+        $this->expectExceptionMessage('Consumer timeout in wrong context');
 
         $receiver->get();
     }
@@ -1290,7 +1274,7 @@ class ReceiverTest extends TestCase
                 $bodyProp = $refl->getProperty('body');
                 $bodyProp->setValue($amqpEnvelope, '{"data":"test"}');
                 $callback($amqpEnvelope);
-                throw new \AMQPException('Consumer timeout exceed');
+                throw new \AMQPQueueException('Consumer timeout exceeded');
             });
 
         $this->queue
