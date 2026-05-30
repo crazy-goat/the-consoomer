@@ -118,12 +118,12 @@ class AmqpStampTest extends TestCase
         $this->assertSame([
             'content_type' => 'application/json',
             'message_id' => 'msg-123',
-            'app_id' => 'test-app',
-            'correlation_id' => 'corr-456',
-            'headers' => ['x-custom' => 'value'],
             'delivery_mode' => 2,
             'priority' => 5,
             'timestamp' => 1234567890,
+            'app_id' => 'test-app',
+            'correlation_id' => 'corr-456',
+            'headers' => ['x-custom' => 'value'],
         ], $stamp->getAttributes());
     }
 
@@ -148,10 +148,14 @@ class AmqpStampTest extends TestCase
         $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
 
         $this->assertSame('', $stamp->getRoutingKey());
-        $this->assertSame([], $stamp->getAttributes());
+        $this->assertSame([
+            'delivery_mode' => 0,
+            'priority' => 0,
+            'timestamp' => 0,
+        ], $stamp->getAttributes());
     }
 
-    public function testCreateFromAmqpEnvelopeFiltersPriorityZero(): void
+    public function testCreateFromAmqpEnvelopePreservesPriorityZero(): void
     {
         $envelope = $this->createMock(\AMQPEnvelope::class);
         $envelope->method('getRoutingKey')->willReturn('');
@@ -171,7 +175,7 @@ class AmqpStampTest extends TestCase
 
         $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
 
-        $this->assertSame(['delivery_mode' => 2], $stamp->getAttributes());
+        $this->assertSame(['delivery_mode' => 2, 'priority' => 0], $stamp->getAttributes());
     }
 
     public function testCreateWithAttributes(): void
@@ -193,7 +197,7 @@ class AmqpStampTest extends TestCase
         $this->assertSame(['new' => 'attribute'], $stamp->getAttributes());
     }
 
-    public function testCreateFromEmptyAmqpEnvelopeReturnsEmptyAttributes(): void
+    public function testCreateFromAmqpEnvelopePreservesZeroIntValues(): void
     {
         $envelope = $this->createMock(\AMQPEnvelope::class);
         $envelope->method('getRoutingKey')->willReturn('test.routing.key');
@@ -214,6 +218,10 @@ class AmqpStampTest extends TestCase
         $stamp = AmqpStamp::createFromAmqpEnvelope($envelope);
 
         $this->assertSame('test.routing.key', $stamp->getRoutingKey());
-        $this->assertSame([], $stamp->getAttributes());
+        $this->assertSame([
+            'delivery_mode' => 0,
+            'priority' => 0,
+            'timestamp' => 0,
+        ], $stamp->getAttributes());
     }
 }
