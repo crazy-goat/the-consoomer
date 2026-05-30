@@ -903,6 +903,63 @@ class ReceiverTest extends TestCase
         $this->assertSame(42, $receiver->getMessageCount());
     }
 
+    public function testGetMessageCountDoesNotStartConsumers(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue->method('declareQueue')->willReturn(42);
+
+        // Consume must NEVER be called from getMessageCount()
+        $this->queue
+            ->expects($this->never())
+            ->method('consume');
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $receiver->getMessageCount();
+    }
+
+    public function testGetMessageCountDoesNotAlterReceiverState(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->queue->method('getFlags')->willReturn(0);
+        $this->queue->method('setFlags');
+        $this->queue->method('declareQueue')->willReturn(42);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+
+        // Before getMessageCount, queues should be empty
+        $this->assertSame([], $queuesProperty->getValue($receiver));
+
+        $receiver->getMessageCount();
+
+        // After getMessageCount, queues should still be empty (no consumer state left)
+        $this->assertSame([], $queuesProperty->getValue($receiver));
+    }
+
+    public function testGetMessageCountReturnsZeroForNoQueues(): void
+    {
+        $options = [];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $this->assertSame(0, $receiver->getMessageCount());
+    }
+
     public function testPurgeQueuePurgingConfiguredQueue(): void
     {
         $options = ['queue' => 'test_queue'];
