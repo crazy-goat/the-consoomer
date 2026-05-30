@@ -50,6 +50,7 @@ final class DsnParser
      *     exchange_flags?: int,
      *     queue_flags?: int,
      *     persistent?: bool,
+     *     durable?: bool,
      * }
      */
     public function parse(string $dsn): array

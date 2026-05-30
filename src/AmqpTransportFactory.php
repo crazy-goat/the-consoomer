@@ -88,6 +88,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     exchange_flags?: int,
      *     queue_flags?: int,
      *     persistent?: bool,
+     *     durable?: bool,
      * } $options
      * @param SerializerInterface  $serializer Message serializer
      * @param AmqpFactoryInterface|null $factory    AMQP factory (optional)
