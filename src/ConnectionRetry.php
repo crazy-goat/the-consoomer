@@ -27,6 +27,32 @@ final class ConnectionRetry implements ConnectionRetryInterface
     /** AMQP error codes that indicate permanent failures - should not retry */
     private const PERMANENT_FAILURE_CODES = [403, 404, 406];
 
+    /**
+     * Determines if an AMQP exception represents a permanent (non-retryable) failure.
+     *
+     * Connection-level exceptions (AMQPConnectionException, AMQPChannelException)
+     * are considered transient — a reconnect may resolve them.
+     * Resource-level exceptions (AMQPQueueException, AMQPExchangeException)
+     * are considered permanent — the referenced queue/exchange will not appear
+     * on retry.
+     *
+     * For generic AMQPException the getCode() is used as a fallback, but note
+     * that ext-amqp does NOT reliably surface AMQP reply codes there —
+     * getCode() is frequently 0 or a librabbitmq errno.
+     */
+    private function isPermanentFailure(\AMQPException $exception): bool
+    {
+        if ($exception instanceof \AMQPQueueException || $exception instanceof \AMQPExchangeException) {
+            return true;
+        }
+
+        if ($exception instanceof \AMQPConnectionException || $exception instanceof \AMQPChannelException) {
+            return false;
+        }
+
+        return in_array($exception->getCode(), self::PERMANENT_FAILURE_CODES, true);
+    }
+
     private ?CircuitBreaker $circuitBreaker = null;
     private readonly RetryMetrics $metrics;
 
@@ -119,11 +145,10 @@ final class ConnectionRetry implements ConnectionRetryInterface
 
                 return $result;
             } catch (\AMQPException $exception) {
-                // Only retry on recoverable AMQP errors (connection/channel issues)
-                // Don't retry on permanent failures (not found, access denied, precondition failed)
-                if (in_array($exception->getCode(), self::PERMANENT_FAILURE_CODES, true)) {
+                if ($this->isPermanentFailure($exception)) {
                     $this->logger?->warning('Permanent AMQP failure, not retrying', [
                         'code' => $exception->getCode(),
+                        'type' => $exception::class,
                         'error' => $exception->getMessage(),
                     ]);
                     throw $exception;
