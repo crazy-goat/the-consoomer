@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+- **BC BREAK**: Renamed `ConnectionRetry::$retryCount` constructor parameter to `maxAttempts` to clarify semantics (#228)
+  - `retryCount` previously meant "total attempts" (ambiguous) — now `maxAttempts` explicitly means "maximum number of execution attempts including the first"
+  - Config key `retry_count` in DSN/options remains unchanged and maps to `maxAttempts`
+  - Validation added: `maxAttempts` must be at least 1 (throws `\InvalidArgumentException` for 0 or negative)
+  - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
+
 ### Fixed
 - Topology is now re-declared after reconnect — `setupPerformed` flag is reset on reconnect so exchanges, queues, and bindings are re-declared on the new connection/channel (#229)
   - Added `InfrastructureSetupInterface::resetSetup()` to allow clearing the setup-once flag

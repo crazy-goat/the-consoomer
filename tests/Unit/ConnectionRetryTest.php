@@ -20,29 +20,25 @@ class ConnectionRetryTest extends TestCase
 
     public function testSuccessfulOperationNoRetry(): void
     {
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $result = $retry->withRetry(fn(): string => 'success');
 
         $this->assertSame('success', $result);
     }
 
-    public function testRetryCountZeroThrowsRuntimeException(): void
+    public function testMaxAttemptsZeroThrowsInvalidArgumentException(): void
     {
-        $retry = new ConnectionRetry(retryCount: 0, retryDelay: 1000);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('maxAttempts must be at least 1');
 
-        $this->expectException(RetryExhaustedException::class);
-        $this->expectExceptionMessage('Operation failed with no retries configured');
-
-        $retry->withRetry(function (): void {
-            throw new \AMQPConnectionException('Connection failed');
-        });
+        new ConnectionRetry(maxAttempts: 0, retryDelay: 1000);
     }
 
     public function testRetryOnConnectionException(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $this->expectException(RetryExhaustedException::class);
 
@@ -57,7 +53,7 @@ class ConnectionRetryTest extends TestCase
     public function testRetrySucceedsOnSecondAttempt(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $result = $retry->withRetry(function () use (&$attempt): string {
             $attempt++;
@@ -71,9 +67,39 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(2, $attempt);
     }
 
+    public function testMaxAttemptsOneExecutesExactlyOneAttempt(): void
+    {
+        $attempt = 0;
+        $retry = new ConnectionRetry(maxAttempts: 1, retryDelay: 1000);
+
+        $this->expectException(RetryExhaustedException::class);
+
+        $retry->withRetry(function () use (&$attempt): void {
+            $attempt++;
+            throw new \AMQPConnectionException('Connection failed');
+        });
+
+        $this->assertSame(1, $attempt);
+    }
+
+    public function testMaxAttemptsTwoExecutesExactlyTwoAttempts(): void
+    {
+        $attempt = 0;
+        $retry = new ConnectionRetry(maxAttempts: 2, retryDelay: 1000);
+
+        $this->expectException(RetryExhaustedException::class);
+
+        $retry->withRetry(function () use (&$attempt): void {
+            $attempt++;
+            throw new \AMQPConnectionException('Connection failed');
+        });
+
+        $this->assertSame(2, $attempt);
+    }
+
     public function testNoRetryOnOtherException(): void
     {
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $this->expectException(UnexpectedOperationException::class);
 
@@ -85,7 +111,7 @@ class ConnectionRetryTest extends TestCase
     public function testRetryOnChannelException(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $this->expectException(RetryExhaustedException::class);
 
@@ -100,7 +126,7 @@ class ConnectionRetryTest extends TestCase
     public function testRetryOnExchangeException(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $this->expectException(RetryExhaustedException::class);
 
@@ -115,7 +141,7 @@ class ConnectionRetryTest extends TestCase
     public function testRetryOnQueueException(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $this->expectException(RetryExhaustedException::class);
 
@@ -130,7 +156,7 @@ class ConnectionRetryTest extends TestCase
     public function testRetrySucceedsOnSecondAttemptWithChannelException(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $result = $retry->withRetry(function () use (&$attempt): string {
             $attempt++;
@@ -147,7 +173,7 @@ class ConnectionRetryTest extends TestCase
     public function testNoRetryOnQueueNotFound(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         try {
             $retry->withRetry(function () use (&$attempt): void {
@@ -164,7 +190,7 @@ class ConnectionRetryTest extends TestCase
     public function testNoRetryOnExchangeNotFound(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         try {
             $retry->withRetry(function () use (&$attempt): void {
@@ -181,7 +207,7 @@ class ConnectionRetryTest extends TestCase
     public function testNoRetryOnAccessDenied(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         try {
             $retry->withRetry(function () use (&$attempt): void {
@@ -198,7 +224,7 @@ class ConnectionRetryTest extends TestCase
     public function testNoRetryOnPreconditionFailed(): void
     {
         $attempt = 0;
-        $retry = new ConnectionRetry(retryCount: 3, retryDelay: 1000);
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         try {
             $retry->withRetry(function () use (&$attempt): void {
@@ -215,7 +241,7 @@ class ConnectionRetryTest extends TestCase
     public function testCircuitBreakerOpensAfterThreshold(): void
     {
         $retry = new ConnectionRetry(
-            retryCount: 3,
+            maxAttempts: 3,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 2,
@@ -240,7 +266,7 @@ class ConnectionRetryTest extends TestCase
         $clock = new FrozenClock();
 
         $retry = new ConnectionRetry(
-            retryCount: 1,
+            maxAttempts: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,
@@ -267,7 +293,7 @@ class ConnectionRetryTest extends TestCase
     public function testExponentialBackoff(): void
     {
         $retry = new ConnectionRetry(
-            retryCount: 3,
+            maxAttempts: 3,
             retryDelay: 100000,
             retryBackoff: true,
             retryJitter: false,
@@ -292,7 +318,7 @@ class ConnectionRetryTest extends TestCase
     {
         for ($i = 0; $i < 10; $i++) {
             $retry = new ConnectionRetry(
-                retryCount: 2,
+                maxAttempts: 2,
                 retryDelay: 100000,
                 retryBackoff: false,
                 retryJitter: true,
@@ -314,7 +340,7 @@ class ConnectionRetryTest extends TestCase
     public function testResetsCircuitBreaker(): void
     {
         $retry = new ConnectionRetry(
-            retryCount: 1,
+            maxAttempts: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,
@@ -344,7 +370,7 @@ class ConnectionRetryTest extends TestCase
         $clock = new FrozenClock();
 
         $retry = new ConnectionRetry(
-            retryCount: 1,
+            maxAttempts: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,
@@ -363,7 +389,7 @@ class ConnectionRetryTest extends TestCase
         $clock = new FrozenClock();
 
         $retry = new ConnectionRetry(
-            retryCount: 1,
+            maxAttempts: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,
@@ -397,7 +423,7 @@ class ConnectionRetryTest extends TestCase
         $clock = new FrozenClock();
 
         $retry = new ConnectionRetry(
-            retryCount: 1,
+            maxAttempts: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,
@@ -434,7 +460,7 @@ class ConnectionRetryTest extends TestCase
         $this->expectExceptionMessage('successThreshold must be at least 2');
 
         new ConnectionRetry(
-            retryCount: 1,
+            maxAttempts: 1,
             retryDelay: 1000,
             retryCircuitBreaker: true,
             retryCircuitBreakerThreshold: 1,

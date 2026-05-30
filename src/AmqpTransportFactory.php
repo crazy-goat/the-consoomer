@@ -18,7 +18,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 class AmqpTransportFactory implements TransportFactoryInterface
 {
     private const DEFAULT_READ_TIMEOUT = 0.1;
-    private const DEFAULT_RETRY_COUNT = 3;
+    private const DEFAULT_MAX_ATTEMPTS = 3;
     private const DEFAULT_RETRY_DELAY = 100_000;
     private const DEFAULT_RETRY_MAX_DELAY = 30_000_000;
 
@@ -175,7 +175,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
     {
         if ($options['retry'] ?? false) {
             return new ConnectionRetry(
-                retryCount: (int) ($options['retry_count'] ?? self::DEFAULT_RETRY_COUNT),
+                maxAttempts: (int) ($options['retry_count'] ?? self::DEFAULT_MAX_ATTEMPTS),
                 retryDelay: (int) ($options['retry_delay'] ?? self::DEFAULT_RETRY_DELAY),
                 retryBackoff: (bool) ($options['retry_backoff'] ?? false),
                 retryMaxDelay: (int) ($options['retry_max_delay'] ?? self::DEFAULT_RETRY_MAX_DELAY),
