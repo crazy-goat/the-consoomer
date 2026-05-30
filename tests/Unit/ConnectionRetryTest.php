@@ -290,6 +290,45 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame('success', $result);
     }
 
+    public function testJitterNeverExceedsMaxDelay(): void
+    {
+        $retry = new ConnectionRetry(
+            maxAttempts: 1,
+            retryDelay: 100000,
+            retryBackoff: false,
+            retryMaxDelay: 100000,
+            retryJitter: true,
+        );
+
+        $calculateDelay = (new \ReflectionMethod($retry, 'calculateDelay'))->getClosure($retry);
+
+        for ($i = 0; $i < 1000; $i++) {
+            $delay = $calculateDelay(1);
+            $this->assertLessThanOrEqual(100000, $delay, 'Jittered delay must not exceed retryMaxDelay');
+            $this->assertGreaterThanOrEqual(0, $delay, 'Delay must be non-negative');
+        }
+    }
+
+    public function testJitterWithBackoffNeverExceedsMaxDelay(): void
+    {
+        $retry = new ConnectionRetry(
+            maxAttempts: 1,
+            retryDelay: 1000,
+            retryBackoff: true,
+            retryMaxDelay: 100000,
+            retryJitter: true,
+        );
+
+        $calculateDelay = (new \ReflectionMethod($retry, 'calculateDelay'))->getClosure($retry);
+
+        for ($attempt = 1; $attempt <= 10; $attempt++) {
+            for ($i = 0; $i < 100; $i++) {
+                $delay = $calculateDelay($attempt);
+                $this->assertLessThanOrEqual(100000, $delay, 'Backoff jittered delay must not exceed retryMaxDelay');
+            }
+        }
+    }
+
     public function testExponentialBackoff(): void
     {
         $retry = new ConnectionRetry(

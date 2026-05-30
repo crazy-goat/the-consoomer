@@ -218,13 +218,11 @@ final class ConnectionRetry implements ConnectionRetryInterface
             $delay = $this->retryDelay * (2 ** ($attempt - 1));
         }
 
-        $delay = min($delay, $this->retryMaxDelay);
-
         if ($this->retryJitter) {
             $variation = (int) ($delay * self::JITTER_VARIATION_FACTOR);
             $delay += random_int(-$variation, $variation);
         }
 
-        return max(0, $delay);
+        return max(0, min($delay, $this->retryMaxDelay));
     }
 }

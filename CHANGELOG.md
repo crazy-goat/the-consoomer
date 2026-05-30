@@ -10,6 +10,7 @@
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
 
 ### Fixed
+- Retry jitter is now applied BEFORE the `retry_max_delay` cap — jitter no longer pushes the effective delay up to 25% above the configured maximum (#225)
 - `AmqpStamp::createFromAmqpEnvelope()` no longer drops `priority`, `delivery_mode`, or `timestamp` when their value is `0` — priority 0 is a valid AMQP level that was lost on receive→re-send round-trips (#226)
 - `AmqpPriorityStamp` priority cap relaxed from 9 to 255 — RabbitMQ supports up to 255 via `x-max-priority` queue argument (#227)
 - Topology is now re-declared after reconnect — `setupPerformed` flag is reset on reconnect so exchanges, queues, and bindings are re-declared on the new connection/channel (#229)
