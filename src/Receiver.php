@@ -288,11 +288,14 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->connect();
 
+        $channel = $this->connection->getChannel();
         $total = 0;
 
-        foreach ($this->queues as $queue) {
+        foreach ($this->getQueueNames() as $queueName) {
+            $queue = $this->factory->createQueue($channel);
+            $queue->setName($queueName);
+
             $getCount = function () use ($queue): int {
                 $flags = $queue->getFlags();
                 $queue->setFlags($flags | \AMQP_PASSIVE);
