@@ -238,27 +238,36 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
 
     private function setupRetryQueue(): void
     {
-        if (!isset($this->options['queue'])) {
+        if (isset($this->options['queue'])) {
+            $queues = [$this->options['queue'] => ['binding_keys' => [$this->options['routing_key'] ?? '']]];
+        } elseif (isset($this->options['queues'])) {
+            $queues = $this->options['queues'];
+        } else {
             return;
         }
 
         $retryExchangeName = $this->options['retry_exchange'] ?? $this->options['exchange'] . '_retry';
-        $routingKey = $this->options['routing_key'] ?? '';
-        $retryQueueName = $this->options['queue'] . '_retry';
         $retryExchange = $this->factory->createExchange($this->connection->getChannel());
         $retryExchange->setName($retryExchangeName);
         $retryExchange->setType(\AMQP_EX_TYPE_DIRECT);
         $retryExchange->setFlags(\AMQP_DURABLE);
         $retryExchange->declareExchange();
-        $retryQueue = $this->factory->createQueue($this->connection->getChannel());
-        $retryQueue->setName($retryQueueName);
-        $retryQueue->setFlags(\AMQP_DURABLE);
-        $retryQueue->setArguments($this->options['retry_queue_arguments'] ?? [
-            'x-dead-letter-exchange' => $this->options['exchange'],
-            'x-dead-letter-routing-key' => $routingKey,
-        ]);
-        $retryQueue->declareQueue();
-        $retryQueue->bind($retryExchangeName, $routingKey . '_retry');
+
+        foreach ($queues as $queueName => $queueConfig) {
+            $bindingKeys = $queueConfig['binding_keys'] ?? [''];
+            $routingKey = $bindingKeys[0] ?? '';
+            $retryQueueName = $queueName . '_retry';
+
+            $retryQueue = $this->factory->createQueue($this->connection->getChannel());
+            $retryQueue->setName($retryQueueName);
+            $retryQueue->setFlags(\AMQP_DURABLE);
+            $retryQueue->setArguments($this->options['retry_queue_arguments'] ?? [
+                'x-dead-letter-exchange' => $this->options['exchange'],
+                'x-dead-letter-routing-key' => $routingKey,
+            ]);
+            $retryQueue->declareQueue();
+            $retryQueue->bind($retryExchangeName, $routingKey . '_retry');
+        }
     }
 
     /**
