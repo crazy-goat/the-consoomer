@@ -111,6 +111,19 @@ class AmqpFactory implements AmqpFactoryInterface
         }
 
         $sslVerify = $options['ssl_verify'] ?? true;
+        if (is_string($sslVerify) && $sslVerify === '') {
+            throw new \InvalidArgumentException('ssl_verify must be a boolean value, got empty string');
+        }
+        if (!is_bool($sslVerify)) {
+            $normalized = filter_var($sslVerify, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+            if ($normalized === null) {
+                throw new \InvalidArgumentException(sprintf(
+                    'ssl_verify must be a boolean value, got "%s"',
+                    get_debug_type($sslVerify),
+                ));
+            }
+            $sslVerify = $normalized;
+        }
         $connection->setVerify($sslVerify);
         $logger?->debug('SSL verify: {verify}', ['verify' => $sslVerify ? 'enabled' : 'disabled']);
 
