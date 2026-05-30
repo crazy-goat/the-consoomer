@@ -13,6 +13,7 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 {
     public const DEFAULT_MAX_UNACKED_MESSAGES = 100;
+    public const DEFAULT_BATCH_SIZE = 1;
     /** @var array<string, int> */
     private array $unacked = [];
     /** @var array<string, ?\AMQPEnvelope> */
@@ -28,6 +29,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *     queues?: array<string, array{binding_keys?: list<string>}>,
      *     exchange?: string,
      *     max_unacked_messages?: int,
+     *     batch_size?: int,
      *     auto_setup?: bool,
      *     retry?: bool,
      *     retry_exchange?: string,
@@ -43,9 +45,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         private readonly ?ConnectionRetryInterface $retry = null,
     ) {
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? self::DEFAULT_MAX_UNACKED_MESSAGES));
+        $this->batchSize = max(1, intval($this->options['batch_size'] ?? self::DEFAULT_BATCH_SIZE));
     }
 
     private int $maxUnackedMessages = self::DEFAULT_MAX_UNACKED_MESSAGES;
+    private int $batchSize = self::DEFAULT_BATCH_SIZE;
 
     /**
      * @return list<string>
@@ -105,7 +109,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                 $envelope = $this->serializer->decode(['body' => $message->getBody()]);
                 $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $queueName));
 
-                return count($this->messages) < $this->maxUnackedMessages;
+                return count($this->messages) < $this->batchSize;
             };
 
             try {
@@ -231,6 +235,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         if (($this->unacked[$queueName] ?? 0) >= $this->maxUnackedMessages) {
             $this->ackPending($queueName);
         }
+    }
+
+    public function close(): void
+    {
+        $this->ackPending();
     }
 
     public function purgeQueue(?string $queueName = null): int

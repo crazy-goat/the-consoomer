@@ -181,4 +181,56 @@ class AmqpTransportTest extends TestCase
 
         $transport->close();
     }
+
+    public function testCloseFlushesReceiverAcksWhenReceiverHasClose(): void
+    {
+        $receiver = new class ($this->createMock(ReceiverInterface::class)) implements ReceiverInterface {
+            public bool $closed = false;
+
+            public function __construct(private readonly ReceiverInterface $inner)
+            {
+            }
+
+            public function get(): iterable
+            {
+                return $this->inner->get();
+            }
+
+            public function ack(Envelope $envelope): void
+            {
+                $this->inner->ack($envelope);
+            }
+
+            public function reject(Envelope $envelope): void
+            {
+                $this->inner->reject($envelope);
+            }
+
+            public function close(): void
+            {
+                $this->closed = true;
+            }
+        };
+
+        $this->connection
+            ->expects($this->once())
+            ->method('close');
+
+        $transport = new AmqpTransport($receiver, $this->sender, $this->setup, $this->connection);
+
+        $transport->close();
+
+        $this->assertTrue($receiver->closed);
+    }
+
+    public function testCloseDoesNotFailWhenReceiverLacksClose(): void
+    {
+        $this->connection
+            ->expects($this->once())
+            ->method('close');
+
+        $transport = new AmqpTransport($this->receiver, $this->sender, $this->setup, $this->connection);
+
+        $transport->close();
+    }
 }
