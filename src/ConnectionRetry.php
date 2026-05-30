@@ -89,10 +89,16 @@ final class ConnectionRetry implements ConnectionRetryInterface
      */
     public function withRetry(callable $operation): mixed
     {
-        if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker && !$this->circuitBreaker->isAvailable()) {
-            $this->logger?->error('Circuit breaker is open, rejecting operation');
-            $this->metrics->recordCircuitBreakerOpen();
-            throw new CircuitBreakerOpenException('Circuit breaker is open');
+        if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
+            if (!$this->circuitBreaker->isAvailable()) {
+                $this->logger?->error('Circuit breaker is open, rejecting operation');
+                $this->metrics->recordCircuitBreakerOpen();
+                throw new CircuitBreakerOpenException('Circuit breaker is open');
+            }
+
+            if ($this->circuitBreaker->getState() === CircuitState::HALF_OPEN) {
+                return $this->executeHalfOpenProbe($operation);
+            }
         }
 
         $attempt = 0;
@@ -202,6 +208,46 @@ final class ConnectionRetry implements ConnectionRetryInterface
     {
         $this->circuitBreaker?->reset();
         $this->metrics->reset();
+    }
+
+    /**
+     * Executes operation exactly once as a half-open probe.
+     *
+     * In half-open state, no retry loop is used — exactly one attempt is made
+     * and the result is recorded directly to the circuit breaker.
+     *
+     * @template T
+     * @param callable(): T $operation Operation to execute
+     * @return T
+     * @throws \AMQPException When AMQP operation fails (breaker is re-opened)
+     * @throws UnexpectedOperationException When non-AMQP exception occurs
+     */
+    private function executeHalfOpenProbe(callable $operation): mixed
+    {
+        try {
+            $result = $operation();
+
+            $this->circuitBreaker?->recordSuccess();
+            $this->metrics->recordAttempt();
+
+            return $result;
+        } catch (\AMQPException $exception) {
+            $this->circuitBreaker?->recordFailure();
+            $this->metrics->recordFailure();
+
+            $this->logger?->warning('Half-open probe failed, circuit re-opening', [
+                'code' => $exception->getCode(),
+                'error' => $exception->getMessage(),
+            ]);
+
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $this->logger?->warning('Non-AMQP exception during half-open probe', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            throw UnexpectedOperationException::fromPrevious($exception);
+        }
     }
 
     /**
