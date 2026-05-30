@@ -308,4 +308,49 @@ class DsnParserTest extends TestCase
         $this->assertSame('my_queue', $result['queue']);
         $this->assertIsString($result['queue']);
     }
+
+    public function testDoubleSlashMeansDefaultVhostWithExchange(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672//my_exchange');
+
+        $this->assertSame('localhost', $result['host']);
+        $this->assertSame(5672, $result['port']);
+        $this->assertSame('/', $result['vhost']);
+        $this->assertSame('my_exchange', $result['exchange']);
+    }
+
+    public function testDoubleSlashWithAmqpsScheme(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps-consoomer://guest:guest@localhost//my_exchange');
+
+        $this->assertSame('localhost', $result['host']);
+        $this->assertSame(5671, $result['port']);
+        $this->assertTrue($result['ssl']);
+        $this->assertSame('/', $result['vhost']);
+        $this->assertSame('my_exchange', $result['exchange']);
+    }
+
+    public function testHostLessDsnDefaultsToLocalhostAndDefaultVhost(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer:///my_exchange');
+
+        $this->assertSame('localhost', $result['host']);
+        $this->assertSame('/', $result['vhost']);
+        $this->assertSame('my_exchange', $result['exchange']);
+    }
+
+    public function testHostLessDsnWithQueryParams(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer:///my_exchange?heartbeat=30&queue=my_queue');
+
+        $this->assertSame('localhost', $result['host']);
+        $this->assertSame('/', $result['vhost']);
+        $this->assertSame('my_exchange', $result['exchange']);
+        $this->assertSame(30, $result['heartbeat']);
+        $this->assertSame('my_queue', $result['queue']);
+    }
 }

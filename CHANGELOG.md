@@ -10,6 +10,8 @@
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
 
 ### Fixed
+- DSN double-slash `//exchange` now correctly resolves to default vhost (`/`) — previously the empty vhost segment was collapsed, causing the exchange name to be misinterpreted as vhost (#216)
+- Host-less DSN (`amqp-consoomer:///exchange`) now defaults to `localhost` with default vhost — previously threw "Malformed DSN" (#216)
 - `getMessageCount()` no longer starts real consumers via `connect()` — now creates throwaway passive queue objects on a fresh channel and never calls `consume()`. Stats/monitoring calls previously registered server-side consumers, locking messages into prefetch buffer and under-reporting message count (#217)
 - Retry topology (exchange + per-queue retry queues) is now created in multi-queue (`queues`) mode — previously `setupRetryQueue()` early-returned when only `queues` (plural) was configured, causing publish failures to non-existent `_retry` targets (#218)
 - `normalizeValue` no longer silently truncates scientific-notation numbers (e.g. `1e3` → `1000.0` instead of `1`) — DSN query parameters like `read_timeout=1e5` now produce the correct float value (#246)

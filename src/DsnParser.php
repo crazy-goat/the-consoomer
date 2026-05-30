@@ -55,6 +55,9 @@ final class DsnParser
      */
     public function parse(string $dsn): array
     {
+        // Handle host-less DSN: amqp-consoomer:///exchange → amqp-consoomer://localhost//exchange
+        $dsn = preg_replace('#^([a-z][a-z0-9+.-]*://)/+#', '$1localhost//', $dsn) ?? $dsn;
+
         $info = parse_url($dsn);
         if ($info === false) {
             throw new \InvalidArgumentException('Malformed DSN: ' . $dsn);
@@ -186,11 +189,30 @@ final class DsnParser
      */
     private function parsePath(string $path): array
     {
-        $items = explode('/', trim($path, " \n\r\t\v\0/"));
+        $path = rtrim($path, " \n\r\t\v\0/");
+
+        if ($path === '') {
+            return ['vhost' => '/', 'exchange' => ''];
+        }
+
+        $items = explode('/', $path);
+
+        // Remove the leading empty segment from the '/' prefix
+        if ($items[0] === '') {
+            array_shift($items);
+        }
+
+        $vhost = $items[0];
+        $exchange = $items[1] ?? '';
+
+        // Empty vhost segment (from '//' prefix) means default vhost
+        if ($vhost === '') {
+            $vhost = '/';
+        }
 
         return [
-            'vhost' => rawurldecode($items[0] ?? '/'),
-            'exchange' => rawurldecode($items[1] ?? ''),
+            'vhost' => rawurldecode($vhost),
+            'exchange' => rawurldecode($exchange),
         ];
     }
 
