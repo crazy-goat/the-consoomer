@@ -947,6 +947,309 @@ class InfrastructureSetupTest extends TestCase
         $setup->setup();
     }
 
+    public function testConstructorRejectsExchangeFlagsWithExclusive(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_flags' => \AMQP_EXCLUSIVE,
+        ]);
+    }
+
+    public function testConstructorRejectsExchangeFlagsWithAutoDelete(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_flags' => \AMQP_AUTODELETE,
+        ]);
+    }
+
+    public function testConstructorRejectsQueueFlagsWithExclusive(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'queue_flags' => \AMQP_EXCLUSIVE,
+        ]);
+    }
+
+    public function testConstructorRejectsQueueFlagsWithAutoDelete(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'queue_flags' => \AMQP_AUTODELETE,
+        ]);
+    }
+
+    public function testConstructorRejectsFlagsWithCombinedForbiddenBits(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_flags' => \AMQP_EXCLUSIVE | \AMQP_AUTODELETE,
+        ]);
+    }
+
+    public function testConstructorAcceptsDurableOnlyFlag(): void
+    {
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_flags' => \AMQP_DURABLE,
+        ]);
+
+        $this->assertInstanceOf(InfrastructureSetup::class, $setup);
+    }
+
+    public function testConstructorAcceptsZeroFlags(): void
+    {
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'exchange_flags' => 0,
+        ]);
+
+        $this->assertInstanceOf(InfrastructureSetup::class, $setup);
+    }
+
+    public function testConstructorAcceptsNoFlags(): void
+    {
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ]);
+
+        $this->assertInstanceOf(InfrastructureSetup::class, $setup);
+    }
+
+    public function testSetupAppliesDurableByDefault(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $this->queue->method('setName');
+        $this->queue->method('declareQueue');
+        $this->queue->method('bind');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ]);
+
+        $setup->setup();
+    }
+
+    public function testSetupWithoutDurableDoesNotSetDurableFlag(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        // Without AMQP_DURABLE (2), the flag should be 0 (AMQP_NOPARAM)
+        $this->exchange->expects($this->once())->method('setFlags')->with(0);
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->once())->method('setFlags')->with(0);
+        $this->queue->method('setName');
+        $this->queue->method('declareQueue');
+        $this->queue->method('bind');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'durable' => false,
+        ]);
+
+        $setup->setup();
+    }
+
+    public function testSetupWithDurableFalseAndCustomQueueFlags(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->expects($this->once())->method('setFlags')->with(0);
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->once())->method('setFlags')->with(0);
+        $this->queue->method('setName');
+        $this->queue->method('declareQueue');
+        $this->queue->method('bind');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'durable' => false,
+            'exchange_flags' => 0,
+            'queue_flags' => 0,
+        ]);
+
+        $setup->setup();
+    }
+
+    public function testSetupWithMultipleQueuesAppliesQueueFlags(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $queueA->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $queueB->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
+        $queueA->method('setName');
+        $queueB->method('setName');
+        $queueA->method('declareQueue');
+        $queueB->method('declareQueue');
+        $queueA->method('bind');
+        $queueB->method('bind');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queues' => [
+                'queue_a' => [],
+                'queue_b' => [],
+            ],
+        ]);
+
+        $setup->setup();
+    }
+
+    public function testSetupWithMultipleQueuesAndDurableFalse(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($queueA, $queueB, $this->retryQueue);
+
+        $this->exchange->method('getName')->willReturn('test_exchange');
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+
+        $queueA->expects($this->once())->method('setFlags')->with(0);
+        $queueB->expects($this->once())->method('setFlags')->with(0);
+        $queueA->method('setName');
+        $queueB->method('setName');
+        $queueA->method('declareQueue');
+        $queueB->method('declareQueue');
+        $queueA->method('bind');
+        $queueB->method('bind');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->method('declareQueue');
+        $this->retryQueue->method('bind');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queues' => [
+                'queue_a' => [],
+                'queue_b' => [],
+            ],
+            'durable' => false,
+        ]);
+
+        $setup->setup();
+    }
+
     public function testSetupWithMultipleQueuesPerQueueArgumentsOverrideGlobal(): void
     {
         $this->connection->method('getChannel')->willReturn($this->channel);

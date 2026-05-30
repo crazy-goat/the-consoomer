@@ -14,6 +14,9 @@ use CrazyGoat\TheConsoomer\Enum\ExchangeType;
  */
 final class InfrastructureSetup implements InfrastructureSetupInterface
 {
+    private const FORBIDDEN_FLAGS = \AMQP_EXCLUSIVE | \AMQP_AUTODELETE;
+    private const ALLOWED_OPTION_KEYS = ['exchange_flags', 'queue_flags'];
+
     private bool $setupPerformed = false;
 
     /**
@@ -31,6 +34,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
      *     retry_exchange?: string,
      *     retry_queue_arguments?: array<string, mixed>,
+     *     durable?: bool,
      * } $options
      */
     public function __construct(
@@ -61,6 +65,16 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         if (isset($options['binding_arguments']) && !is_array($options['binding_arguments'])) {
             throw new \InvalidArgumentException('binding_arguments must be an array');
         }
+
+        foreach (self::ALLOWED_OPTION_KEYS as $key) {
+            if (isset($options[$key]) && is_int($options[$key]) && ($options[$key] & self::FORBIDDEN_FLAGS) !== 0) {
+                throw new \InvalidArgumentException(sprintf(
+                    '%s must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags (got %d)',
+                    $key,
+                    $options[$key],
+                ));
+            }
+        }
     }
 
     /**
@@ -86,7 +100,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             default => \AMQP_EX_TYPE_DIRECT,
         };
         $exchange->setType($type);
-        $exchange->setFlags(\AMQP_DURABLE | ($this->options['exchange_flags'] ?? 0));
+        $exchange->setFlags($this->resolveFlags('exchange_flags'));
         $exchange->declareExchange();
 
         $this->setupQueues($channel, $exchange);
@@ -116,7 +130,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     {
         $queue = $this->factory->createQueue($channel);
         $queue->setName($this->options['queue']);
-        $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
+        $queue->setFlags($this->resolveFlags('queue_flags'));
         if (isset($this->options['queue_arguments'])) {
             $queue->setArguments($this->options['queue_arguments']);
         }
@@ -134,7 +148,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         foreach ($this->options['queues'] as $queueName => $queueConfig) {
             $queue = $this->factory->createQueue($channel);
             $queue->setName($queueName);
-            $queue->setFlags(\AMQP_DURABLE | ($this->options['queue_flags'] ?? 0));
+            $queue->setFlags($this->resolveFlags('queue_flags'));
 
             $queueArgs = $queueConfig['arguments'] ?? $this->options['queue_arguments'] ?? null;
             if ($queueArgs !== null) {
@@ -206,6 +220,15 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
                 $exchange->bind($target, $routingKey);
             }
         }
+    }
+
+    private function resolveFlags(string $optionName): int
+    {
+        $flags = (int) ($this->options[$optionName] ?? 0);
+        if ($this->options['durable'] ?? true) {
+            $flags |= \AMQP_DURABLE;
+        }
+        return $flags;
     }
 
     private function setupRetryQueue(): void
