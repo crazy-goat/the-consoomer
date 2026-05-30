@@ -198,7 +198,7 @@ class ConnectionRetryTest extends TestCase
                 throw new \AMQPQueueException('Queue not found', 0);
             });
             $this->fail('Expected AMQPQueueException to be thrown');
-        } catch (\AMQPQueueException $e) {
+        } catch (\AMQPQueueException) {
             $this->assertSame(1, $attempt, 'Queue exception with code 0 should be permanent by type');
         }
     }
@@ -214,7 +214,7 @@ class ConnectionRetryTest extends TestCase
                 throw new \AMQPExchangeException('Exchange not found', 0);
             });
             $this->fail('Expected AMQPExchangeException to be thrown');
-        } catch (\AMQPExchangeException $e) {
+        } catch (\AMQPExchangeException) {
             $this->assertSame(1, $attempt, 'Exchange exception with code 0 should be permanent by type');
         }
     }
