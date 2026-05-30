@@ -115,9 +115,9 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
             try {
                 $queue->consume($callback, AMQP_JUST_CONSUME, $queue->getConsumerTag());
-            } catch (\AMQPException $exception) {
-                if (!str_contains($exception->getMessage(), 'Consumer timeout')) {
-                    throw $exception;
+            } catch (\AMQPQueueException) {
+                if ($this->messages !== []) {
+                    break;
                 }
             }
         }
