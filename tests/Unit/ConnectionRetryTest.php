@@ -493,6 +493,180 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(CircuitState::CLOSED, $retry->getState());
     }
 
+    public function testHalfOpenExecutesExactlyOneAttemptWithMaxAttemptsGreaterThanOne(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 3,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            clock: $clock,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $this->assertTrue($retry->isCircuitOpen());
+
+        $clock->advance(3);
+
+        $attempt = 0;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (\AMQPConnectionException) {
+        }
+
+        $this->assertSame(1, $attempt, 'Half-open probe must execute exactly once regardless of maxAttempts');
+    }
+
+    public function testHalfOpenProbeFailureReopensCircuit(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 3,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            clock: $clock,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $clock->advance(3);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Probe failed');
+            });
+        } catch (\AMQPConnectionException) {
+        }
+
+        $this->assertSame(CircuitState::OPEN, $retry->getState());
+    }
+
+    public function testHalfOpenProbePermanentFailureCodeRecordsToBreaker(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 3,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            clock: $clock,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $clock->advance(3);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $attempt = 0;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPQueueException('Queue not found', 404);
+            });
+        } catch (\AMQPQueueException) {
+        }
+
+        $this->assertSame(1, $attempt, 'Permanent failure code in HALF_OPEN must execute exactly once');
+        $this->assertSame(CircuitState::OPEN, $retry->getState());
+    }
+
+    public function testHalfOpenProbeSuccessAdvancesToClosedAfterThreshold(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 3,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            retryCircuitBreakerSuccessThreshold: 2,
+            clock: $clock,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $clock->advance(3);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $retry->withRetry(fn(): string => 'first success');
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'One success under threshold should stay HALF_OPEN');
+
+        $retry->withRetry(fn(): string => 'second success');
+        $this->assertSame(CircuitState::CLOSED, $retry->getState(), 'Second success reaches threshold, should close');
+    }
+
+    public function testHalfOpenProbeNonAmqpExceptionThrowsUnexpected(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 3,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            clock: $clock,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $clock->advance(3);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        $this->expectException(UnexpectedOperationException::class);
+
+        $retry->withRetry(function (): void {
+            throw new \RuntimeException('Unexpected error');
+        });
+    }
+
     public function testCircuitBreakerSuccessThresholdValidation(): void
     {
         $this->expectException(\InvalidArgumentException::class);
