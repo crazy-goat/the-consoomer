@@ -93,6 +93,9 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
      */
     public function close(): void
     {
+        if (method_exists($this->receiver, 'close')) {
+            $this->receiver->close();
+        }
         $this->connection->close();
     }
 }

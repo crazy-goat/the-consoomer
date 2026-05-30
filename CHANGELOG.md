@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Decoupled `max_unacked_messages` into three separate concerns: QoS prefetch, per-`get()` return-batch size, and ack-batch flush threshold (#238)
+  - Added `batch_size` option (default: 1) for per-`get()` return-batch size
+  - `max_unacked_messages` now controls only QoS prefetch and ack-batch flush threshold
+  - Added `Receiver::close()` / `AmqpTransport::close()` flush of pending acks on worker shutdown
+  - Eager consumption no longer delays first message until full batch is collected
+  - Lost ack redelivery on worker stop is eliminated — pending acks are flushed before disconnect
+
 ## [v0.2.0] - 2026-04-22
 
 ### Added

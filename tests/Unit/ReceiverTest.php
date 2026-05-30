@@ -1073,9 +1073,97 @@ class ReceiverTest extends TestCase
         $receiver->getMessageCount();
     }
 
+    public function testBatchSizeDefaultsToOne(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $batchSizeProperty = $reflection->getProperty('batchSize');
+
+        $this->assertSame(1, $batchSizeProperty->getValue($receiver));
+    }
+
+    public function testBatchSizeConfiguration(): void
+    {
+        $options = ['queue' => 'test_queue', 'batch_size' => 10];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $batchSizeProperty = $reflection->getProperty('batchSize');
+
+        $this->assertSame(10, $batchSizeProperty->getValue($receiver));
+    }
+
+    public function testBatchSizeIsAtLeastOne(): void
+    {
+        $options = ['queue' => 'test_queue', 'batch_size' => 0];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $batchSizeProperty = $reflection->getProperty('batchSize');
+
+        $this->assertSame(1, $batchSizeProperty->getValue($receiver));
+    }
+
+    public function testBatchSizeWithNegativeValue(): void
+    {
+        $options = ['queue' => 'test_queue', 'batch_size' => -5];
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $batchSizeProperty = $reflection->getProperty('batchSize');
+
+        $this->assertSame(1, $batchSizeProperty->getValue($receiver));
+    }
+
+    public function testCloseFlushesPendingAcks(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $amqpEnvelope1 = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope1->method('getDeliveryTag')->willReturn(1);
+        $amqpEnvelope2 = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope2->method('getDeliveryTag')->willReturn(2);
+
+        $stamp1 = new AmqpReceivedStamp($amqpEnvelope1, 'test_queue');
+        $stamp2 = new AmqpReceivedStamp($amqpEnvelope2, 'test_queue');
+        $envelope1 = new Envelope(new \stdClass(), [$stamp1]);
+        $envelope2 = new Envelope(new \stdClass(), [$stamp2]);
+
+        $receiver->ack($envelope1);
+        $receiver->ack($envelope2);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('ack')
+            ->with(2, AMQP_MULTIPLE);
+
+        $receiver->close();
+    }
+
+    public function testCloseWithNoPendingAcksDoesNothing(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->never())
+            ->method('ack');
+
+        $receiver->close();
+    }
+
     public function testGetReturnsMultipleMessagesWhenAvailable(): void
     {
-        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 5];
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 5, 'batch_size' => 5];
 
         $this->serializer
             ->expects($this->exactly(3))
@@ -1120,9 +1208,9 @@ class ReceiverTest extends TestCase
         }
     }
 
-    public function testGetStopsAtMaxUnackedMessages(): void
+    public function testGetStopsAtBatchSize(): void
     {
-        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 2];
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 5, 'batch_size' => 2];
 
         $this->serializer
             ->expects($this->exactly(2))
@@ -1176,7 +1264,7 @@ class ReceiverTest extends TestCase
 
     public function testGetReturnsCollectedMessagesOnTimeout(): void
     {
-        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 10];
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 10, 'batch_size' => 10];
 
         $this->serializer
             ->expects($this->once())

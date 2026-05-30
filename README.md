@@ -67,7 +67,8 @@ Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=tes
 | Option | Description | Default |
 |--------|-------------|---------|
 | `queue` | Queue name to consume from | (required) |
-| `max_unacked_messages` | Prefetch count / batch size | 100 |
+| `max_unacked_messages` | Prefetch count and ack-batch flush threshold | 100 |
+| `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | 1 |
 | `timeout` | Consumer timeout in seconds | 0.1 |
 | `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
 | `routing_key` | **Consumer-side**: binding key used when declaring/binding the queue | `''` |
