@@ -70,6 +70,69 @@ class InfrastructureSetupTest extends TestCase
         $setup->setup();
     }
 
+    public function testSetupReExecutesAfterReset(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange, $this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue, $this->queue, $this->retryQueue);
+
+        $this->exchange->expects($this->exactly(2))->method('setName')->with('test_exchange');
+        $this->exchange->expects($this->exactly(2))->method('setType')->with(AMQP_EX_TYPE_DIRECT);
+        $this->exchange->expects($this->exactly(2))->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->exactly(2))->method('setName')->with('test_queue');
+        $this->queue->expects($this->exactly(2))->method('declareQueue');
+        $this->queue->expects($this->exactly(2))->method('bind')->with('test_exchange', 'test_key');
+
+        $this->retryExchange->method('setName');
+        $this->retryExchange->method('setType');
+        $this->retryExchange->expects($this->exactly(2))->method('declareExchange');
+
+        $this->retryQueue->method('setName');
+        $this->retryQueue->method('setFlags');
+        $this->retryQueue->method('setArguments');
+        $this->retryQueue->expects($this->exactly(2))->method('declareQueue');
+        $this->retryQueue->expects($this->exactly(2))->method('bind');
+
+        $options = [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'routing_key' => 'test_key',
+        ];
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
+
+        $setup->setup();
+        $setup->resetSetup();
+        $setup->setup();
+    }
+
+    public function testResetSetupCanBeCalledBeforeFirstSetup(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')
+            ->willReturnOnConsecutiveCalls($this->exchange, $this->retryExchange);
+        $this->factory->method('createQueue')
+            ->willReturnOnConsecutiveCalls($this->queue, $this->retryQueue);
+
+        $this->exchange->expects($this->once())->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+        $this->queue->expects($this->once())->method('declareQueue');
+        $this->queue->expects($this->once())->method('bind');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'routing_key' => 'test_key',
+        ]);
+
+        $setup->resetSetup();
+        $setup->setup();
+    }
+
     public function testSetupCreatesExchangeAndQueueWithCorrectParameters(): void
     {
         $this->connection

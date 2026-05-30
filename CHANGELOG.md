@@ -3,6 +3,10 @@
 ## [Unreleased]
 
 ### Fixed
+- Topology is now re-declared after reconnect — `setupPerformed` flag is reset on reconnect so exchanges, queues, and bindings are re-declared on the new connection/channel (#229)
+  - Added `InfrastructureSetupInterface::resetSetup()` to allow clearing the setup-once flag
+  - `Receiver::ensureConnected()` calls `resetSetup()` after reconnecting
+  - `Receiver::get()`, `purgeQueue()`, and `getMessageCount()` reordered to run `setup()` after `ensureConnected()` — topology is declared on the fresh connection before consumers are created
 - Circuit-breaker elapsed-time now uses monotonic clock (`hrtime(true)`) instead of wall-clock `DateTimeImmutable` — prevents NTP backward step from sticking the circuit OPEN (#237)
   - Added `ClockInterface::monotonic(): float` method backed by `hrtime(true)` in `SystemClock`
   - `CircuitBreaker::recordFailure()` stores monotonic timestamp for elapsed measurement

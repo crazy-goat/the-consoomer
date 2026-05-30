@@ -110,6 +110,11 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $this->setupPerformed = true;
     }
 
+    public function resetSetup(): void
+    {
+        $this->setupPerformed = false;
+    }
+
     /**
      * Creates and binds queues based on configuration.
      *
