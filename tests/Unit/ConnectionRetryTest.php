@@ -67,6 +67,36 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(2, $attempt);
     }
 
+    public function testMaxAttemptsOneExecutesExactlyOneAttempt(): void
+    {
+        $attempt = 0;
+        $retry = new ConnectionRetry(maxAttempts: 1, retryDelay: 1000);
+
+        $this->expectException(RetryExhaustedException::class);
+
+        $retry->withRetry(function () use (&$attempt): void {
+            $attempt++;
+            throw new \AMQPConnectionException('Connection failed');
+        });
+
+        $this->assertSame(1, $attempt);
+    }
+
+    public function testMaxAttemptsTwoExecutesExactlyTwoAttempts(): void
+    {
+        $attempt = 0;
+        $retry = new ConnectionRetry(maxAttempts: 2, retryDelay: 1000);
+
+        $this->expectException(RetryExhaustedException::class);
+
+        $retry->withRetry(function () use (&$attempt): void {
+            $attempt++;
+            throw new \AMQPConnectionException('Connection failed');
+        });
+
+        $this->assertSame(2, $attempt);
+    }
+
     public function testNoRetryOnOtherException(): void
     {
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
