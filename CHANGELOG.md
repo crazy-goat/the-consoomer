@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- Exchange-to-exchange bindings via the `exchange_bindings` option, allowing an exchange to be bound to another exchange with routing keys and arguments (#22/#191)
+- Retry with proper routing: `retry_exchange` option and `_retry` topology (dead-letter exchange + per-queue retry queues) for failed-message retry with correct routing key preservation (#19/#192)
+- `Receiver::purgeQueue()` method to purge a queue's contents (#29/#194)
+- Publisher confirms via the `confirm_timeout` option — when enabled (>0), the sender calls `confirmSelect()` and `waitForConfirm()` to ensure the broker acknowledged each publish (#27)
+- Persistent connection support via the `persistent` option — uses `pconnect()`/`pdisconnect()` instead of `connect()`/`disconnect()` (#26)
+- `AmqpPriorityStamp` for explicit message priority (0-9) on send, taking precedence over priority embedded in `AmqpStamp` attributes (#24/#197)
+- Multiple queues per transport via the `queues` (plural) option — `Receiver` stores queues as an array keyed by name, consumes from all, and routes ack/reject to the correct queue via `AmqpReceivedStamp::getQueueName()` (#35/#198, #201)
+- `binding_keys` and `binding_arguments` options for the single-queue path, allowing multiple routing keys and binding arguments per queue (previously only available via the `queues` option) (#199)
+- Delayed messages via `AmqpDelayStamp` + TTL-based delay queues — sender publishes delayed messages to a dedicated delay exchange routing through TTL-bound queues with dead-lettering back to the original exchange (#200)
+- Flag validation for exchange/queue declaration flags and a new `durable` option (#233)
+
 ### Changed
 - **BC BREAK**: Renamed `ConnectionRetry::$retryCount` constructor parameter to `maxAttempts` to clarify semantics (#228)
   - `retryCount` previously meant "total attempts" (ambiguous) — now `maxAttempts` explicitly means "maximum number of execution attempts including the first"
@@ -41,6 +53,8 @@
 - `Receiver::get()` no longer silently stalls on server-side consumer cancellation — catching `\AMQPException` now resets consumer state (`queues`, `unacked`, `lastUnacked`) and clears channel cache, forcing fresh consumer re‑registration on the next `get()` call (#221)
   - Previously, `AMQP_JUST_CONSUME` against a dead consumer tag blocked forever or panicked silently
   - Caught exceptions now trigger `ConnectionInterface::clearChannelCache()`, queue‑list reset, and unacked‑state reset
+- DSN userinfo and path segments are now decoded with `rawurldecode()` instead of `urldecode()` — `urldecode()` converts `+` to space (form-urlencoded behavior), which is incorrect for URI components where `+` is a literal character (e.g. `user%40name` → `user@name`, `vh%2Fost` → `vh/ost`) (#245)
+- `ssl_verify` is now coerced to a strict bool and empty/malformed values are rejected — previously ambiguous values could silently disable or enable TLS verification (#254)
 
 ## [v0.2.0] - 2026-04-22
 
