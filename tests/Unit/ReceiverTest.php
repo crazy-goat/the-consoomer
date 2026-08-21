@@ -1814,4 +1814,111 @@ class ReceiverTest extends TestCase
 
         $receiver->close();
     }
+
+    public function testIdleTimeoutDoesNotClearChannelCache(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->method('consume')
+            ->willThrowException(new \AMQPQueueException('Consumer timeout exceeded'));
+
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        // An idle consume timeout must NOT tear down the channel.
+        $this->connection->expects($this->never())->method('clearChannelCache');
+
+        $receiver->get();
+    }
+
+    public function testIdleTimeoutPreservesQueuesAndUnacked(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->method('consume')
+            ->willThrowException(new \AMQPQueueException('Consumer timeout exceeded'));
+
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $receiver->get();
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $unackedProperty = $reflection->getProperty('unacked');
+        $lastUnackedProperty = $reflection->getProperty('lastUnacked');
+
+        // The queue map must survive an idle timeout.
+        $this->assertSame(['test_queue' => $this->queue], $queuesProperty->getValue($receiver));
+        $this->assertSame([], $unackedProperty->getValue($receiver));
+        $this->assertSame([], $lastUnackedProperty->getValue($receiver));
+    }
+
+    public function testIdleTimeoutPreservesBufferedAcks(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        // Buffer an ack without flushing (max_unacked_messages default is 100).
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(7);
+        $envelope = new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, 'test_queue')]);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $receiver->ack($envelope);
+
+        // Now an idle get() must not wipe the buffered ack.
+        $this->queue
+            ->method('consume')
+            ->willThrowException(new \AMQPQueueException('Consumer timeout exceeded'));
+
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+
+        $receiver->get();
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $unackedProperty = $reflection->getProperty('unacked');
+        $lastUnackedProperty = $reflection->getProperty('lastUnacked');
+
+        $this->assertSame(['test_queue' => 1], $unackedProperty->getValue($receiver));
+        $this->assertSame(7, $lastUnackedProperty->getValue($receiver)['test_queue']->getDeliveryTag());
+    }
+
+    public function testGenuineFailureFlushesBufferedAcksBeforeTeardown(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        // Buffer an ack without flushing.
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(11);
+        $envelope = new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, 'test_queue')]);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $receiver->ack($envelope);
+
+        // A genuine connection failure must best-effort flush before clearing.
+        $this->queue
+            ->method('consume')
+            ->willThrowException(new \AMQPException('Connection lost'));
+
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+
+        $this->queue
+            ->expects($this->once())
+            ->method('ack')
+            ->with(11, AMQP_MULTIPLE);
+
+        $this->connection->expects($this->once())->method('clearChannelCache');
+
+        $receiver->get();
+    }
 }

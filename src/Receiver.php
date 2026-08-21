@@ -141,7 +141,24 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
             try {
                 $queue->consume($callback, AMQP_JUST_CONSUME, $queue->getConsumerTag());
+            } catch (\AMQPQueueException) {
+                // Idle consume timeout: the expected outcome of polling a queue
+                // that has no messages ready. The channel, consumers, and all
+                // buffered acks remain valid — do NOT tear them down. The old
+                // behaviour wiped pending acks here on every empty poll, causing
+                // redelivery of already-processed messages (#271).
+                if ($this->messages !== []) {
+                    break;
+                }
             } catch (\AMQPException) {
+                // Genuine connection/channel failure: flush buffered acks
+                // best-effort before tearing down so the broker requeues only
+                // what could not be acknowledged.
+                try {
+                    $this->ackPending();
+                } catch (\Throwable) {
+                    // Channel is dead — acks cannot be sent; broker will redeliver.
+                }
                 $this->connection->clearChannelCache();
                 $this->queues = [];
                 $this->unacked = [];
