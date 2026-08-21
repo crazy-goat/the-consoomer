@@ -22,6 +22,7 @@
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
 
 ### Fixed
+- Poison message no longer causes a permanent crash-loop: if `SerializerInterface::decode()` throws `MessageDecodingFailedException` inside the consume callback, the message is now rejected (nack) before the exception is rethrown — previously it was neither acked nor rejected, so it was redelivered forever and blocked the queue for all consumers sharing the prefetch window (#275)
 - DSN double-slash `//exchange` now correctly resolves to default vhost (`/`) — previously the empty vhost segment was collapsed, causing the exchange name to be misinterpreted as vhost (#216)
 - Host-less DSN (`amqp-consoomer:///exchange`) now defaults to `localhost` with default vhost — previously threw "Malformed DSN" (#216)
 - `getMessageCount()` no longer starts real consumers via `connect()` — now creates throwaway passive queue objects on a fresh channel and never calls `consume()`. Stats/monitoring calls previously registered server-side consumers, locking messages into prefetch buffer and under-reporting message count (#217)

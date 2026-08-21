@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer;
 
 use CrazyGoat\TheConsoomer\Exception\MissingStampException;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -106,8 +107,13 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->connect();
 
         foreach ($this->queues as $queueName => $queue) {
-            $callback = function (\AMQPEnvelope $message) use ($queueName): bool {
-                $envelope = $this->serializer->decode(['body' => $message->getBody()]);
+            $callback = function (\AMQPEnvelope $message) use ($queueName, $queue): bool {
+                try {
+                    $envelope = $this->serializer->decode(['body' => $message->getBody()]);
+                } catch (MessageDecodingFailedException $e) {
+                    $queue->reject($message->getDeliveryTag());
+                    throw $e;
+                }
                 $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $queueName));
 
                 return count($this->messages) < $this->batchSize;

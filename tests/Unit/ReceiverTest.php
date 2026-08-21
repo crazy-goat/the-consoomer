@@ -13,6 +13,7 @@ use CrazyGoat\TheConsoomer\Receiver;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
 class ReceiverTest extends TestCase
@@ -1489,5 +1490,53 @@ class ReceiverTest extends TestCase
         $receiver->ack($envelopes[5]);
 
         $this->assertSame([3, 6], $ackedTags);
+    }
+
+    public function testGetRejectsMessageWhenDecodeFails(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope
+            ->method('getBody')
+            ->willReturn('not-json');
+        $amqpEnvelope
+            ->method('getDeliveryTag')
+            ->willReturn(99);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => 'not-json'])
+            ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('reject')
+            ->with(99);
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('Cannot decode message');
+
+        $receiver->get();
     }
 }
