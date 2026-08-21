@@ -111,7 +111,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                 try {
                     $envelope = $this->serializer->decode(['body' => $message->getBody()]);
                 } catch (MessageDecodingFailedException $e) {
-                    $queue->reject($message->getDeliveryTag());
+                    try {
+                        $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
+                    } catch (\Throwable) {
+                        // Best-effort reject: the decode exception must still propagate.
+                    }
                     throw $e;
                 }
                 $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $queueName));
@@ -170,6 +174,26 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $operation = function () use ($stamp): void {
             $this->rejectMessage($stamp);
+            $this->connection->updateActivity();
+        };
+
+        if ($this->retry instanceof ConnectionRetryInterface) {
+            $this->retry->withRetry($operation);
+        } else {
+            $operation();
+        }
+    }
+
+    /**
+     * Rejects a poison message (one whose body could not be decoded) using the
+     * configured retry wrapper when available, consistent with {@see reject()}.
+     * Intended for best-effort use inside the consume callback: callers should
+     * always rethrow the original MessageDecodingFailedException afterwards.
+     */
+    private function rejectPoisonMessage(\AMQPQueue $queue, int $deliveryTag): void
+    {
+        $operation = function () use ($queue, $deliveryTag): void {
+            $queue->reject($deliveryTag);
             $this->connection->updateActivity();
         };
 

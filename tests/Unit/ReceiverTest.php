@@ -47,6 +47,20 @@ class ReceiverTest extends TestCase
         return $receiver;
     }
 
+    private function createReceiverWithQueueAndRetry(array $options, \CrazyGoat\TheConsoomer\ConnectionRetryInterface $retry): Receiver
+    {
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queueName = isset($options['queues'])
+            ? array_key_first($options['queues'])
+            : ($options['queue'] ?? 'test_queue');
+        $queuesProperty->setValue($receiver, [$queueName => $this->queue]);
+
+        return $receiver;
+    }
+
     public function testGetCallsSetupFirst(): void
     {
         $setup = $this->createMock(InfrastructureSetupInterface::class);
@@ -1533,6 +1547,145 @@ class ReceiverTest extends TestCase
         $this->connection
             ->method('checkHeartbeat')
             ->willReturn(false);
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('Cannot decode message');
+
+        $receiver->get();
+    }
+
+    public function testGetStillThrowsDecodeFailureWhenRejectThrows(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('not-json');
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(99);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => 'not-json'])
+            ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        // reject() itself fails (e.g. broken channel) — decode exception must still propagate.
+        $this->queue
+            ->expects($this->once())
+            ->method('reject')
+            ->with(99)
+            ->willThrowException(new \AMQPChannelException('Channel closed'));
+
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('Cannot decode message');
+
+        $receiver->get();
+    }
+
+    public function testGetRejectsPoisonMessageViaRetryWhenConfigured(): void
+    {
+        $options = ['queue' => 'test_queue'];
+        $retry = $this->createMock(\CrazyGoat\TheConsoomer\ConnectionRetryInterface::class);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('not-json');
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(77);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => 'not-json'])
+            ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
+
+        $receiver = $this->createReceiverWithQueueAndRetry($options, $retry);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        // The reject must go through the retry wrapper, not bypass it.
+        $retry
+            ->expects($this->once())
+            ->method('withRetry')
+            ->willReturnCallback(function (\Closure $operation): mixed {
+                $operation();
+
+                return null;
+            });
+
+        $this->queue
+            ->expects($this->once())
+            ->method('reject')
+            ->with(77);
+
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->expects($this->atLeastOnce())->method('updateActivity');
+
+        $this->expectException(MessageDecodingFailedException::class);
+        $this->expectExceptionMessage('Cannot decode message');
+
+        $receiver->get();
+    }
+
+    public function testGetPoisonMessageInFirstQueuePropagatesAndSkipsSecondQueue(): void
+    {
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []]];
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('not-json');
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(5);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => 'not-json'])
+            ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
+
+        $queueA
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        $queueA->expects($this->once())->method('reject')->with(5);
+        $queueA->method('getConsumerTag')->willReturn('tag_a');
+
+        // queue_b must never be consumed this round — exception propagates out of get().
+        $queueB->expects($this->never())->method('consume');
+        $queueB->method('getConsumerTag')->willReturn('tag_b');
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
 
         $this->expectException(MessageDecodingFailedException::class);
         $this->expectExceptionMessage('Cannot decode message');
