@@ -353,4 +353,41 @@ class DsnParserTest extends TestCase
         $this->assertSame(30, $result['heartbeat']);
         $this->assertSame('my_queue', $result['queue']);
     }
+
+    public function testAmqpsQueryCannotDisableSsl(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=false');
+
+        $this->assertTrue($result['ssl']);
+    }
+
+    public function testAmqpsQuerySslTrueStillEnablesSsl(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
+
+        $this->assertTrue($result['ssl']);
+    }
+
+    public function testQueryCannotOverrideAuthorityFields(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps-consoomer://u:p@host/vh/ex?host=evil&port=9999&user=hacker&password=hacked&vhost=evilvhost&exchange=evilex');
+
+        $this->assertSame('host', $result['host']);
+        $this->assertSame(5671, $result['port']);
+        $this->assertSame('u', $result['user']);
+        $this->assertSame('p', $result['password']);
+        $this->assertSame('vh', $result['vhost']);
+        $this->assertSame('ex', $result['exchange']);
+    }
+
+    public function testPlainAmqpQueryCannotSetSsl(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
+
+        $this->assertArrayNotHasKey('ssl', $result);
+    }
 }

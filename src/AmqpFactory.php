@@ -125,6 +125,9 @@ class AmqpFactory implements AmqpFactoryInterface
             }
             $sslVerify = $normalized;
         }
+        if (!$sslVerify) {
+            $logger?->warning('SSL peer certificate verification is DISABLED for this connection');
+        }
         $connection->setVerify($sslVerify);
         $logger?->debug('SSL verify: {verify}', ['verify' => $sslVerify ? 'enabled' : 'disabled']);
 

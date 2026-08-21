@@ -112,6 +112,45 @@ class AmqpFactoryTest extends TestCase
         ]);
     }
 
+    public function testConfigureSslLogsWarningWhenVerificationDisabled(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(false);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('DISABLED'));
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+        ], $logger);
+    }
+
+    public function testConfigureSslDoesNotWarnWhenVerificationEnabled(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(true);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->never())
+            ->method('warning');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => true,
+        ], $logger);
+    }
+
     public function testConfigureSslDoesNothingWhenSslDisabled(): void
     {
         $factory = new AmqpFactory();
