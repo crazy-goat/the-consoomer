@@ -353,4 +353,64 @@ class DsnParserTest extends TestCase
         $this->assertSame(30, $result['heartbeat']);
         $this->assertSame('my_queue', $result['queue']);
     }
+
+    public function testAmqpsConsoomerSchemeRejectsSslFalseInQuery(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Refusing to disable TLS via "?ssl=false"');
+        $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=false');
+    }
+
+    public function testAmqpsConsoomerSchemeRejectsSslZeroInQuery(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Refusing to disable TLS via "?ssl=false"');
+        $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=0');
+    }
+
+    public function testAmqpsConsoomerSchemeIgnoresRedundantSslTrueInQuery(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
+
+        $this->assertTrue($result['ssl']);
+        $this->assertSame(5671, $result['port']);
+    }
+
+    public function testAmqpsConsoomerSchemeKeepsSslTrueWhenSslQueryAbsent(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl_verify=false');
+
+        $this->assertTrue($result['ssl']);
+        $this->assertFalse($result['ssl_verify']);
+    }
+
+    public function testLegacyAmqpsSchemeRejectsSslFalseInQuery(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Refusing to disable TLS via "?ssl=false"');
+        $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange?ssl=false');
+    }
+
+    public function testPlaintextSchemeAllowsSslTrueAsOptInUpgrade(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
+
+        $this->assertTrue($result['ssl']);
+    }
+
+    public function testPlaintextSchemeAllowsSslFalse(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=false');
+
+        // On a plaintext scheme ?ssl=false is a redundant no-op (configureSsl early-returns
+        // on empty($options['ssl'])), but it must not be refused — only the TLS scheme is locked.
+        $this->assertFalse($result['ssl']);
+    }
 }
