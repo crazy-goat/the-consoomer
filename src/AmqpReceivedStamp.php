@@ -18,7 +18,6 @@ final readonly class AmqpReceivedStamp implements NonSendableStampInterface
     public function __construct(
         private \AMQPEnvelope $envelope,
         private string $queueName,
-        private ?AmqpStamp $amqpStamp = null,
     ) {
     }
 
@@ -78,10 +77,5 @@ final readonly class AmqpReceivedStamp implements NonSendableStampInterface
     public function getPriority(): int
     {
         return $this->envelope->getPriority();
-    }
-
-    public function getAmqpStamp(): ?AmqpStamp
-    {
-        return $this->amqpStamp;
     }
 }

@@ -35,7 +35,6 @@ final readonly class AmqpStamp implements NonSendableStampInterface
         private ?string $routingKey = null,
         private int $flags = \AMQP_NOPARAM,
         private array $attributes = [],
-        private bool $retryAttempt = false,
     ) {
     }
 
@@ -73,12 +72,12 @@ final readonly class AmqpStamp implements NonSendableStampInterface
 
     public function withRoutingKey(?string $routingKey): self
     {
-        return new self($routingKey, $this->flags, $this->attributes, $this->retryAttempt);
+        return new self($routingKey, $this->flags, $this->attributes);
     }
 
     public function withFlags(int $flags): self
     {
-        return new self($this->routingKey, $flags, $this->attributes, $this->retryAttempt);
+        return new self($this->routingKey, $flags, $this->attributes);
     }
 
     public function withAttribute(string $key, mixed $value): self
@@ -86,37 +85,7 @@ final readonly class AmqpStamp implements NonSendableStampInterface
         $attributes = $this->attributes;
         $attributes[$key] = $value;
 
-        return new self($this->routingKey, $this->flags, $attributes, $this->retryAttempt);
-    }
-
-    public static function createFromAmqpEnvelope(\AMQPEnvelope $envelope): self
-    {
-        $attributes = [];
-        $attributeMap = [
-            'content_type' => $envelope->getContentType(),
-            'content_encoding' => $envelope->getContentEncoding(),
-            'message_id' => $envelope->getMessageId(),
-            'delivery_mode' => $envelope->getDeliveryMode(),
-            'priority' => $envelope->getPriority(),
-            'timestamp' => $envelope->getTimestamp(),
-            'app_id' => $envelope->getAppId(),
-            'user_id' => $envelope->getUserId(),
-            'expiration' => $envelope->getExpiration(),
-            'type' => $envelope->getType(),
-            'reply_to' => $envelope->getReplyTo(),
-            'correlation_id' => $envelope->getCorrelationId(),
-            'headers' => $envelope->getHeaders(),
-        ];
-
-        foreach ($attributeMap as $key => $value) {
-            if (null === $value || [] === $value || '' === $value || false === $value) {
-                continue;
-            }
-
-            $attributes[$key] = $value;
-        }
-
-        return new self($envelope->getRoutingKey(), \AMQP_NOPARAM, $attributes, false);
+        return new self($this->routingKey, $this->flags, $attributes);
     }
 
     /**
@@ -146,17 +115,6 @@ final readonly class AmqpStamp implements NonSendableStampInterface
             $stamp?->getRoutingKey(),
             $stamp?->getFlags() ?? \AMQP_NOPARAM,
             $attributes,
-            $stamp?->isRetryAttempt() ?? false,
         );
-    }
-
-    public function isRetryAttempt(): bool
-    {
-        return $this->retryAttempt;
-    }
-
-    public function withRetryAttempt(bool $retry = true): self
-    {
-        return new self($this->routingKey, $this->flags, $this->attributes, $retry);
     }
 }

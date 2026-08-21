@@ -32,8 +32,6 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *     max_unacked_messages?: int,
      *     batch_size?: int,
      *     auto_setup?: bool,
-     *     retry?: bool,
-     *     retry_exchange?: string,
      *     routing_key?: string,
      * } $options
      */
@@ -216,34 +214,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $this->ackPending($queueName);
 
-        $amqpStamp = $stamp->getAmqpStamp();
-        if ($amqpStamp && $amqpStamp->isRetryAttempt()) {
-            $this->publishToRetryQueue($stamp);
-        } else {
-            $this->queues[$queueName]->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
-        }
-    }
-
-    private function publishToRetryQueue(AmqpReceivedStamp $stamp): void
-    {
-        $retryExchangeName = $this->options['retry_exchange'] ?? $this->options['exchange'] . '_retry';
-        $routingKey = $this->getRoutingKeyForRetry($stamp->getAmqpStamp()?->getRoutingKey());
-
-        $retryExchange = $this->factory->createExchange($this->connection->getChannel());
-        $retryExchange->setName($retryExchangeName);
-        $retryExchange->publish(
-            $stamp->getAmqpEnvelope()->getBody(),
-            $routingKey,
-            \AMQP_NOPARAM,
-            $stamp->getAmqpEnvelope()->getHeaders(),
-        );
-    }
-
-    private function getRoutingKeyForRetry(?string $routingKey): string
-    {
-        $baseKey = $routingKey ?? $this->options['routing_key'] ?? '';
-
-        return $baseKey . '_retry';
+        $this->queues[$queueName]->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
     }
 
     public function ackPending(?string $queueName = null): void

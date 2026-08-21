@@ -4,7 +4,6 @@
 
 ### Added
 - Exchange-to-exchange bindings via the `exchange_bindings` option, allowing an exchange to be bound to another exchange with routing keys and arguments (#22/#191)
-- Retry with proper routing: `retry_exchange` option and `_retry` topology (dead-letter exchange + per-queue retry queues) for failed-message retry with correct routing key preservation (#19/#192)
 - `Receiver::purgeQueue()` method to purge a queue's contents (#29/#194)
 - Publisher confirms via the `confirm_timeout` option — when enabled (>0), the sender calls `confirmSelect()` and `waitForConfirm()` to ensure the broker acknowledged each publish (#27)
 - Persistent connection support via the `persistent` option — uses `pconnect()`/`pdisconnect()` instead of `connect()`/`disconnect()` (#26)
@@ -15,6 +14,7 @@
 - Flag validation for exchange/queue declaration flags and a new `durable` option (#233)
 
 ### Changed
+- **BC BREAK**: Removed dead retry-on-reject code that was never reachable in production — `Receiver::publishToRetryQueue()`, `Receiver::getRoutingKeyForRetry()`, the unreachable `isRetryAttempt()` branch in `Receiver::rejectMessage()`, `InfrastructureSetup::setupRetryQueue()` (which declared an unused `_retry` exchange + queues), `AmqpStamp::createFromAmqpEnvelope()`, `AmqpStamp::isRetryAttempt()`/`withRetryAttempt()` and the `$retryAttempt` constructor parameter, and `AmqpReceivedStamp::$amqpStamp`/`getAmqpStamp()`. The `retry_exchange` and `retry_queue_arguments` options are no longer recognized. The reject path now always calls `AMQPQueue::reject()` directly. This also resolves the latent unguarded `$this->options['exchange']` access in the fallback of the retry-exchange name (#203, #208)
 - **BC BREAK**: Renamed `ConnectionRetry::$retryCount` constructor parameter to `maxAttempts` to clarify semantics (#228)
   - `retryCount` previously meant "total attempts" (ambiguous) — now `maxAttempts` explicitly means "maximum number of execution attempts including the first"
   - Config key `retry_count` in DSN/options remains unchanged and maps to `maxAttempts`
@@ -29,7 +29,6 @@
 - DSN double-slash `//exchange` now correctly resolves to default vhost (`/`) — previously the empty vhost segment was collapsed, causing the exchange name to be misinterpreted as vhost (#216)
 - Host-less DSN (`amqp-consoomer:///exchange`) now defaults to `localhost` with default vhost — previously threw "Malformed DSN" (#216)
 - `getMessageCount()` no longer starts real consumers via `connect()` — now creates throwaway passive queue objects on a fresh channel and never calls `consume()`. Stats/monitoring calls previously registered server-side consumers, locking messages into prefetch buffer and under-reporting message count (#217)
-- Retry topology (exchange + per-queue retry queues) is now created in multi-queue (`queues`) mode — previously `setupRetryQueue()` early-returned when only `queues` (plural) was configured, causing publish failures to non-existent `_retry` targets (#218)
 - `normalizeValue` no longer silently truncates scientific-notation numbers (e.g. `1e3` → `1000.0` instead of `1`) — DSN query parameters like `read_timeout=1e5` now produce the correct float value (#246)
 - "Consumer timeout" detection now uses exception **type** (`AMQPQueueException`) instead of fragile `str_contains` on message text — substring collision swallowed real errors with "Consumer timeout" in message, and wording variations caused benign timeouts to crash workers. Timeout is only swallowed when no messages were collected (true empty poll); partial batches are returned (#222)
 - README and `examples/symfony/config/services.yaml` now tag `AmqpTransportFactory` (not `AmqpTransport`) with `messenger.transport_factory` — `AmqpTransport` implements `TransportInterface`, not `TransportFactoryInterface`, so the documented setup was non-functional (#214)
