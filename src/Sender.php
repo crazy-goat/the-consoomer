@@ -101,6 +101,40 @@ final class Sender implements SenderInterface
     }
 
     /**
+     * Builds the AMQP message attributes for publish.
+     *
+     * Serializer headers are not AMQP basic-property names (ext-amqp only
+     * understands `content_type`, `delivery_mode`, …, `headers`), so they are
+     * nested under the AMQP `headers` table to survive transport intact and be
+     * handed back to `decode()` on the consumer (see #274), mirroring
+     * symfony/amqp-messenger. The serializer's `Content-Type` header is mapped
+     * to the AMQP `content_type` basic property (unless the stamp already sets
+     * one); stamp headers win over serializer headers on key collision.
+     *
+     * @param array{body: string, headers?: array<string, mixed>} $data
+     * @return array<string, mixed>
+     */
+    private function buildAttributes(?AmqpStamp $stamp, array $data): array
+    {
+        $attributes = $stamp?->getAttributes() ?? [];
+        $serializerHeaders = $data['headers'] ?? [];
+
+        $headers = ($attributes['headers'] ?? []) + $serializerHeaders;
+        unset($attributes['headers']);
+
+        if (!isset($attributes['content_type']) && isset($headers['Content-Type'])) {
+            $attributes['content_type'] = $headers['Content-Type'];
+        }
+        unset($headers['Content-Type']);
+
+        if ($headers !== []) {
+            $attributes['headers'] = $headers;
+        }
+
+        return $attributes;
+    }
+
+    /**
      * {@inheritdoc}
      *
      * @param Envelope $envelope The envelope to send
@@ -121,7 +155,7 @@ final class Sender implements SenderInterface
 
         $routingKey = $this->getRoutingKeyForMessage($stamp);
         $flags = $stamp?->getFlags() ?? \AMQP_NOPARAM;
-        $attributes = array_merge($data['headers'] ?? [], $stamp?->getAttributes() ?? []);
+        $attributes = $this->buildAttributes($stamp, $data);
 
         $priorityStamp = $envelope->last(AmqpPriorityStamp::class);
         if ($priorityStamp instanceof AmqpPriorityStamp) {

@@ -56,7 +56,7 @@ class SenderTest extends TestCase
                 '{"message":"test"}',
                 '',
                 \AMQP_NOPARAM,
-                ['content-type' => 'application/json'],
+                ['headers' => ['content-type' => 'application/json']],
             );
 
         $this->connection
@@ -406,7 +406,7 @@ class SenderTest extends TestCase
                 'test',
                 'key',
                 \AMQP_NOPARAM,
-                ['content-type' => 'application/json', 'x-custom' => 'value', 'priority' => 10],
+                ['priority' => 10, 'headers' => ['content-type' => 'application/json', 'x-custom' => 'value']],
             );
 
         $this->connection
@@ -421,7 +421,7 @@ class SenderTest extends TestCase
     public function testSendStampAttributesOverrideHeaders(): void
     {
         $options = ['exchange' => 'test_exchange'];
-        $stamp = new AmqpStamp('key', \AMQP_NOPARAM, ['content-type' => 'text/plain']);
+        $stamp = new AmqpStamp('key', \AMQP_NOPARAM, ['content_type' => 'text/plain']);
 
         $envelope = new Envelope(new \stdClass(), [$stamp]);
 
@@ -429,7 +429,7 @@ class SenderTest extends TestCase
             ->method('encode')
             ->willReturn([
                 'body' => 'test',
-                'headers' => ['content-type' => 'application/json'],
+                'headers' => ['content_type' => 'application/json'],
             ]);
 
         $this->exchange
@@ -439,7 +439,140 @@ class SenderTest extends TestCase
                 'test',
                 'key',
                 \AMQP_NOPARAM,
-                ['content-type' => 'text/plain'],
+                ['content_type' => 'text/plain', 'headers' => ['content_type' => 'application/json']],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendNestsSerializerHeadersUnderAmqpHeadersTable(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+
+        $envelope = new Envelope(new \stdClass());
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn([
+                'body' => 'test',
+                'headers' => [
+                    'type' => 'App\\Msg',
+                    'X-Message-Stamp-Foo' => '[{}]',
+                ],
+            ]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                'test',
+                '',
+                \AMQP_NOPARAM,
+                ['headers' => ['type' => 'App\\Msg', 'X-Message-Stamp-Foo' => '[{}]']],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendMapsContentTypeHeaderToBasicProperty(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+
+        $envelope = new Envelope(new \stdClass());
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn([
+                'body' => 'test',
+                'headers' => ['Content-Type' => 'application/json'],
+            ]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                'test',
+                '',
+                \AMQP_NOPARAM,
+                ['content_type' => 'application/json'],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendMapsContentTypeHeaderToBasicPropertyUnlessStampSetsIt(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+        $stamp = new AmqpStamp('key', \AMQP_NOPARAM, ['content_type' => 'text/plain']);
+
+        $envelope = new Envelope(new \stdClass(), [$stamp]);
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn([
+                'body' => 'test',
+                'headers' => ['Content-Type' => 'application/json'],
+            ]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                'test',
+                'key',
+                \AMQP_NOPARAM,
+                ['content_type' => 'text/plain'],
+            );
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope);
+    }
+
+    public function testSendStampHeadersWinOverSerializerHeaders(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+        $stamp = new AmqpStamp('key', \AMQP_NOPARAM, ['headers' => ['x-custom' => 'stamp-value']]);
+
+        $envelope = new Envelope(new \stdClass(), [$stamp]);
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn([
+                'body' => 'test',
+                'headers' => ['x-custom' => 'serializer-value', 'x-other' => 'other'],
+            ]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish')
+            ->with(
+                'test',
+                'key',
+                \AMQP_NOPARAM,
+                ['headers' => ['x-custom' => 'stamp-value', 'x-other' => 'other']],
             );
 
         $this->connection
