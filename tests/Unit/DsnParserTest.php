@@ -383,11 +383,11 @@ class DsnParserTest extends TestCase
         $this->assertSame('ex', $result['exchange']);
     }
 
-    public function testPlainAmqpQueryCannotSetSsl(): void
+    public function testPlainAmqpQueryCanOptInToSsl(): void
     {
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
 
-        $this->assertArrayNotHasKey('ssl', $result);
+        $this->assertTrue($result['ssl']);
     }
 }

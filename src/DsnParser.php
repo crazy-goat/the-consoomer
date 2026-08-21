@@ -93,16 +93,21 @@ final class DsnParser
         }
 
         // Security-relevant keys derived from the scheme/authority/path must never be
-        // overridable from the query string. In particular `ssl` on the amqps-consoomer
-        // scheme is a TLS kill-switch: `?ssl=false` would silently downgrade a TLS
-        // transport to cleartext. host/port/user/password/vhost are likewise pinned
-        // from the parsed authority rather than trusting lower-trust query input.
-        $nonOverridable = ['host', 'port', 'user', 'password', 'vhost', 'exchange', 'ssl'];
+        // overridable from the query string (they are pinned from the parsed authority,
+        // mirroring AmqpTransportFactory::create()). And on the amqps-consoomer scheme,
+        // `ssl` is a TLS kill-switch: `?ssl=false` must not silently downgrade a TLS
+        // transport to cleartext, so never let the query override an `ssl` that the
+        // scheme already enabled. On the plain amqp scheme `?ssl=true` still opts in
+        // to TLS, so a query-set `ssl` is only dropped when the scheme already set it.
+        $nonOverridable = ['host', 'port', 'user', 'password', 'vhost', 'exchange'];
         foreach ($query as $key => $value) {
             if (str_starts_with((string) $key, 'queue_arguments[')) {
                 continue;
             }
             if (in_array($key, $nonOverridable, true)) {
+                continue;
+            }
+            if ($key === 'ssl' && ($result['ssl'] ?? false) === true) {
                 continue;
             }
             $result[$key] = $this->normalizeValue($value);
