@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Message\RawMessage;
 use CrazyGoat\TheConsoomer\AmqpTransportFactory;
+use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\Messenger\EventListener\StopWorkerOnCustomStopExceptionListener;
 use Symfony\Component\Messenger\Exception\StopWorkerException;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
@@ -39,17 +41,17 @@ $bus = new MessageBus([
 
 $stopwatch = new Stopwatch();
 
+$dispatcher = new EventDispatcher();
+$dispatcher->addSubscriber(new StopWorkerOnCustomStopExceptionListener());
+
 $worker = new \Symfony\Component\Messenger\Worker(
     [$transport],
     $bus,
+    $dispatcher,
 );
 
 $stopwatch->start('consumer');
-try {
-    $worker->run(['sleep' => 0]);
-} catch (\Throwable) {
-    echo "Job finished." . PHP_EOL;
-}
+$worker->run(['sleep' => 0]);
 
 $time = $stopwatch->stop('consumer')->getDuration();
 printf("Messages processed: %d, time: %.3fs, rate: %d msg/s", RawMessageHandler::$counter, $time / 1000.0, floor((RawMessageHandler::$counter / $time) * 1000));
