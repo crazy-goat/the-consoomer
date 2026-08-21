@@ -121,7 +121,7 @@ class ReceiverTest extends TestCase
         $this->serializer
             ->expects($this->once())
             ->method('decode')
-            ->with(['body' => '{"data":"test"}'])
+            ->with(['body' => '{"data":"test"}', 'headers' => []])
             ->willReturn($messageEnvelope);
 
         $receiver = $this->createReceiverWithQueue($options);
@@ -154,6 +154,51 @@ class ReceiverTest extends TestCase
         $this->assertCount(1, $result);
         $this->assertInstanceOf(Envelope::class, $result[0]);
         $this->assertInstanceOf(AmqpReceivedStamp::class, $result[0]->last(AmqpReceivedStamp::class));
+    }
+
+    public function testGetPassesHeadersToDecode(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope
+            ->method('getBody')
+            ->willReturn('{"data":"test"}');
+        $amqpEnvelope
+            ->method('getHeaders')
+            ->willReturn(['type' => 'App\\Msg', 'X-Message-Stamp-Foo' => '[{}]']);
+
+        $messageEnvelope = new Envelope(new \stdClass());
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => '{"data":"test"}', 'headers' => ['type' => 'App\\Msg', 'X-Message-Stamp-Foo' => '[{}]']])
+            ->willReturn($messageEnvelope);
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        $this->queue
+            ->method('getConsumerTag')
+            ->willReturn('test_tag');
+
+        $this->connection
+            ->expects($this->once())
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $result = $receiver->get();
+
+        $this->assertCount(1, $result);
     }
 
     public function testAckThrowsExceptionWithoutStamp(): void
@@ -1521,7 +1566,7 @@ class ReceiverTest extends TestCase
         $this->serializer
             ->expects($this->once())
             ->method('decode')
-            ->with(['body' => 'not-json'])
+            ->with(['body' => 'not-json', 'headers' => []])
             ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
 
         $receiver = $this->createReceiverWithQueue($options);
@@ -1565,7 +1610,7 @@ class ReceiverTest extends TestCase
         $this->serializer
             ->expects($this->once())
             ->method('decode')
-            ->with(['body' => 'not-json'])
+            ->with(['body' => 'not-json', 'headers' => []])
             ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
 
         $receiver = $this->createReceiverWithQueue($options);
@@ -1607,7 +1652,7 @@ class ReceiverTest extends TestCase
         $this->serializer
             ->expects($this->once())
             ->method('decode')
-            ->with(['body' => 'not-json'])
+            ->with(['body' => 'not-json', 'headers' => []])
             ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
 
         $receiver = $this->createReceiverWithQueueAndRetry($options, $retry);
@@ -1666,7 +1711,7 @@ class ReceiverTest extends TestCase
         $this->serializer
             ->expects($this->once())
             ->method('decode')
-            ->with(['body' => 'not-json'])
+            ->with(['body' => 'not-json', 'headers' => []])
             ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
 
         $queueA

@@ -109,7 +109,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         foreach ($this->queues as $queueName => $queue) {
             $callback = function (\AMQPEnvelope $message) use ($queueName, $queue): bool {
                 try {
-                    $envelope = $this->serializer->decode(['body' => $message->getBody()]);
+                    $envelope = $this->serializer->decode([
+                        'body' => $message->getBody(),
+                        'headers' => $message->getHeaders(),
+                    ]);
                 } catch (MessageDecodingFailedException $e) {
                     try {
                         $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
