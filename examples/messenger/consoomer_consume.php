@@ -28,7 +28,7 @@ class RawMessageHandler
     }
 }
 
-$dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=test';
+$dsn = 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=test&routing_key=test';
 $transport = AmqpTransportFactory::create($dsn, [], new PhpSerializer());
 
 $bus = new MessageBus([

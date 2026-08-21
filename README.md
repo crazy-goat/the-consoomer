@@ -88,6 +88,8 @@ When sending a message, the routing key precedence is:
 
 This separation prevents unintended coupling: setting `routing_key` for consumer binding does not affect how messages are published.
 
+> **Pitfall — consumer binding vs sender stamp:** because the consumer and sender keys are resolved independently, stamping a message with `AmqpStamp::getRoutingKey()` (or setting `default_publish_routing_key`) that differs from the queue's `routing_key` binding causes the broker to drop every unroutable message on a direct exchange — publish still reports success. When you publish with a per-message `AmqpStamp`, make sure your `routing_key` DSN option binds the queue with that same key (e.g. publish with `new AmqpStamp('test')` and configure `...?queue=test&routing_key=test`).
+
 ### Heartbeat
 
 The heartbeat feature keeps connections alive and detects dead connections. When enabled, the connection will automatically reconnect if no activity is detected for twice the heartbeat interval.
