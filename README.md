@@ -55,7 +55,7 @@ framework:
     messenger:
         transports:
             consoomer:
-                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/?queue=my_queue'
+                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue'
 ```
 
 ### DSN format
@@ -103,7 +103,7 @@ framework:
     messenger:
         transports:
             consoomer:
-                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/?queue=my_queue&heartbeat=60'
+                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&heartbeat=60'
 ```
 
 With heartbeat enabled:
@@ -133,7 +133,7 @@ framework:
     messenger:
         transports:
             consoomer:
-                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/?queue=my_queue&retry=1&retry_count=3&retry_delay=500000&retry_backoff=1&retry_jitter=1&retry_circuit_breaker=1'
+                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&retry=1&retry_count=3&retry_delay=500000&retry_backoff=1&retry_jitter=1&retry_circuit_breaker=1'
 ```
 
 With retry enabled:

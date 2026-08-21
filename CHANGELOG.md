@@ -22,6 +22,7 @@
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
 
 ### Fixed
+- README and `examples/symfony/.env` DSN examples now include the required exchange path segment — previously the primary DSN, heartbeat example, retry example, and Symfony example `.env` DSNs omitted the exchange (`/%2f/?queue=...`), which threw `DSN is missing required exchange name` at parse time (#215)
 - Poison message no longer causes a permanent crash-loop: if `SerializerInterface::decode()` throws `MessageDecodingFailedException` inside the consume callback, the message is now rejected (nack) before the exception is rethrown — previously it was neither acked nor rejected, so it was redelivered forever and blocked the queue for all consumers sharing the prefetch window (#275)
 - DSN double-slash `//exchange` now correctly resolves to default vhost (`/`) — previously the empty vhost segment was collapsed, causing the exchange name to be misinterpreted as vhost (#216)
 - Host-less DSN (`amqp-consoomer:///exchange`) now defaults to `localhost` with default vhost — previously threw "Malformed DSN" (#216)
