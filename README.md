@@ -39,7 +39,7 @@ composer require crazy-goat/the-consoomer
 
 ```yaml
 services:
-    CrazyGoat\TheConsoomer\AmqpTransport:
+    CrazyGoat\TheConsoomer\AmqpTransportFactory:
         tags:
             - { name: 'messenger.transport_factory' }
 ```

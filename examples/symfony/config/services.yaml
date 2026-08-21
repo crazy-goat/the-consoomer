@@ -23,5 +23,5 @@ services:
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
 
-    CrazyGoat\TheConsoomer\AmqpTransport:
+    CrazyGoat\TheConsoomer\AmqpTransportFactory:
         tags: [messenger.transport_factory]
