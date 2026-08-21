@@ -301,4 +301,50 @@ class AmqpFactoryTest extends TestCase
             ]);
         }
     }
+
+    public function testConfigureSslLogsWarningWhenVerifyDisabled(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(false);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('verification is disabled'));
+        // No debug line for the verify state anymore — it's warning/ok.
+        $logger->expects($this->never())
+            ->method('debug')
+            ->with($this->anything());
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+        ], $logger);
+    }
+
+    public function testConfigureSslLogsDebugEnabledWhenVerifyEnabled(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(true);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('debug')
+            ->with('SSL verify: enabled');
+        $logger->expects($this->never())
+            ->method('warning');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => true,
+        ], $logger);
+    }
 }

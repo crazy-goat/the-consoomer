@@ -77,6 +77,7 @@ final class DsnParser
         ];
 
         $scheme = $info['scheme'] ?? '';
+        $tlsScheme = $scheme === 'amqps-consoomer' || $scheme === 'amqps';
         if ($scheme === 'amqps-consoomer') {
             $result['ssl'] = true;
             if (!isset($info['port'])) {
@@ -94,6 +95,24 @@ final class DsnParser
 
         foreach ($query as $key => $value) {
             if (str_starts_with((string) $key, 'queue_arguments[')) {
+                continue;
+            }
+            // Security: a TLS scheme (amqps-consoomer://, amqps://) enables ssl=true.
+            // The query string must not be able to silently downgrade that to cleartext
+            // by overriding `ssl=false` — that would send broker credentials (SASL PLAIN)
+            // and all message traffic over an unencrypted channel with no error or log.
+            // See #286. `ssl_verify` is allowed through (configureSsl logs a warning
+            // when it resolves to false, #231), and explicit `ssl=true` on a plaintext
+            // scheme remains an opt-in upgrade.
+            if ($tlsScheme && (string) $key === 'ssl') {
+                $normalized = $this->normalizeValue($value);
+                if (in_array($normalized, [false, 0, '0', 'false'], true)) {
+                    throw new \InvalidArgumentException(
+                        'Refusing to disable TLS via "?ssl=false" on a secure DSN scheme. '
+                        . 'Use the amqp-consoomer:// scheme (not amqps-consoomer://) to connect without TLS.',
+                    );
+                }
+                // ssl=true on a TLS scheme is a no-op; ignore other values and keep ssl=true.
                 continue;
             }
             $result[$key] = $this->normalizeValue($value);

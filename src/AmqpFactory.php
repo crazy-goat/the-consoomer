@@ -126,7 +126,13 @@ class AmqpFactory implements AmqpFactoryInterface
             $sslVerify = $normalized;
         }
         $connection->setVerify($sslVerify);
-        $logger?->debug('SSL verify: {verify}', ['verify' => $sslVerify ? 'enabled' : 'disabled']);
+        if ($sslVerify) {
+            $logger?->debug('SSL verify: enabled');
+        } else {
+            // Peer certificate validation is off — this is a security-sensitive downgrade.
+            // Log at warning (not debug) so it is visible by default. See #286, #231.
+            $logger?->warning('SSL peer certificate verification is disabled — the broker identity is not checked, allowing MITM / impersonation.');
+        }
 
         $logger?->info('SSL handshake configured successfully');
     }
