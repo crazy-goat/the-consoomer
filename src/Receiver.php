@@ -67,15 +67,30 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return [];
     }
 
-    private function ensureConnected(): void
+    /**
+     * Ensures the connection is alive, reconnecting when the heartbeat is stale.
+     *
+     * On reconnect the channel is lost, so all queue/consumer state and buffered
+     * ack tracking are reset — the broker will redeliver any unacked messages on
+     * the new channel. Returns true when a reconnect happened, so callers that
+     * hold stale delivery tags (ack/reject) can treat the operation as a no-op
+     * instead of indexing into the wiped queue map.
+     *
+     * @return bool True when a reconnect was performed, false otherwise
+     */
+    private function ensureConnected(): bool
     {
-        if ($this->connection->checkHeartbeat()) {
-            $this->connection->reconnect();
-            $this->setup->resetSetup();
-            $this->queues = [];
-            $this->unacked = [];
-            $this->lastUnacked = [];
+        if (!$this->connection->checkHeartbeat()) {
+            return false;
         }
+
+        $this->connection->reconnect();
+        $this->setup->resetSetup();
+        $this->queues = [];
+        $this->unacked = [];
+        $this->lastUnacked = [];
+
+        return true;
     }
 
     private function connect(): void
@@ -143,9 +158,23 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return $this->messages;
     }
 
+    /**
+     * Acknowledges the given envelope on the AMQP queue it was received from.
+     *
+     * If the connection was stale and a reconnect happened inside this call,
+     * the operation is a no-op: the old channel (and its delivery tag) is gone,
+     * so the ack cannot be sent and the broker will redeliver the message.
+     *
+     * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
+     */
     public function ack(Envelope $envelope): void
     {
-        $this->ensureConnected();
+        if ($this->ensureConnected()) {
+            // A reconnect wiped the channel — the delivery tag is dead and the
+            // broker will redeliver the message on the next get(). Acking it on
+            // the new channel would be a no-op at best or a protocol error.
+            return;
+        }
 
         $stamp = $envelope->last(AmqpReceivedStamp::class);
         if (!$stamp instanceof AmqpReceivedStamp) {
@@ -164,9 +193,23 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
     }
 
+    /**
+     * Rejects the given envelope on the AMQP queue it was received from.
+     *
+     * If the connection was stale and a reconnect happened inside this call,
+     * the operation is a no-op: the old channel (and its delivery tag) is gone,
+     * so the reject cannot be sent and the broker will redeliver the message.
+     *
+     * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
+     */
     public function reject(Envelope $envelope): void
     {
-        $this->ensureConnected();
+        if ($this->ensureConnected()) {
+            // A reconnect wiped the channel — the delivery tag is dead and the
+            // broker will redeliver the message on the next get(). Rejecting it
+            // on the new channel would be a no-op at best or a protocol error.
+            return;
+        }
 
         $stamp = $envelope->last(AmqpReceivedStamp::class);
         if (!$stamp instanceof AmqpReceivedStamp) {
@@ -230,7 +273,14 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
     private function ackPendingForQueue(string $queueName): void
     {
-        if (isset($this->lastUnacked[$queueName])) {
+        if (!isset($this->lastUnacked[$queueName])) {
+            return;
+        }
+
+        // After a reconnect the queue map is empty — the channel that carried
+        // these delivery tags is gone, so the acks cannot be sent. The broker
+        // will redeliver the messages; drop the stale tracking state silently.
+        if (isset($this->queues[$queueName])) {
             $this->queues[$queueName]->ack($this->lastUnacked[$queueName]->getDeliveryTag(), AMQP_MULTIPLE);
         }
         $this->lastUnacked[$queueName] = null;

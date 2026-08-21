@@ -1737,4 +1737,81 @@ class ReceiverTest extends TestCase
 
         $receiver->get();
     }
+
+    public function testAckIsNoOpWhenReconnectHappensMidOperation(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(123);
+
+        $stamp = new AmqpReceivedStamp($amqpEnvelope, 'test_queue');
+        $envelope = new Envelope(new \stdClass(), [$stamp]);
+
+        // Heartbeat is stale → ensureConnected() reconnects and wipes the queue map.
+        $this->connection->method('checkHeartbeat')->willReturn(true);
+        $this->connection->expects($this->once())->method('reconnect');
+        $this->setup->expects($this->once())->method('resetSetup');
+
+        // No ack must be sent — the delivery tag belongs to the dead channel.
+        $this->queue->expects($this->never())->method('ack');
+
+        $receiver->ack($envelope);
+    }
+
+    public function testRejectIsNoOpWhenReconnectHappensMidOperation(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(456);
+
+        $stamp = new AmqpReceivedStamp($amqpEnvelope, 'test_queue');
+        $envelope = new Envelope(new \stdClass(), [$stamp]);
+
+        // Heartbeat is stale → ensureConnected() reconnects and wipes the queue map.
+        $this->connection->method('checkHeartbeat')->willReturn(true);
+        $this->connection->expects($this->once())->method('reconnect');
+        $this->setup->expects($this->once())->method('resetSetup');
+
+        // No reject must be sent — the delivery tag belongs to the dead channel.
+        $this->queue->expects($this->never())->method('reject');
+
+        $receiver->reject($envelope);
+    }
+
+    public function testCloseDoesNotFatalAfterReconnectWipedQueueMap(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        // Buffer two acks without flushing (max_unacked_messages default is 100).
+        $amqpEnvelope1 = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope1->method('getDeliveryTag')->willReturn(1);
+        $amqpEnvelope2 = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope2->method('getDeliveryTag')->willReturn(2);
+
+        $envelope1 = new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope1, 'test_queue')]);
+        $envelope2 = new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope2, 'test_queue')]);
+
+        // First two acks succeed (heartbeat healthy).
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $receiver->ack($envelope1);
+        $receiver->ack($envelope2);
+
+        // Now simulate a reconnect that wipes the queue map before close().
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, []);
+
+        // close() must not fatal on the missing queue — acks are silently dropped.
+        $this->queue->expects($this->never())->method('ack');
+
+        $receiver->close();
+    }
 }
