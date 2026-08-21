@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer;
 
 use CrazyGoat\TheConsoomer\Exception\MissingStampException;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
 use Symfony\Component\Messenger\Transport\Receiver\ReceiverInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -106,8 +107,17 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->connect();
 
         foreach ($this->queues as $queueName => $queue) {
-            $callback = function (\AMQPEnvelope $message) use ($queueName): bool {
-                $envelope = $this->serializer->decode(['body' => $message->getBody()]);
+            $callback = function (\AMQPEnvelope $message) use ($queueName, $queue): bool {
+                try {
+                    $envelope = $this->serializer->decode(['body' => $message->getBody()]);
+                } catch (MessageDecodingFailedException $e) {
+                    try {
+                        $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
+                    } catch (\Throwable) {
+                        // Best-effort reject: the decode exception must still propagate.
+                    }
+                    throw $e;
+                }
                 $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $queueName));
 
                 return count($this->messages) < $this->batchSize;
@@ -164,6 +174,26 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $operation = function () use ($stamp): void {
             $this->rejectMessage($stamp);
+            $this->connection->updateActivity();
+        };
+
+        if ($this->retry instanceof ConnectionRetryInterface) {
+            $this->retry->withRetry($operation);
+        } else {
+            $operation();
+        }
+    }
+
+    /**
+     * Rejects a poison message (one whose body could not be decoded) using the
+     * configured retry wrapper when available, consistent with {@see reject()}.
+     * Intended for best-effort use inside the consume callback: callers should
+     * always rethrow the original MessageDecodingFailedException afterwards.
+     */
+    private function rejectPoisonMessage(\AMQPQueue $queue, int $deliveryTag): void
+    {
+        $operation = function () use ($queue, $deliveryTag): void {
+            $queue->reject($deliveryTag);
             $this->connection->updateActivity();
         };
 
