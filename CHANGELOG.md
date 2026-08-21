@@ -56,6 +56,7 @@
   - Caught exceptions now trigger `ConnectionInterface::clearChannelCache()`, queue‑list reset, and unacked‑state reset
 - DSN userinfo and path segments are now decoded with `rawurldecode()` instead of `urldecode()` — `urldecode()` converts `+` to space (form-urlencoded behavior), which is incorrect for URI components where `+` is a literal character (e.g. `user%40name` → `user@name`, `vh%2Fost` → `vh/ost`) (#245)
 - `ssl_verify` is now coerced to a strict bool and empty/malformed values are rejected — previously ambiguous values could silently disable or enable TLS verification (#254)
+- Aligned the PHP version constraint with the Symfony support matrix — `composer.json` now requires `php: ^8.4` instead of `^8.2`. `symfony/messenger ^8.0` requires PHP >=8.4, so the previous `^8.2` floor made the `^8.0` branch unsatisfiable on PHP 8.2/8.3. CI no longer needs the `php 8.2/8.3 + symfony 8.0` exclusions, and the README documents the PHP requirement per Symfony version (#213)
 
 ## [v0.2.0] - 2026-04-22
 
