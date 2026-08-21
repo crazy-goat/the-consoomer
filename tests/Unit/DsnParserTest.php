@@ -353,4 +353,52 @@ class DsnParserTest extends TestCase
         $this->assertSame(30, $result['heartbeat']);
         $this->assertSame('my_queue', $result['queue']);
     }
+
+    public function testAmqpsConsoomerSchemeRefusesSslFalseDowngrade(): void
+    {
+        $parser = new DsnParser();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Cannot disable TLS via "?ssl=false"');
+
+        $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=false');
+    }
+
+    public function testLegacyAmqpsSchemeRefusesSslFalseDowngrade(): void
+    {
+        $parser = new DsnParser();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Cannot disable TLS via "?ssl=false"');
+
+        $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange?ssl=false');
+    }
+
+    public function testAmqpsConsoomerSchemeIgnoresRedundantSslTrue(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
+
+        $this->assertTrue($result['ssl']);
+        $this->assertSame(5671, $result['port']);
+    }
+
+    public function testAmqpConsoomerSchemeAllowsSslTrueInQuery(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
+
+        $this->assertTrue($result['ssl']);
+    }
+
+    public function testAmqpConsoomerSchemeAllowsSslFalseInQuery(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=false');
+
+        // On the non-TLS scheme, ?ssl=false is harmless (TLS was never enabled by the scheme),
+        // so the parser keeps it as-is. This is not a downgrade — see issue #286.
+        $this->assertFalse($result['ssl']);
+        $this->assertSame(5672, $result['port']);
+    }
 }

@@ -127,6 +127,16 @@ class AmqpFactory implements AmqpFactoryInterface
         }
         $connection->setVerify($sslVerify);
         $logger?->debug('SSL verify: {verify}', ['verify' => $sslVerify ? 'enabled' : 'disabled']);
+        if (!$sslVerify) {
+            // Peer-certificate verification is a core TLS safeguard. Disabling it opens the
+            // transport to man-in-the-middle / impersonation attacks. Surface it loudly rather
+            // than at debug level — see issue #286.
+            $logger?->warning(
+                'SSL peer verification is DISABLED (ssl_verify=false) — the broker identity will not be validated, '
+                . 'making this connection vulnerable to man-in-the-middle attacks. '
+                . 'Only disable verification in trusted, isolated environments.',
+            );
+        }
 
         $logger?->info('SSL handshake configured successfully');
     }

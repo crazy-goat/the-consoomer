@@ -77,8 +77,10 @@ final class DsnParser
         ];
 
         $scheme = $info['scheme'] ?? '';
+        $sslSetByScheme = false;
         if ($scheme === 'amqps-consoomer') {
             $result['ssl'] = true;
+            $sslSetByScheme = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
             }
@@ -87,6 +89,7 @@ final class DsnParser
             // Only reachable when DsnParser is used independently of AmqpTransport.
             // Will be removed in 0.2. Use amqps-consoomer:// instead.
             $result['ssl'] = true;
+            $sslSetByScheme = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
             }
@@ -94,6 +97,20 @@ final class DsnParser
 
         foreach ($query as $key => $value) {
             if (str_starts_with((string) $key, 'queue_arguments[')) {
+                continue;
+            }
+            // Security: the ssl flag is pinned by the scheme (amqps-consoomer:// / amqps://).
+            // Refuse a query-string downgrade (?ssl=false) that would silently disable TLS
+            // on a scheme that explicitly enables it — see issue #286.
+            if ($key === 'ssl' && $sslSetByScheme) {
+                $normalized = $this->normalizeValue($value);
+                if ($normalized === false) {
+                    throw new \InvalidArgumentException(
+                        'Cannot disable TLS via "?ssl=false" on an amqps-consoomer:// (or amqps://) DSN. '
+                        . 'Use the amqp-consoomer:// scheme for a cleartext connection.',
+                    );
+                }
+                // ?ssl=true on an amqps scheme is redundant; keep the scheme-pinned value.
                 continue;
             }
             $result[$key] = $this->normalizeValue($value);

@@ -301,4 +301,52 @@ class AmqpFactoryTest extends TestCase
             ]);
         }
     }
+
+    public function testConfigureSslLogsWarningWhenVerifyDisabled(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(false);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        // The disabling must be surfaced at warning level, not debug.
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with(
+                $this->stringContains('SSL peer verification is DISABLED'),
+                $this->anything(),
+            );
+        // Other calls are allowed but not asserted.
+        $logger->expects($this->any())->method('info');
+        $logger->expects($this->any())->method('debug');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+        ], $logger);
+    }
+
+    public function testConfigureSslDoesNotLogWarningWhenVerifyEnabled(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(true);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->never())
+            ->method('warning');
+        $logger->expects($this->any())->method('info');
+        $logger->expects($this->any())->method('debug');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => true,
+        ], $logger);
+    }
 }
