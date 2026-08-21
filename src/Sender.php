@@ -18,7 +18,7 @@ final class Sender implements SenderInterface
 {
     private ?\AMQPExchange $exchange = null;
     private ?\AMQPExchange $delayExchange = null;
-    private float $confirmTimeout = 0.0;
+    private readonly float $confirmTimeout;
     /** @var array<string, true> */
     private array $delayQueuesCreated = [];
     private readonly string $delayExchangeName;

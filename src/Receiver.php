@@ -48,8 +48,8 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->batchSize = max(1, intval($this->options['batch_size'] ?? self::DEFAULT_BATCH_SIZE));
     }
 
-    private int $maxUnackedMessages = self::DEFAULT_MAX_UNACKED_MESSAGES;
-    private int $batchSize = self::DEFAULT_BATCH_SIZE;
+    private readonly int $maxUnackedMessages;
+    private readonly int $batchSize;
 
     /**
      * @return list<string>
