@@ -113,6 +113,30 @@ With heartbeat enabled:
 - Activity is updated after each operation
 - In-flight messages delivered before a reconnect are not acknowledged on the new channel — their delivery tag belongs to the dead channel, so ack/reject become no-ops and the broker redelivers them on the next get()
 
+### SSL/TLS
+
+For TLS-encrypted connections use the `amqps-consoomer://` scheme (or the legacy `amqps://`, which emits a deprecation notice). SSL options are passed as DSN query parameters or programmatic options:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `ssl` | Enable TLS (set implicitly by the `amqps` schemes) | `false` |
+| `ssl_cert` | Client certificate PEM file path | (none) |
+| `ssl_key` | Client private key PEM file path | (none) |
+| `ssl_cacert` | CA certificate PEM file path used to verify the broker | (none) |
+| `ssl_verify` | Verify the broker's peer certificate | `true` |
+
+> **Pitfall — `ssl_verify` without `ssl_cacert`:** when verification is on (the default) but no CA certificate is pinned, the connection falls back to the **system CA store**. On builds where the system has no trusted CAs the handshake fails, or on some builds it verifies against an empty trust set — both silently. `AmqpFactory::configureSsl()` logs a prominent warning in this case; set `ssl_cacert` explicitly in production to pin the broker's CA.
+
+> **Security:** `ssl_verify` can be downgraded to `false` from the DSN query string. Keep DSNs out of untrusted input (see #207) — `amqps-consoomer://` no longer allows `?ssl=false` to switch a secure-scheme connection to cleartext, but `ssl_verify=false` remains a supported, if dangerous, option.
+
+```yaml
+framework:
+    messenger:
+        transports:
+            consoomer:
+                dsn: 'amqps-consoomer://guest:guest@rabbit:5671/%2f/messages?queue=my_queue&ssl_cacert=/etc/ssl/certs/rabbit-ca.pem'
+```
+
 ### Retry Configuration
 
 The transport supports configurable retry logic with exponential backoff, jitter, and circuit breaker.
