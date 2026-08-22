@@ -18,6 +18,7 @@ final class Connection implements ConnectionInterface
     private int $lastActivityTime;
     private ?LoggerInterface $logger = null;
     private ?\AMQPChannel $channel = null;
+    private bool $closed = false;
 
     /**
      * @param AmqpFactoryInterface $factory      Factory for creating AMQP channels
@@ -67,6 +68,10 @@ final class Connection implements ConnectionInterface
      */
     public function ensureConnected(): void
     {
+        if ($this->closed) {
+            throw new \AMQPConnectionException('Connection is closed');
+        }
+
         if ($this->amqpConnection->isConnected()) {
             return;
         }
@@ -198,6 +203,7 @@ final class Connection implements ConnectionInterface
      */
     public function close(): void
     {
+        $this->closed = true;
         $this->channel = null;
 
         if ($this->amqpConnection->isConnected()) {
