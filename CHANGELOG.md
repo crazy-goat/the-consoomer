@@ -13,6 +13,9 @@
 - `DsnParser::parse()` return array-shape no longer lists the dead `read_timeout`, `write_timeout`, `connect_timeout` keys (nothing in `src/` consumes them — the factory applies only `timeout` via `setReadTimeout()`), and now lists the real options that downstream `Sender`/`Receiver`/`InfrastructureSetup` read from the merged array (`batch_size`, `delay`, `binding_keys`, `binding_arguments`, `exchange_bindings`), so PHPStan users get completion/validation for options that actually work (#297)
 - `AmqpFactory::configureSsl()` now calls `hasCaCertConfigured()` and logs a prominent warning when SSL is enabled with peer verification on but no CA certificate (`ssl_cacert`) pinned — previously the connection silently fell back to the system CA store (or verified against an empty trust set on builds without one) and `hasCaCertConfigured()` was dead code, never called in production (#231)
 
+### Changed
+- Pinned `ext-amqp` to `^2.0` (was unconstrained `"*"`) — an ancient/unsupported extension could previously install cleanly and then fatal at runtime. PHP 8.4+ requires the 2.x line; 2.0 also provides every API the library uses (`AMQPBasicProperties::getHeaders()`, `AMQPChannel::confirmSelect()`/`waitForConfirm()`, `AMQP_JUST_CONSUME`, consumer-tag APIs) (#240)
+
 ## [v0.3.0] - 2026-04-23
 
 ### Added
