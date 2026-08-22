@@ -80,11 +80,20 @@ final class Sender implements SenderInterface
 
     /**
      * Checks connection heartbeat and reconnects if stale.
+     *
+     * On reconnect the channel is lost, so the exchange object, confirm-mode
+     * cache, and delay-queue cache are reset. The setup flag is also reset so
+     * that `auto_setup=true` re-declares the topology (exchange, queues,
+     * bindings) on the fresh connection — mirroring {@see Receiver::ensureConnected()}.
+     * Without this, topology lost after a broker restart or operator deletion
+     * is never re-declared, making `auto_setup` a false promise on the send
+     * path (#273).
      */
     private function ensureConnected(): void
     {
         if ($this->connection->checkHeartbeat()) {
             $this->connection->reconnect();
+            $this->setup->resetSetup();
             $this->exchange = null;
             $this->delayExchange = null;
             $this->delayQueuesCreated = [];
@@ -177,10 +186,10 @@ final class Sender implements SenderInterface
      */
     public function send(Envelope $envelope): Envelope
     {
+        $this->ensureConnected();
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
         }
-        $this->ensureConnected();
         $this->connect();
 
         $stamp = $envelope->last(AmqpStamp::class);
@@ -218,6 +227,26 @@ final class Sender implements SenderInterface
 
         if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($publishCallback): void {
+                // Without publisher confirms, AMQPExchange::publish() is
+                // fire-and-forget: it writes to the socket buffer and returns
+                // immediately, even when the broker is down or the exchange is
+                // missing. The retry wrapper would never see an exception and
+                // the message would silently evaporate. Guard the send path
+                // with an explicit connection check so retry has an error
+                // signal to act on (#273). Confirms (confirm_timeout > 0)
+                // surface broker-side rejects via waitForConfirm(), but the
+                // connection check still catches total broker outages that
+                // would otherwise be swallowed before the confirm wait.
+                if (!$this->connection->isConnected()) {
+                    $this->connection->reconnect();
+                    $this->setup->resetSetup();
+                    $this->exchange = null;
+                    $this->delayExchange = null;
+                    $this->delayQueuesCreated = [];
+                    $this->confirmedChannel = null;
+                    $this->connect();
+                }
+
                 $publishCallback();
                 $this->connection->updateActivity();
             });

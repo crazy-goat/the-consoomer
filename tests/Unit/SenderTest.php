@@ -794,6 +794,10 @@ class SenderTest extends TestCase
             ->willReturn(false);
 
         $this->connection
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->connection
             ->expects($this->exactly(2))
             ->method('updateActivity');
 
@@ -1338,6 +1342,161 @@ class SenderTest extends TestCase
 
         $sender = $this->createSender($options);
         $sender->send($envelope);
+    }
+
+    /**
+     * Fix (a) for #273: ensureConnected() must call resetSetup() after a
+     * heartbeat-stale reconnect so that auto_setup re-declares topology on
+     * the fresh connection — mirroring Receiver::ensureConnected().
+     */
+    public function testReconnectCallsResetSetup(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'auto_setup' => true];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->connection
+            ->method('getChannel')
+            ->willReturn($channel);
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(true);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        $this->setup
+            ->expects($this->once())
+            ->method('resetSetup');
+
+        $this->setup
+            ->expects($this->once())
+            ->method('setup');
+
+        $this->factory
+            ->method('createExchange')
+            ->willReturn($this->exchange);
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange->method('publish');
+
+        $this->connection
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $sender = $this->createSender($options);
+        $sender->send(new Envelope(new \stdClass()));
+    }
+
+    /**
+     * Fix (b) for #273: when retry is enabled, the send path must check
+     * isConnected() before publishing so that a total broker outage is
+     * surfaced as an exception to the retry wrapper instead of being
+     * swallowed by fire-and-forget publish.
+     */
+    public function testRetryChecksIsConnectedBeforePublish(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'retry' => true];
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->expects($this->atLeastOnce())
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish');
+
+        $retry = $this->createMock(ConnectionRetryInterface::class);
+        $retry
+            ->method('withRetry')
+            ->willReturnCallback(function (callable $callback): void {
+                $callback();
+            });
+
+        $sender = $this->createSenderWithRetry($options, $retry);
+        $sender->send(new Envelope(new \stdClass()));
+    }
+
+    /**
+     * Fix (b) for #273: when retry is enabled and isConnected() returns false,
+     * the sender must reconnect and re-declare topology (resetSetup) before
+     * the retry callback publishes — otherwise the publish is fire-and-forget
+     * against a dead socket and the message is silently lost.
+     */
+    public function testRetryReconnectsWhenConnectionIsDown(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'retry' => true, 'auto_setup' => true];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        // First isConnected() returns false (broker down), then true (reconnected).
+        $this->connection
+            ->method('isConnected')
+            ->willReturn(false, true);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        $this->setup
+            ->expects($this->once())
+            ->method('resetSetup');
+
+        $this->setup
+            ->expects($this->once())
+            ->method('setup');
+
+        $this->connection
+            ->method('getChannel')
+            ->willReturn($channel);
+
+        $this->factory
+            ->method('createExchange')
+            ->willReturn($this->exchange);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('updateActivity');
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->once())
+            ->method('publish');
+
+        $retry = $this->createMock(ConnectionRetryInterface::class);
+        $retry
+            ->method('withRetry')
+            ->willReturnCallback(function (callable $callback): void {
+                $callback();
+            });
+
+        $sender = $this->createSenderWithRetry($options, $retry);
+        $sender->send(new Envelope(new \stdClass()));
     }
 
     private function createSender(array $options): Sender
