@@ -17,8 +17,8 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     public const DEFAULT_BATCH_SIZE = 1;
     /** @var array<string, int> */
     private array $unacked = [];
-    /** @var array<string, ?\AMQPEnvelope> */
-    private array $lastUnacked = [];
+    /** @var array<string, list<int>> */
+    private array $pendingAcks = [];
     /** @var array<Envelope> */
     private array $messages = [];
     /** @var array<string, \AMQPQueue> */
@@ -88,7 +88,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->setup->resetSetup();
         $this->queues = [];
         $this->unacked = [];
-        $this->lastUnacked = [];
+        $this->pendingAcks = [];
 
         return true;
     }
@@ -162,7 +162,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                 $this->connection->clearChannelCache();
                 $this->queues = [];
                 $this->unacked = [];
-                $this->lastUnacked = [];
+                $this->pendingAcks = [];
 
                 if ($this->messages !== []) {
                     break;
@@ -290,17 +290,40 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
     private function ackPendingForQueue(string $queueName): void
     {
-        if (!isset($this->lastUnacked[$queueName])) {
+        if (!isset($this->pendingAcks[$queueName]) || $this->pendingAcks[$queueName] === []) {
             return;
         }
 
         // After a reconnect the queue map is empty — the channel that carried
         // these delivery tags is gone, so the acks cannot be sent. The broker
         // will redeliver the messages; drop the stale tracking state silently.
-        if (isset($this->queues[$queueName])) {
-            $this->queues[$queueName]->ack($this->lastUnacked[$queueName]->getDeliveryTag(), AMQP_MULTIPLE);
+        if (!isset($this->queues[$queueName])) {
+            $this->pendingAcks[$queueName] = [];
+            $this->unacked[$queueName] = 0;
+
+            return;
         }
-        $this->lastUnacked[$queueName] = null;
+
+        $tags = $this->pendingAcks[$queueName];
+        $queue = $this->queues[$queueName];
+
+        if ($this->isMultiQueue()) {
+            // Multi-queue mode: all queues share one channel, so AMQP_MULTIPLE
+            // would acknowledge every message on the channel up to and including
+            // the highest tag — including in-flight messages belonging to other
+            // queues. Ack each tag individually to stay within this queue's own
+            // delivery tags and avoid silent cross-queue message loss (#202).
+            foreach ($tags as $tag) {
+                $queue->ack($tag, \AMQP_NOPARAM);
+            }
+        } else {
+            // Single-queue mode: the channel carries only this queue's tags, so
+            // a single AMQP_MULTIPLE ack up to the highest tag is both correct
+            // and efficient (one RTT instead of N).
+            $queue->ack(end($tags), AMQP_MULTIPLE);
+        }
+
+        $this->pendingAcks[$queueName] = [];
         $this->unacked[$queueName] = 0;
     }
 
@@ -316,12 +339,25 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             return;
         }
 
-        $this->lastUnacked[$queueName] = $message;
+        $deliveryTag = (int) $message->getDeliveryTag();
+        $this->pendingAcks[$queueName][] = $deliveryTag;
         $this->unacked[$queueName] = ($this->unacked[$queueName] ?? 0) + 1;
 
         if (($this->unacked[$queueName] ?? 0) >= $this->maxUnackedMessages) {
             $this->ackPending($queueName);
         }
+    }
+
+    /**
+     * Whether more than one queue is consumed on the shared channel.
+     *
+     * Delivery tags are scoped per channel, so AMQP_MULTIPLE can only be used
+     * safely when a single queue owns the channel; with multiple queues a
+     * batched ack would acknowledge other queues' in-flight messages (#202).
+     */
+    private function isMultiQueue(): bool
+    {
+        return count($this->getQueueNames()) > 1;
     }
 
     public function close(): void

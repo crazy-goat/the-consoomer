@@ -475,7 +475,7 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $this->assertSame([], $reflection->getProperty('unacked')->getValue($receiver));
-        $this->assertSame([], $reflection->getProperty('lastUnacked')->getValue($receiver));
+        $this->assertSame([], $reflection->getProperty('pendingAcks')->getValue($receiver));
     }
 
     public function testGetReturnsMessagesWhenExceptionOccursAfterPartialConsume(): void
@@ -1852,12 +1852,12 @@ class ReceiverTest extends TestCase
         $reflection = new \ReflectionClass(Receiver::class);
         $queuesProperty = $reflection->getProperty('queues');
         $unackedProperty = $reflection->getProperty('unacked');
-        $lastUnackedProperty = $reflection->getProperty('lastUnacked');
+        $pendingAcksProperty = $reflection->getProperty('pendingAcks');
 
         // The queue map must survive an idle timeout.
         $this->assertSame(['test_queue' => $this->queue], $queuesProperty->getValue($receiver));
         $this->assertSame([], $unackedProperty->getValue($receiver));
-        $this->assertSame([], $lastUnackedProperty->getValue($receiver));
+        $this->assertSame([], $pendingAcksProperty->getValue($receiver));
     }
 
     public function testIdleTimeoutPreservesBufferedAcks(): void
@@ -1885,10 +1885,10 @@ class ReceiverTest extends TestCase
 
         $reflection = new \ReflectionClass(Receiver::class);
         $unackedProperty = $reflection->getProperty('unacked');
-        $lastUnackedProperty = $reflection->getProperty('lastUnacked');
+        $pendingAcksProperty = $reflection->getProperty('pendingAcks');
 
         $this->assertSame(['test_queue' => 1], $unackedProperty->getValue($receiver));
-        $this->assertSame(7, $lastUnackedProperty->getValue($receiver)['test_queue']->getDeliveryTag());
+        $this->assertSame([7], $pendingAcksProperty->getValue($receiver)['test_queue']);
     }
 
     public function testGenuineFailureFlushesBufferedAcksBeforeTeardown(): void
@@ -1955,7 +1955,9 @@ class ReceiverTest extends TestCase
                 }
             });
         $queueA->method('getConsumerTag')->willReturn('tag_a');
-        $queueA->expects($this->once())->method('ack')->with(5, AMQP_MULTIPLE);
+        // Multi-queue mode: ack must be individual (AMQP_NOPARAM), not
+        // AMQP_MULTIPLE — a batched ack would cross queue boundaries (#202).
+        $queueA->expects($this->once())->method('ack')->with(5, \AMQP_NOPARAM);
 
         $queueB
             ->expects($this->once())
@@ -2005,8 +2007,154 @@ class ReceiverTest extends TestCase
 
         // No tracking state must have been written.
         $unackedProperty = $reflection->getProperty('unacked');
-        $lastUnackedProperty = $reflection->getProperty('lastUnacked');
+        $pendingAcksProperty = $reflection->getProperty('pendingAcks');
         $this->assertSame([], $unackedProperty->getValue($receiver));
-        $this->assertSame([], $lastUnackedProperty->getValue($receiver));
+        $this->assertSame([], $pendingAcksProperty->getValue($receiver));
+    }
+
+    public function testMultiQueueAckDoesNotAckOtherQueuesMessages(): void
+    {
+        // Reproduces #202: two queues on one shared channel with interleaved
+        // delivery tags. Acking queue_b's batch must NOT ack queue_a's
+        // in-flight messages.
+        //
+        // tag 1 -> queue_a (in flight)
+        // tag 2 -> queue_b
+        // tag 3 -> queue_a (in flight)
+        // tag 4 -> queue_b   <- queue_b hits max_unacked_messages, flushes
+        //
+        // AMQP_MULTIPLE ack(4) would ack tags 1,2,3,4 — losing queue_a's
+        // in-flight messages. The fix acks only queue_b's own tags (2, 4).
+        //
+        // max_unacked_messages=2: queue_b flushes at tag 4 (2nd message),
+        // but queue_a only has 2 buffered — still below any flush trigger
+        // because its own counter is 2, which equals the threshold. To keep
+        // queue_a unflushed we use max_unacked_messages=3 so queue_a (2 msgs)
+        // stays buffered while queue_b (3 msgs) flushes.
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []], 'max_unacked_messages' => 3];
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        // Build envelopes with interleaved delivery tags.
+        $envA1 = $this->makeEnvelope(1, 'queue_a');
+        $envB2 = $this->makeEnvelope(2, 'queue_b');
+        $envA3 = $this->makeEnvelope(3, 'queue_a');
+        $envB4 = $this->makeEnvelope(4, 'queue_b');
+        $envB5 = $this->makeEnvelope(5, 'queue_b');
+
+        // queue_a must NEVER be acked — its messages are still in flight.
+        $queueA->expects($this->never())->method('ack');
+
+        // queue_b must be acked with individual tags (NOT AMQP_MULTIPLE).
+        $ackCalls = [];
+        $queueB
+            ->expects($this->exactly(3))
+            ->method('ack')
+            ->willReturnCallback(function (int $tag, int $flags = \AMQP_NOPARAM) use (&$ackCalls): void {
+                $ackCalls[] = ['tag' => $tag, 'flags' => $flags];
+            });
+
+        $receiver->ack($envA1); // queue_a: unacked=1 (buffered)
+        $receiver->ack($envB2); // queue_b: unacked=1 (buffered)
+        $receiver->ack($envA3); // queue_a: unacked=2 (buffered, threshold=3)
+        $receiver->ack($envB4); // queue_b: unacked=2 (buffered, threshold=3)
+        $receiver->ack($envB5); // queue_b: unacked=3 -> flush! acks tags 2, 4, 5 individually
+
+        // queue_b was acked exactly 3 times, each with an individual tag.
+        $this->assertCount(3, $ackCalls);
+        $this->assertSame(2, $ackCalls[0]['tag']);
+        $this->assertSame(4, $ackCalls[1]['tag']);
+        $this->assertSame(5, $ackCalls[2]['tag']);
+        // Neither ack uses AMQP_MULTIPLE — that flag would ack cross-queue.
+        $this->assertNotContains(\AMQP_MULTIPLE, array_column($ackCalls, 'flags'));
+    }
+
+    public function testMultiQueueCloseFlushesAllQueuesIndividually(): void
+    {
+        // close() must flush buffered acks for every queue, each with
+        // individual tags (never AMQP_MULTIPLE) in multi-queue mode (#202).
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []]];
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        // Buffer one ack per queue (max_unacked_messages default is 100).
+        $receiver->ack($this->makeEnvelope(1, 'queue_a'));
+        $receiver->ack($this->makeEnvelope(2, 'queue_b'));
+
+        $ackCalls = [];
+        $queueA
+            ->expects($this->once())
+            ->method('ack')
+            ->willReturnCallback(function (int $tag, int $flags = \AMQP_NOPARAM) use (&$ackCalls): void {
+                $ackCalls[] = ['queue' => 'a', 'tag' => $tag, 'flags' => $flags];
+            });
+        $queueB
+            ->expects($this->once())
+            ->method('ack')
+            ->willReturnCallback(function (int $tag, int $flags = \AMQP_NOPARAM) use (&$ackCalls): void {
+                $ackCalls[] = ['queue' => 'b', 'tag' => $tag, 'flags' => $flags];
+            });
+
+        $receiver->close();
+
+        // Each queue acked once, individually (no AMQP_MULTIPLE).
+        $this->assertCount(2, $ackCalls);
+        $this->assertSame(1, $ackCalls[0]['tag']);
+        $this->assertSame(2, $ackCalls[1]['tag']);
+        $this->assertNotContains(\AMQP_MULTIPLE, array_column($ackCalls, 'flags'));
+    }
+
+    public function testSingleQueueAckStillUsesAmqpMultiple(): void
+    {
+        // Single-queue mode must keep the AMQP_MULTIPLE optimization — the
+        // channel carries only this queue's tags, so batching is safe.
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 2];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $ackCalls = [];
+        $this->queue
+            ->expects($this->once())
+            ->method('ack')
+            ->willReturnCallback(function (int $tag, int $flags) use (&$ackCalls): void {
+                $ackCalls[] = ['tag' => $tag, 'flags' => $flags];
+            });
+
+        $receiver->ack($this->makeEnvelope(1, 'test_queue'));
+        $receiver->ack($this->makeEnvelope(2, 'test_queue')); // threshold=2 -> flush
+
+        $this->assertCount(1, $ackCalls);
+        $this->assertSame(2, $ackCalls[0]['tag']);
+        $this->assertSame(\AMQP_MULTIPLE, $ackCalls[0]['flags']);
+    }
+
+    /**
+     * Helper: build an Envelope with an AmqpReceivedStamp carrying the given
+     * delivery tag and queue name.
+     */
+    private function makeEnvelope(int $deliveryTag, string $queueName): Envelope
+    {
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getDeliveryTag')->willReturn($deliveryTag);
+
+        return new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, $queueName)]);
     }
 }
