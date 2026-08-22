@@ -123,7 +123,9 @@ class AmqpTransportFactory implements TransportFactoryInterface
 
         // Connection parameters (host, port, vhost, user, password, timeout) are always
         // taken from $parsedDsn, not from $mergedOptions. These are part of the DSN
-        // authority/path and cannot be overridden by programmatic $options.
+        // authority/path and cannot be overridden by programmatic $options. The DSN
+        // query string is likewise barred from overriding them (#207: DsnParser refuses
+        // reserved keys in the query string rather than silently clobbering authority).
         $connection->setHost($parsedDsn['host']);
         $connection->setPort($parsedDsn['port']);
         $connection->setVhost($parsedDsn['vhost']);
