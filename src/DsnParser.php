@@ -89,9 +89,9 @@ final class DsnParser
                 $result['port'] = 5671;
             }
         } elseif ($scheme === 'amqps') {
-            // @deprecated Legacy amqps:// scheme — no longer claimed by AmqpTransport::supports().
+            // @deprecated Legacy amqps:// scheme — no longer claimed by AmqpTransportFactory::supports().
             // Only reachable when DsnParser is used independently of AmqpTransport.
-            // Will be removed in 0.2. Use amqps-consoomer:// instead.
+            // Will be removed in 1.0. Use amqps-consoomer:// instead.
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
@@ -325,7 +325,7 @@ final class DsnParser
      *     queue_arguments?: array<string, mixed>,
      *     confirm_timeout?: float|int,
      * } $options
-     * @deprecated This method is deprecated and will be removed in 0.2.
+     * @deprecated This method is deprecated and will be removed in 1.0.
      *             Validation now happens automatically in parse().
      *             This method always returns true for backward compatibility.
      */
