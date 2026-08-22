@@ -327,7 +327,8 @@ final class DsnParser
      * } $options
      * @deprecated This method is deprecated and will be removed in 1.0.
      *             Validation now happens automatically in parse().
-     *             This method always returns true for backward compatibility.
+     *             Returns true when the options are valid, false when
+     *             validateParsedOptions() throws InvalidArgumentException.
      */
     public function validateOptions(array $options): bool
     {
