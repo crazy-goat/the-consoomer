@@ -60,7 +60,12 @@ final class DsnParser
 
         $info = parse_url($dsn);
         if ($info === false) {
-            throw new \InvalidArgumentException('Malformed DSN: ' . $dsn);
+            // Security (#287): the raw DSN carries broker credentials as cleartext
+            // userinfo (user:password@host). An exception thrown during container boot
+            // or messenger:consume startup is routed to loggers / Sentry / stderr with a
+            // full stack trace, so interpolating the raw DSN leaks the password. Redact
+            // the userinfo before embedding the DSN in any message.
+            throw new \InvalidArgumentException('Malformed DSN: ' . $this->redactCredentials($dsn));
         }
         $query = [];
         parse_str($info['query'] ?? '', $query);
@@ -137,6 +142,18 @@ final class DsnParser
         }
 
         return $this->validateParsedOptions($result);
+    }
+
+    /**
+     * Redacts the userinfo (user:password@) segment of a DSN so credentials
+     * never reach exception messages, logs or error trackers.
+     *
+     * Only the userinfo is replaced with `***`; scheme, host, port, path and
+     * query string are preserved to keep the error message useful for debugging.
+     */
+    private function redactCredentials(string $dsn): string
+    {
+        return preg_replace('#://[^@/]*@#', '://***@', $dsn) ?? $dsn;
     }
 
     /**

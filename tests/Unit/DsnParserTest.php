@@ -138,6 +138,56 @@ class DsnParserTest extends TestCase
         $parser->parse(':');
     }
 
+    public function testMalformedDsnExceptionDoesNotLeakPassword(): void
+    {
+        $parser = new DsnParser();
+        $password = 'S3cretPass';
+
+        try {
+            // Invalid port (-1) makes parse_url() return false, triggering the
+            // malformed-DSN path while the userinfo still carries the cleartext password.
+            $parser->parse('amqp-consoomer://user:' . $password . '@host:-1/vh/ex');
+            $this->fail('Expected InvalidArgumentException for malformed DSN');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringNotContainsString(
+                $password,
+                $e->getMessage(),
+                'Password must be redacted from the malformed-DSN exception message (#287)',
+            );
+            $this->assertStringContainsString('***', $e->getMessage());
+            $this->assertStringContainsString('host:-1', $e->getMessage());
+        }
+    }
+
+    public function testMalformedDsnRedactsBothUserAndPassword(): void
+    {
+        $parser = new DsnParser();
+        $user = 'lea.ked.user';
+        $password = 'lea.ked.pass';
+
+        try {
+            $parser->parse('amqp-consoomer://' . $user . ':' . $password . '@host:-1/vh/ex');
+            $this->fail('Expected InvalidArgumentException for malformed DSN');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringNotContainsString($user, $e->getMessage());
+            $this->assertStringNotContainsString($password, $e->getMessage());
+            $this->assertStringContainsString('://***@', $e->getMessage());
+        }
+    }
+
+    public function testMalformedDsnWithoutCredentialsStillReportsError(): void
+    {
+        $parser = new DsnParser();
+
+        try {
+            $parser->parse('amqp-consoomer://host:-1/vh/ex');
+            $this->fail('Expected InvalidArgumentException for malformed DSN');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('Malformed DSN:', $e->getMessage());
+            $this->assertStringContainsString('host:-1', $e->getMessage());
+        }
+    }
+
     public function testExchangeTypeEnumExists(): void
     {
         $this->assertTrue(enum_exists(\CrazyGoat\TheConsoomer\Enum\ExchangeType::class));

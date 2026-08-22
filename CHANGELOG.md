@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Malformed-DSN exception no longer embeds the cleartext broker password — the userinfo segment (`user:password@`) is redacted to `***@` before interpolation, preventing credential leakage into logs, error trackers and stderr during container boot or `messenger:consume` startup (#287)
+
 ## [v0.3.0] - 2026-04-23
 
 ### Added
