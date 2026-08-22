@@ -31,6 +31,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * reissues a fresh tag on the new channel (#220).
      */
     private int $channelGeneration = 0;
+    /**
+     * Index of the queue that starts the next {@see get()} cycle. Rotated on
+     * every call so that, in multi-queue mode with a single total batch budget,
+     * no queue is permanently first in the (stable) iteration order (#204).
+     */
+    private int $nextQueueOffset = 0;
 
     /**
      * @param array{
@@ -131,8 +137,29 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
         $this->connect();
 
-        foreach ($this->queues as $queueName => $queue) {
-            $callback = function (\AMQPEnvelope $message) use ($queueName, $queue): bool {
+        // Iterate the queues round-robin (rotating the starting offset between
+        // get() calls) and stop entering further queues once the total batch
+        // budget is spent, so no single queue drains everything (#204).
+        $requests = [];
+        $queueNames = array_keys($this->queues);
+        $count = count($queueNames);
+        for ($i = 0; $i < $count; $i++) {
+            $queueName = $queueNames[($this->nextQueueOffset + $i) % $count];
+            $requests[] = [$queueName, $this->queues[$queueName]];
+        }
+        $this->nextQueueOffset = ($this->nextQueueOffset + 1) % max(1, $count);
+
+        foreach ($requests as [$queueName, $queue]) {
+            if (count($this->messages) >= $this->batchSize) {
+                break;
+            }
+
+            // Per-queue consumed count for this cycle: the stop predicate must
+            // be relative to this queue, not the global buffer, otherwise the
+            // first queue drains until the global budget is met and later
+            // queues each contribute at most one message (#204).
+            $consumed = 0;
+            $callback = function (\AMQPEnvelope $message) use ($queueName, $queue, &$consumed): bool {
                 try {
                     $envelope = $this->serializer->decode([
                         'body' => $message->getBody(),
@@ -152,7 +179,13 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                     $this->channelGeneration,
                 ));
 
-                return count($this->messages) < $this->batchSize;
+                // Stop consuming from this queue once it has contributed its
+                // share (or the global budget is spent); the outer loop then
+                // moves on to the next queue.
+                ++$consumed;
+
+                return $consumed < $this->perQueueBudget()
+                    && count($this->messages) < $this->batchSize;
             };
 
             try {
@@ -394,6 +427,23 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     private function isMultiQueue(): bool
     {
         return count($this->getQueueNames()) > 1;
+    }
+
+    /**
+     * Per-queue consume budget for a {@see get()} cycle.
+     *
+     * The total {@see batch_size} is a single batch across all queues, so each
+     * queue's callback must stop draining once the global budget is met — but
+     * before then it may consume freely so a slow/drained earlier queue does
+     * not starve a later one. In multi-queue mode the budget is divided evenly
+     * across the configured queues; round-robin start rotation then spreads
+     * any remainder so no queue is systematically short-changed (#204).
+     */
+    private function perQueueBudget(): int
+    {
+        $queueCount = count($this->getQueueNames());
+
+        return $queueCount > 1 ? max(1, intdiv($this->batchSize, $queueCount)) : $this->batchSize;
     }
 
     public function close(): void
