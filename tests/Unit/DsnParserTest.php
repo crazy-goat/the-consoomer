@@ -578,4 +578,62 @@ class DsnParserTest extends TestCase
         $this->assertSame('DsnParser::validateOptions() is deprecated and will be removed in 1.0. Validation now happens automatically in parse().', $caught);
         $this->assertTrue($result);
     }
+
+    public function testQueryHostDoesNotOverrideAuthorityHost(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reserved');
+        $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?host=evil');
+    }
+
+    public function testQueryPasswordDoesNotOverrideAuthorityPassword(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reserved');
+        $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?password=secret');
+    }
+
+    public function testQueryPortDoesNotOverrideAuthorityPort(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reserved');
+        $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?port=9999');
+    }
+
+    public function testQueryVhostDoesNotOverridePathVhost(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reserved');
+        $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?vhost=evil');
+    }
+
+    public function testQueryExchangeDoesNotOverridePathExchange(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reserved');
+        $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?exchange=evil');
+    }
+
+    public function testQueryUserDoesNotOverrideAuthorityUser(): void
+    {
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('reserved');
+        $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?user=evil');
+    }
+
+    public function testNonReservedQueryKeyKeepsAuthorityHost(): void
+    {
+        $parser = new DsnParser();
+        // A non-reserved query key must not trip the guard; the authority host wins.
+        $result = $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?heartbeat=60');
+
+        $this->assertSame('realhost', $result['host']);
+        $this->assertSame(60, $result['heartbeat']);
+    }
 }

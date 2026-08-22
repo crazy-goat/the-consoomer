@@ -6,6 +6,15 @@ namespace CrazyGoat\TheConsoomer;
 
 final class DsnParser
 {
+    /**
+     * Keys derived from the DSN authority (host, port, user, password) and
+     * path (vhost, exchange) — the authority segment is authoritative. A query
+     * parameter colliding with one of these used to silently clobber the value
+     * parsed from the authority/path, which is a credential/host-injection
+     * foothold (#207). They are now refused in the query-string merge.
+     */
+    private const RESERVED_KEYS = ['host', 'port', 'user', 'password', 'vhost', 'exchange'];
+
     /** @var list<string> */
     private static ?array $validExchangeTypes = null;
 
@@ -110,6 +119,21 @@ final class DsnParser
         foreach ($query as $key => $value) {
             if (str_starts_with((string) $key, 'queue_arguments[')) {
                 continue;
+            }
+            // Security (#207): the DSN authority (host, port, user, password) and
+            // path (vhost, exchange) are authoritative. A query parameter whose key
+            // collides with one of these used to silently overwrite the parsed value —
+            // allowing e.g. "?host=evil&password=secret" to redirect the connection and
+            // inject credentials. Refuse the collision explicitly so misconfiguration is
+            // surfaced instead of silently exploited. queue_arguments[...] keys are
+            // already skipped above and are not affected.
+            if (in_array((string) $key, self::RESERVED_KEYS, true)) {
+                throw new \InvalidArgumentException(
+                    sprintf(
+                        'DSN query parameter "%s" is reserved: it is derived from the DSN authority/path and cannot be overridden via the query string. Remove it from the DSN.',
+                        (string) $key,
+                    ),
+                );
             }
             // Security: a TLS scheme (amqps-consoomer://, amqps://) enables ssl=true.
             // The query string must not be able to silently downgrade that to cleartext
