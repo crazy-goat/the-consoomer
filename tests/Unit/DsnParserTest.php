@@ -489,4 +489,32 @@ class DsnParserTest extends TestCase
             'exchange' => '',
         ]));
     }
+
+    public function testValidateOptionsReturnsFalseForInvalidExchangeType(): void
+    {
+        $parser = new DsnParser();
+        $this->assertFalse($parser->validateOptions([
+            'host' => 'localhost',
+            'port' => 5672,
+            'user' => 'guest',
+            'password' => 'guest',
+            'vhost' => '/',
+            'exchange' => 'my_exchange',
+            'exchange_type' => 'invalid',
+        ]));
+    }
+
+    public function testValidateOptionsReturnsTrueForValidExchangeType(): void
+    {
+        $parser = new DsnParser();
+        $this->assertTrue($parser->validateOptions([
+            'host' => 'localhost',
+            'port' => 5672,
+            'user' => 'guest',
+            'password' => 'guest',
+            'vhost' => '/',
+            'exchange' => 'my_exchange',
+            'exchange_type' => 'fanout',
+        ]));
+    }
 }
