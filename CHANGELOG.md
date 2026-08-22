@@ -2,8 +2,14 @@
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-04-23
+
 ### Added
 - Exchange-to-exchange bindings via the `exchange_bindings` option, allowing an exchange to be bound to another exchange with routing keys and arguments (#22/#191)
+
+## [v0.4.0] - 2026-05-23
+
+### Added
 - `Receiver::purgeQueue()` method to purge a queue's contents (#29/#194)
 - Publisher confirms via the `confirm_timeout` option — when enabled (>0), the sender calls `confirmSelect()` and `waitForConfirm()` to ensure the broker acknowledged each publish (#27)
 - Persistent connection support via the `persistent` option — uses `pconnect()`/`pdisconnect()` instead of `connect()`/`disconnect()` (#26)
@@ -11,15 +17,50 @@
 - Multiple queues per transport via the `queues` (plural) option — `Receiver` stores queues as an array keyed by name, consumes from all, and routes ack/reject to the correct queue via `AmqpReceivedStamp::getQueueName()` (#35/#198, #201)
 - `binding_keys` and `binding_arguments` options for the single-queue path, allowing multiple routing keys and binding arguments per queue (previously only available via the `queues` option) (#199)
 - Delayed messages via `AmqpDelayStamp` + TTL-based delay queues — sender publishes delayed messages to a dedicated delay exchange routing through TTL-bound queues with dead-lettering back to the original exchange (#200)
+
+## [v0.5.0] - 2026-05-30
+
+### Added
 - Flag validation for exchange/queue declaration flags and a new `durable` option (#233)
 
 ### Changed
-- **BC BREAK**: Removed dead retry-on-reject code that was never reachable in production — `Receiver::publishToRetryQueue()`, `Receiver::getRoutingKeyForRetry()`, the unreachable `isRetryAttempt()` branch in `Receiver::rejectMessage()`, `InfrastructureSetup::setupRetryQueue()` (which declared an unused `_retry` exchange + queues), `AmqpStamp::createFromAmqpEnvelope()`, `AmqpStamp::isRetryAttempt()`/`withRetryAttempt()` and the `$retryAttempt` constructor parameter, and `AmqpReceivedStamp::$amqpStamp`/`getAmqpStamp()`. The `retry_exchange` and `retry_queue_arguments` options are no longer recognized. The reject path now always calls `AMQPQueue::reject()` directly. This also resolves the latent unguarded `$this->options['exchange']` access in the fallback of the retry-exchange name (#203, #208)
 - **BC BREAK**: Renamed `ConnectionRetry::$retryCount` constructor parameter to `maxAttempts` to clarify semantics (#228)
   - `retryCount` previously meant "total attempts" (ambiguous) — now `maxAttempts` explicitly means "maximum number of execution attempts including the first"
   - Config key `retry_count` in DSN/options remains unchanged and maps to `maxAttempts`
   - Validation added: `maxAttempts` must be at least 1 (throws `\InvalidArgumentException` for 0 or negative)
   - Direct `new ConnectionRetry(retryCount: ...)` calls must use `maxAttempts: ...` instead
+
+### Fixed
+- `ssl_verify` is now coerced to a strict bool and empty/malformed values are rejected — previously ambiguous values could silently disable or enable TLS verification (#254)
+- Decoupled `max_unacked_messages` into three separate concerns: QoS prefetch, per-`get()` return-batch size, and ack-batch flush threshold (#238)
+  - Added `batch_size` option (default: 1) for per-`get()` return-batch size
+  - `max_unacked_messages` now controls only QoS prefetch and ack-batch flush threshold
+  - Added `Receiver::close()` / `AmqpTransport::close()` flush of pending acks on worker shutdown
+  - Eager consumption no longer delays first message until full batch is collected
+  - Lost ack redelivery on worker stop is eliminated — pending acks are flushed before disconnect
+- Circuit-breaker elapsed-time now uses monotonic clock (`hrtime(true)`) instead of wall-clock `DateTimeImmutable` — prevents NTP backward step from sticking the circuit OPEN (#237)
+  - Added `ClockInterface::monotonic(): float` method backed by `hrtime(true)` in `SystemClock`
+  - `CircuitBreaker::recordFailure()` stores monotonic timestamp for elapsed measurement
+  - `CircuitBreaker::isAvailable()` computes elapsed from monotonic clock — immune to wall-clock corrections
+- Topology is now re-declared after reconnect — `setupPerformed` flag is reset on reconnect so exchanges, queues, and bindings are re-declared on the new connection/channel (#229)
+  - Added `InfrastructureSetupInterface::resetSetup()` to allow clearing the setup-once flag
+  - `Receiver::ensureConnected()` calls `resetSetup()` after reconnecting
+  - `Receiver::get()`, `purgeQueue()`, and `getMessageCount()` reordered to run `setup()` after `ensureConnected()` — topology is declared on the fresh connection before consumers are created
+- "Consumer timeout" detection now uses exception **type** (`AMQPQueueException`) instead of fragile `str_contains` on message text — substring collision swallowed real errors with "Consumer timeout" in message, and wording variations caused benign timeouts to crash workers. Timeout is only swallowed when no messages were collected (true empty poll); partial batches are returned (#222)
+- Permanent-failure classification now uses exception **type** (AMQPQueueException/AMQPExchangeException) instead of unreliable `getCode()` integer matching — ext-amqp frequently returns 0 or a librabbitmq errno instead of the AMQP reply code, so a resource-not-found error with code 0 was incorrectly retried, and a connection-level error with code 404 was incorrectly treated as permanent (#224)
+  - `AMQPConnectionException` / `AMQPChannelException` are always transient (reconnectable)
+  - `AMQPQueueException` / `AMQPExchangeException` are always permanent (resource errors won't resolve on retry)
+  - Generic `AMQPException` still falls back to code matching for backward compatibility
+- Circuit-breaker HALF_OPEN single-probe semantics are no longer defeated by the retry loop — when the circuit transitions to HALF_OPEN the operation is executed exactly once (not `retryCount` times), preserving the failure-isolation the feature advertises (#223)
+- Retry jitter is now applied BEFORE the `retry_max_delay` cap — jitter no longer pushes the effective delay up to 25% above the configured maximum (#225)
+- `AmqpStamp::createFromAmqpEnvelope()` no longer drops `priority`, `delivery_mode`, or `timestamp` when their value is `0` — priority 0 is a valid AMQP level that was lost on receive→re-send round-trips (#226)
+- `AmqpPriorityStamp` priority cap relaxed from 9 to 255 — RabbitMQ supports up to 255 via `x-max-priority` queue argument (#227)
+- DSN userinfo and path segments are now decoded with `rawurldecode()` instead of `urldecode()` — `urldecode()` converts `+` to space (form-urlencoded behavior), which is incorrect for URI components where `+` is a literal character (e.g. `user%40name` → `user@name`, `vh%2Fost` → `vh/ost`) (#245)
+
+## [v0.6.0] - 2026-08-22
+
+### Changed
+- **BC BREAK**: Removed dead retry-on-reject code that was never reachable in production — `Receiver::publishToRetryQueue()`, `Receiver::getRoutingKeyForRetry()`, the unreachable `isRetryAttempt()` branch in `Receiver::rejectMessage()`, `InfrastructureSetup::setupRetryQueue()` (which declared an unused `_retry` exchange + queues), `AmqpStamp::createFromAmqpEnvelope()`, `AmqpStamp::isRetryAttempt()`/`withRetryAttempt()` and the `$retryAttempt` constructor parameter, and `AmqpReceivedStamp::$amqpStamp`/`getAmqpStamp()`. The `retry_exchange` and `retry_queue_arguments` options are no longer recognized. The reject path now always calls `AMQPQueue::reject()` directly. This also resolves the latent unguarded `$this->options['exchange']` access in the fallback of the retry-exchange name (#203, #208)
 
 ### Fixed
 - In-flight unacked messages are no longer acked on the wrong channel after a reconnect. The Receiver tracks a monotonically increasing "channel generation", incremented on every heartbeat-stale reconnect and every genuine AMQP channel failure. Each delivered envelope is stamped with the generation of the channel that delivered it; ack()/reject() on an envelope whose generation no longer matches the current channel is a no-op (its delivery tag belongs to a dead channel — the broker re-queues and reissues the message on the next get()). Previously a reconnect wiped the queue map but a later get() rebuilt it on the new channel, so a stale delivery tag from the old channel could be flushed via ack(oldTag, AMQP_MULTIPLE) against the new channel — a PRECONDITION_FAILED / unknown-delivery-tag protocol error that closed the channel and crashed the worker, or silently lost the ack. AmqpReceivedStamp now carries the channel generation via a new getChannelGeneration() accessor (#220)
@@ -37,35 +78,10 @@
 - Host-less DSN (`amqp-consoomer:///exchange`) now defaults to `localhost` with default vhost — previously threw "Malformed DSN" (#216)
 - `getMessageCount()` no longer starts real consumers via `connect()` — now creates throwaway passive queue objects on a fresh channel and never calls `consume()`. Stats/monitoring calls previously registered server-side consumers, locking messages into prefetch buffer and under-reporting message count (#217)
 - `normalizeValue` no longer silently truncates scientific-notation numbers (e.g. `1e3` → `1000.0` instead of `1`) — DSN query parameters like `read_timeout=1e5` now produce the correct float value (#246)
-- "Consumer timeout" detection now uses exception **type** (`AMQPQueueException`) instead of fragile `str_contains` on message text — substring collision swallowed real errors with "Consumer timeout" in message, and wording variations caused benign timeouts to crash workers. Timeout is only swallowed when no messages were collected (true empty poll); partial batches are returned (#222)
-- README and `examples/symfony/config/services.yaml` now tag `AmqpTransportFactory` (not `AmqpTransport`) with `messenger.transport_factory` — `AmqpTransport` implements `TransportInterface`, not `TransportFactoryInterface`, so the documented setup was non-functional (#214)
-- Permanent-failure classification now uses exception **type** (AMQPQueueException/AMQPExchangeException) instead of unreliable `getCode()` integer matching — ext-amqp frequently returns 0 or a librabbitmq errno instead of the AMQP reply code, so a resource-not-found error with code 0 was incorrectly retried, and a connection-level error with code 404 was incorrectly treated as permanent (#224)
-  - `AMQPConnectionException` / `AMQPChannelException` are always transient (reconnectable)
-  - `AMQPQueueException` / `AMQPExchangeException` are always permanent (resource errors won't resolve on retry)
-  - Generic `AMQPException` still falls back to code matching for backward compatibility
-- Circuit-breaker HALF_OPEN single-probe semantics are no longer defeated by the retry loop — when the circuit transitions to HALF_OPEN the operation is executed exactly once (not `retryCount` times), preserving the failure-isolation the feature advertises (#223)
-- Retry jitter is now applied BEFORE the `retry_max_delay` cap — jitter no longer pushes the effective delay up to 25% above the configured maximum (#225)
-- `AmqpStamp::createFromAmqpEnvelope()` no longer drops `priority`, `delivery_mode`, or `timestamp` when their value is `0` — priority 0 is a valid AMQP level that was lost on receive→re-send round-trips (#226)
-- `AmqpPriorityStamp` priority cap relaxed from 9 to 255 — RabbitMQ supports up to 255 via `x-max-priority` queue argument (#227)
-- Topology is now re-declared after reconnect — `setupPerformed` flag is reset on reconnect so exchanges, queues, and bindings are re-declared on the new connection/channel (#229)
-  - Added `InfrastructureSetupInterface::resetSetup()` to allow clearing the setup-once flag
-  - `Receiver::ensureConnected()` calls `resetSetup()` after reconnecting
-  - `Receiver::get()`, `purgeQueue()`, and `getMessageCount()` reordered to run `setup()` after `ensureConnected()` — topology is declared on the fresh connection before consumers are created
-- Circuit-breaker elapsed-time now uses monotonic clock (`hrtime(true)`) instead of wall-clock `DateTimeImmutable` — prevents NTP backward step from sticking the circuit OPEN (#237)
-  - Added `ClockInterface::monotonic(): float` method backed by `hrtime(true)` in `SystemClock`
-  - `CircuitBreaker::recordFailure()` stores monotonic timestamp for elapsed measurement
-  - `CircuitBreaker::isAvailable()` computes elapsed from monotonic clock — immune to wall-clock corrections
-- Decoupled `max_unacked_messages` into three separate concerns: QoS prefetch, per-`get()` return-batch size, and ack-batch flush threshold (#238)
-  - Added `batch_size` option (default: 1) for per-`get()` return-batch size
-  - `max_unacked_messages` now controls only QoS prefetch and ack-batch flush threshold
-  - Added `Receiver::close()` / `AmqpTransport::close()` flush of pending acks on worker shutdown
-  - Eager consumption no longer delays first message until full batch is collected
-  - Lost ack redelivery on worker stop is eliminated — pending acks are flushed before disconnect
 - `Receiver::get()` no longer silently stalls on server-side consumer cancellation — catching `\AMQPException` now resets consumer state (`queues`, `unacked`, `lastUnacked`) and clears channel cache, forcing fresh consumer re‑registration on the next `get()` call (#221)
   - Previously, `AMQP_JUST_CONSUME` against a dead consumer tag blocked forever or panicked silently
   - Caught exceptions now trigger `ConnectionInterface::clearChannelCache()`, queue‑list reset, and unacked‑state reset
-- DSN userinfo and path segments are now decoded with `rawurldecode()` instead of `urldecode()` — `urldecode()` converts `+` to space (form-urlencoded behavior), which is incorrect for URI components where `+` is a literal character (e.g. `user%40name` → `user@name`, `vh%2Fost` → `vh/ost`) (#245)
-- `ssl_verify` is now coerced to a strict bool and empty/malformed values are rejected — previously ambiguous values could silently disable or enable TLS verification (#254)
+- README and `examples/symfony/config/services.yaml` now tag `AmqpTransportFactory` (not `AmqpTransport`) with `messenger.transport_factory` — `AmqpTransport` implements `TransportInterface`, not `TransportFactoryInterface`, so the documented setup was non-functional (#214)
 - Aligned the PHP version constraint with the Symfony support matrix — `composer.json` now requires `php: ^8.4` instead of `^8.2`. `symfony/messenger ^8.0` requires PHP >=8.4, so the previous `^8.2` floor made the `^8.0` branch unsatisfiable on PHP 8.2/8.3. CI no longer needs the `php 8.2/8.3 + symfony 8.0` exclusions, and the README documents the PHP requirement per Symfony version (#213)
 
 ## [v0.2.0] - 2026-04-22
