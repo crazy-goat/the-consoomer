@@ -762,4 +762,104 @@ class ConnectionRetryTest extends TestCase
             retryCircuitBreakerSuccessThreshold: 1,
         );
     }
+
+    /**
+     * Regression test for issue #206: recordAttempt() must fire on every
+     * loop iteration, so totalAttempts counts real attempts including
+     * failures, not only successful operations.
+     */
+    public function testMetricsRecordAttemptCountsWithFailures(): void
+    {
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(3, $metrics->getTotalAttempts(), 'totalAttempts must count every attempt, including failures');
+        $this->assertSame(0, $metrics->getSuccessfulRetries());
+        $this->assertSame(1, $metrics->getFailedRetries());
+    }
+
+    /**
+     * Regression test for issue #206: a single success must record exactly
+     * one attempt and zero retries.
+     */
+    public function testMetricsSuccessRecordsOneAttemptNoRetry(): void
+    {
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
+
+        $retry->withRetry(fn(): string => 'success');
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(1, $metrics->getTotalAttempts());
+        $this->assertSame(0, $metrics->getSuccessfulRetries(), 'First-try success is not a retry');
+        $this->assertSame(0, $metrics->getFailedRetries());
+    }
+
+    /**
+     * Regression test for issue #206: a retry that eventually succeeds
+     * must record each intermediate attempt plus the final one.
+     */
+    public function testMetricsRetrySucceedsRecordsAllAttempts(): void
+    {
+        $attempt = 0;
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
+
+        $retry->withRetry(function () use (&$attempt): string {
+            $attempt++;
+            if ($attempt < 2) {
+                throw new \AMQPConnectionException('Connection failed');
+            }
+            return 'success';
+        });
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(2, $metrics->getTotalAttempts(), 'Two real attempts were made');
+        $this->assertSame(1, $metrics->getSuccessfulRetries(), 'One retry succeeded');
+        $this->assertSame(0, $metrics->getFailedRetries());
+    }
+
+    /**
+     * Regression test for issue #206: the success-rate denominator must
+     * include attempts from fully-failed operations. Before the fix a
+     * failed operation contributed zero to totalAttempts; now it must
+     * contribute one attempt per loop iteration.
+     */
+    public function testMetricsRateDenominatorIncludesFailedOperations(): void
+    {
+        $retry = new ConnectionRetry(maxAttempts: 2, retryDelay: 1000);
+
+        // Operation 1: succeeds on the 2nd attempt (one retry).
+        $attempt = 0;
+        $retry->withRetry(function () use (&$attempt): string {
+            $attempt++;
+            if ($attempt < 2) {
+                throw new \AMQPConnectionException('Connection failed');
+            }
+            return 'success';
+        });
+
+        // Operation 2: fails both attempts.
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(4, $metrics->getTotalAttempts(), '2 attempts for the retried success + 2 for the failure');
+        $this->assertSame(1, $metrics->getSuccessfulRetries());
+        $this->assertSame(1, $metrics->getFailedRetries());
+        $this->assertSame(25.0, $metrics->getRetrySuccessRate(), '1 successful retry / 4 total attempts');
+    }
 }

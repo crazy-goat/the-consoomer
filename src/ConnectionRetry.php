@@ -131,6 +131,8 @@ final class ConnectionRetry implements ConnectionRetryInterface
         $lastException = null;
 
         while ($attempt < $this->maxAttempts) {
+            $this->metrics->recordAttempt();
+
             try {
                 $result = $operation();
 
@@ -141,7 +143,6 @@ final class ConnectionRetry implements ConnectionRetryInterface
                 if ($attempt > 0) {
                     $this->metrics->recordSuccess();
                 }
-                $this->metrics->recordAttempt();
 
                 return $result;
             } catch (\AMQPException $exception) {
@@ -249,11 +250,12 @@ final class ConnectionRetry implements ConnectionRetryInterface
      */
     private function executeHalfOpenProbe(callable $operation): mixed
     {
+        $this->metrics->recordAttempt();
+
         try {
             $result = $operation();
 
             $this->circuitBreaker?->recordSuccess();
-            $this->metrics->recordAttempt();
 
             return $result;
         } catch (\AMQPException $exception) {

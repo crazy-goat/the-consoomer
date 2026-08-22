@@ -109,4 +109,43 @@ class RetryMetricsTest extends TestCase
         $this->assertArrayHasKey('circuit_breaker_opens', $array);
         $this->assertArrayHasKey('retry_success_rate', $array);
     }
+
+    /**
+     * Regression test for issue #206: getRetrySuccessRate() must use a
+     * denominator that includes failures, not just successful operations.
+     */
+    public function testMixedSuccessAndFailureSuccessRate(): void
+    {
+        $metrics = new RetryMetrics();
+
+        $metrics->recordAttempt();
+        $metrics->recordSuccess();
+
+        $metrics->recordAttempt();
+        $metrics->recordFailure();
+
+        $this->assertSame(2, $metrics->getTotalAttempts());
+        $this->assertSame(1, $metrics->getSuccessfulRetries());
+        $this->assertSame(1, $metrics->getFailedRetries());
+        $this->assertSame(50.0, $metrics->getRetrySuccessRate());
+    }
+
+    /**
+     * Regression test for issue #206: all-failure sequences must still
+     * contribute to totalAttempts so the denominator is non-zero.
+     */
+    public function testAllFailuresContributeToTotalAttempts(): void
+    {
+        $metrics = new RetryMetrics();
+
+        $metrics->recordAttempt();
+        $metrics->recordAttempt();
+        $metrics->recordAttempt();
+        $metrics->recordFailure();
+
+        $this->assertSame(3, $metrics->getTotalAttempts());
+        $this->assertSame(0, $metrics->getSuccessfulRetries());
+        $this->assertSame(1, $metrics->getFailedRetries());
+        $this->assertSame(0.0, $metrics->getRetrySuccessRate());
+    }
 }
