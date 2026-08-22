@@ -146,6 +146,8 @@ class ConnectionTest extends TestCase
     {
         $channel = $this->createMock(\AMQPChannel::class);
 
+        $this->amqpConnection->method("isConnected")->willReturn(true);
+
         $this->factory
             ->expects($this->once())
             ->method('createChannel')
@@ -182,6 +184,8 @@ class ConnectionTest extends TestCase
     {
         $channel = $this->createMock(\AMQPChannel::class);
 
+        $this->amqpConnection->method("isConnected")->willReturn(true);
+
         // isConnected called on each getChannel when channel is cached
         $channel
             ->expects($this->any())
@@ -214,8 +218,10 @@ class ConnectionTest extends TestCase
             ->with($this->amqpConnection)
             ->willReturnOnConsecutiveCalls($channel, $newChannel);
 
+        // Calls: getChannel:ensureConnected -> isConnected(true), reconnect -> isConnected(true),
+        // second getChannel:ensureConnected -> isConnected(true)
         $this->amqpConnection
-            ->expects($this->once())
+            ->expects($this->exactly(3))
             ->method('isConnected')
             ->willReturn(true);
 
@@ -241,6 +247,8 @@ class ConnectionTest extends TestCase
     {
         $channel = $this->createMock(\AMQPChannel::class);
         $newChannel = $this->createMock(\AMQPChannel::class);
+
+        $this->amqpConnection->method("isConnected")->willReturn(true);
 
         // First channel is disconnected - this triggers recreation
         $channel
@@ -275,7 +283,9 @@ class ConnectionTest extends TestCase
         $channel = $this->createMock(\AMQPChannel::class);
         $newChannel = $this->createMock(\AMQPChannel::class);
 
-        // isConnected is NOT called on first getChannel because channel is null
+        $this->amqpConnection->method("isConnected")->willReturn(true);
+
+        // isConnected is now called once per getChannel via ensureConnected on first getChannel because channel is null
         // New channel is also not checked because cache was manually cleared
         $this->factory
             ->expects($this->exactly(2))
@@ -308,9 +318,9 @@ class ConnectionTest extends TestCase
             ->willReturn($channel);
 
         $this->amqpConnection
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('isConnected')
-            ->willReturn(false);
+            ->willReturnOnConsecutiveCalls(true, false);
 
         $this->amqpConnection
             ->expects($this->once())
@@ -368,8 +378,9 @@ class ConnectionTest extends TestCase
             ->with($this->amqpConnection)
             ->willReturn($channel);
 
+        // Calls: getChannel:ensureConnected -> isConnected(true), close -> isConnected(true)
         $this->amqpConnection
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('isConnected')
             ->willReturn(true);
 
@@ -589,9 +600,9 @@ class ConnectionTest extends TestCase
             ->willReturn($channel);
 
         $this->amqpConnection
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('isConnected')
-            ->willReturn(false);
+            ->willReturnOnConsecutiveCalls(true, false);
 
         $this->amqpConnection
             ->expects($this->once())
@@ -620,18 +631,20 @@ class ConnectionTest extends TestCase
             ->with($this->amqpConnection)
             ->willReturnOnConsecutiveCalls($channel, $newChannel);
 
+        // Calls: getChannel:ensureConnected -> isConnected(false) -> pconnect, reconnect -> isConnected(false) -> pconnect,
+        // second getChannel:ensureConnected -> isConnected(true)
         $this->amqpConnection
-            ->expects($this->once())
+            ->expects($this->exactly(3))
             ->method('isConnected')
-            ->willReturn(false);
+            ->willReturnOnConsecutiveCalls(false, false, true);
 
         $this->amqpConnection
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('pconnect');
 
         $connection = new Connection($this->factory, $this->amqpConnection, true);
 
-        // First call creates the channel
+        // First call creates the channel (triggers lazy pconnect)
         $result1 = $connection->getChannel();
         $this->assertSame($channel, $result1);
 

@@ -28,6 +28,7 @@ final class Connection implements ConnectionInterface
         private readonly AmqpFactoryInterface $factory,
         private readonly \AMQPConnection $amqpConnection,
         private readonly bool $persistent = false,
+        private readonly ?ConnectionRetryInterface $retry = null,
     ) {
         $this->lastActivityTime = time();
     }
@@ -54,12 +55,47 @@ final class Connection implements ConnectionInterface
     }
 
     /**
+     * Ensures the underlying AMQP connection is established.
+     *
+     * Lazy connect for #230: the factory no longer connects eagerly at
+     * construction time. The first operation that needs the connection
+     * (getChannel / isConnected / explicit ensureConnected call) establishes
+     * it, wrapped in the configured retry so a briefly-unavailable broker
+     * no longer fails app boot.
+     *
+     * @throws \AMQPConnectionException When connection fails
+     */
+    public function ensureConnected(): void
+    {
+        if ($this->amqpConnection->isConnected()) {
+            return;
+        }
+
+        $connect = function (): void {
+            if ($this->persistent) {
+                $this->amqpConnection->pconnect();
+            } else {
+                $this->amqpConnection->connect();
+            }
+            $this->lastActivityTime = time();
+        };
+
+        if ($this->retry instanceof ConnectionRetryInterface) {
+            $this->retry->withRetry($connect);
+        } else {
+            $connect();
+        }
+    }
+
+    /**
      * {@inheritdoc}
      *
      * @throws \AMQPConnectionException When connection fails
      */
     public function getChannel(): \AMQPChannel
     {
+        $this->ensureConnected();
+
         if (!$this->channel instanceof \AMQPChannel || !$this->channel->isConnected()) {
             $this->channel = $this->factory->createChannel($this->amqpConnection);
         }

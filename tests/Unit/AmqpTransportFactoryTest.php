@@ -51,8 +51,12 @@ class AmqpTransportFactoryTest extends TestCase
             ->willReturn($connection);
 
         $connection
-            ->expects($this->once())
+            ->expects($this->never())
             ->method('connect');
+
+        $connection
+            ->expects($this->never())
+            ->method('pconnect');
 
         return [$factory, $connection];
     }
@@ -105,8 +109,12 @@ class AmqpTransportFactoryTest extends TestCase
             ->with(5671);
 
         $connection
-            ->expects($this->once())
+            ->expects($this->never())
             ->method('connect');
+
+        $connection
+            ->expects($this->never())
+            ->method('pconnect');
 
         $transport = AmqpTransportFactory::create(
             'amqps-consoomer://guest:guest@localhost/%2f/my_exchange',
@@ -139,8 +147,12 @@ class AmqpTransportFactoryTest extends TestCase
             ->willReturn($connection);
 
         $connection
-            ->expects($this->once())
+            ->expects($this->never())
             ->method('connect');
+
+        $connection
+            ->expects($this->never())
+            ->method('pconnect');
 
         AmqpTransportFactory::create(
             'amqp-consoomer://guest:guest@localhost:5672/%2f/exchange?retry_count=3&retry_delay=100000',
@@ -150,7 +162,7 @@ class AmqpTransportFactoryTest extends TestCase
         );
     }
 
-    public function testCreateTransportWithPersistentCallsPconnect(): void
+    public function testCreateTransportDoesNotConnectEagerly(): void
     {
         $factory = $this->createMock(AmqpFactoryInterface::class);
         $connection = $this->createMock(\AMQPConnection::class);
@@ -159,37 +171,9 @@ class AmqpTransportFactoryTest extends TestCase
             ->expects($this->once())
             ->method('createConnection')
             ->willReturn($connection);
-
-        $connection
-            ->expects($this->once())
-            ->method('pconnect');
 
         $connection
             ->expects($this->never())
-            ->method('connect');
-
-        $transport = AmqpTransportFactory::create(
-            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange',
-            ['queue' => 'test-queue', 'persistent' => true],
-            $this->createMock(SerializerInterface::class),
-            $factory,
-        );
-
-        $this->assertInstanceOf(AmqpTransport::class, $transport);
-    }
-
-    public function testCreateTransportWithoutPersistentCallsConnect(): void
-    {
-        $factory = $this->createMock(AmqpFactoryInterface::class);
-        $connection = $this->createMock(\AMQPConnection::class);
-
-        $factory
-            ->expects($this->once())
-            ->method('createConnection')
-            ->willReturn($connection);
-
-        $connection
-            ->expects($this->once())
             ->method('connect');
 
         $connection
@@ -204,6 +188,109 @@ class AmqpTransportFactoryTest extends TestCase
         );
 
         $this->assertInstanceOf(AmqpTransport::class, $transport);
+    }
+
+    public function testCreateTransportPersistentDoesNotConnectEagerly(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->willReturn($connection);
+
+        $connection
+            ->expects($this->never())
+            ->method('connect');
+
+        $connection
+            ->expects($this->never())
+            ->method('pconnect');
+
+        $transport = AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange',
+            ['queue' => 'test-queue', 'persistent' => true],
+            $this->createMock(SerializerInterface::class),
+            $factory,
+        );
+
+        $this->assertInstanceOf(AmqpTransport::class, $transport);
+    }
+
+    public function testCreateTransportLazyConnectOccursOnFirstUse(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->willReturn($connection);
+
+        $connection->method('isConnected')->willReturnOnConsecutiveCalls(false, true);
+        $factory->method('createChannel')->willReturn($channel);
+        $channel->method('isConnected')->willReturn(true);
+
+        $transport = AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange',
+            ['queue' => 'test-queue'],
+            $this->createMock(SerializerInterface::class),
+            $factory,
+        );
+
+        $connection
+            ->expects($this->once())
+            ->method('connect');
+
+        // Trigger lazy connect via getChannel on the underlying Connection
+        $ref = new \ReflectionClass($transport);
+        $connProp = $ref->getProperty('connection');
+        /** @var \CrazyGoat\TheConsoomer\ConnectionInterface $amqpConnection */
+        $amqpConnection = $connProp->getValue($transport);
+        $amqpConnection->getChannel();
+    }
+
+    public function testCreateTransportLazyConnectWithRetryRetriesOnBrokerDown(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->willReturn($connection);
+
+        // First connect fails (broker down), second succeeds
+        $connection
+            ->expects($this->exactly(2))
+            ->method('connect')
+            ->willReturnOnConsecutiveCalls(
+                $this->throwException(new \AMQPConnectionException('Connection refused')),
+                null,
+            );
+
+        $connection->method('isConnected')->willReturnOnConsecutiveCalls(false, false, true);
+        $factory->method('createChannel')->willReturn($channel);
+        $channel->method('isConnected')->willReturn(true);
+
+        $transport = AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/%2f/exchange?retry=1&retry_count=2&retry_delay=1',
+            ['queue' => 'test-queue'],
+            $this->createMock(SerializerInterface::class),
+            $factory,
+        );
+
+        $ref = new \ReflectionClass($transport);
+        $connProp = $ref->getProperty('connection');
+        /** @var \CrazyGoat\TheConsoomer\ConnectionInterface $amqpConnection */
+        $amqpConnection = $connProp->getValue($transport);
+
+        // Should succeed after one retry
+        $result = $amqpConnection->getChannel();
+        $this->assertSame($channel, $result);
     }
 
     public function testCreateTransportPassesInfrastructureSetupToReceiverAndSender(): void

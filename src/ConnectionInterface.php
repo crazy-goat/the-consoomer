@@ -49,6 +49,16 @@ interface ConnectionInterface
     public function isConnected(): bool;
 
     /**
+     * Ensures the underlying connection is established, connecting lazily if needed.
+     *
+     * The first call that needs the broker (getChannel, etc.) will establish
+     * the connection, wrapped in retry when configured. See #230.
+     *
+     * @throws \AMQPConnectionException When connection fails
+     */
+    public function ensureConnected(): void;
+
+    /**
      * Sets the heartbeat interval.
      *
      * @param int $seconds Heartbeat interval in seconds

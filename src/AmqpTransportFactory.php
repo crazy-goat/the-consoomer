@@ -138,8 +138,13 @@ class AmqpTransportFactory implements TransportFactoryInterface
 
         $persistent = (bool) ($mergedOptions['persistent'] ?? false);
 
-        // Client-side heartbeat tracking for auto-reconnect detection
-        $amqpConnection = new Connection($factory, $connection, $persistent);
+        $retry = self::createRetry($mergedOptions, $logger);
+
+        // Client-side heartbeat tracking for auto-reconnect detection.
+        // The connection is established lazily on first use (via Connection::ensureConnected
+        // → getChannel), wrapped in $retry when configured, so a briefly-unavailable
+        // broker no longer fails app boot (#230).
+        $amqpConnection = new Connection($factory, $connection, $persistent, $retry);
         if (isset($mergedOptions['heartbeat'])) {
             $amqpConnection->setHeartbeat($mergedOptions['heartbeat']);
         }
@@ -147,16 +152,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
             $amqpConnection->setLogger($logger);
         }
 
-        if ($persistent) {
-            $connection->pconnect();
-        } else {
-            $connection->connect();
-        }
-        $amqpConnection->updateActivity();
-
         $setup = new InfrastructureSetup($factory, $amqpConnection, $mergedOptions);
-
-        $retry = self::createRetry($mergedOptions, $logger);
 
         return new AmqpTransport(
             new Receiver($factory, $amqpConnection, $serializer, $mergedOptions, $setup, $retry),
