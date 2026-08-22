@@ -246,7 +246,8 @@ final class ConnectionRetry implements ConnectionRetryInterface
      * @template T
      * @param callable(): T $operation Operation to execute
      * @return T
-     * @throws \AMQPException When AMQP operation fails (breaker is re-opened)
+     * @throws \AMQPException When a transient AMQP operation fails (breaker is re-opened)
+     * @throws \AMQPException When a permanent AMQP failure occurs (circuit state unchanged)
      * @throws UnexpectedOperationException When non-AMQP exception occurs
      */
     private function executeHalfOpenProbe(callable $operation): mixed
@@ -260,6 +261,23 @@ final class ConnectionRetry implements ConnectionRetryInterface
 
             return $result;
         } catch (\AMQPException $exception) {
+            // Issue #355: align with the closed path — a permanent failure
+            // (e.g. missing queue/exchange) is an application-level error,
+            // not broker unhealthiness, so it must neither re-open the
+            // circuit nor count toward it. The state stays HALF_OPEN; the
+            // next operation probes again.
+            if ($this->isPermanentFailure($exception)) {
+                $this->metrics->recordFailure();
+
+                $this->logger?->warning('Permanent AMQP failure during half-open probe, circuit state unchanged', [
+                    'code' => $exception->getCode(),
+                    'type' => $exception::class,
+                    'error' => $exception->getMessage(),
+                ]);
+
+                throw $exception;
+            }
+
             $this->circuitBreaker?->recordFailure();
             $this->metrics->recordFailure();
 
