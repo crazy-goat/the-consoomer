@@ -141,7 +141,9 @@ framework:
 With retry enabled:
 - Connection and channel failures are retried automatically up to `retry_count` times (including the first attempt)
 - Non-AMQP exceptions are not retried
-- Permanent AMQP errors (403, 404, 406) are not retried
+- Resource errors (`AMQPQueueException`, `AMQPExchangeException`) are permanent and not retried;
+  connection/channel errors (`AMQPConnectionException`, `AMQPChannelException`) are always retried.
+  For generic `AMQPException`, reply codes 403/404/406 are treated as permanent.
 - On exhaustion, a `RetryExhaustedException` is thrown with the last failure as previous
 
 ### Publish Reliability
