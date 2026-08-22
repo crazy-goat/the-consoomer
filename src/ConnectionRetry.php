@@ -119,6 +119,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
             if (!$this->circuitBreaker->isAvailable()) {
                 $this->logger?->error('Circuit breaker is open, rejecting operation');
                 $this->metrics->recordCircuitBreakerOpen();
+                $this->metrics->recordFailedOperation();
                 throw new CircuitBreakerOpenException('Circuit breaker is open');
             }
 
@@ -144,10 +145,13 @@ final class ConnectionRetry implements ConnectionRetryInterface
                     $this->metrics->recordSuccess();
                 }
 
+                $this->metrics->recordSuccessfulOperation();
+
                 return $result;
             } catch (\AMQPException $exception) {
                 if ($this->isPermanentFailure($exception)) {
                     $this->metrics->recordFailure();
+                    $this->metrics->recordFailedOperation();
                     $this->logger?->warning('Permanent AMQP failure, not retrying', [
                         'code' => $exception->getCode(),
                         'type' => $exception::class,
@@ -176,11 +180,13 @@ final class ConnectionRetry implements ConnectionRetryInterface
                 $this->logger?->warning('Non-AMQP exception during retry', [
                     'error' => $exception->getMessage(),
                 ]);
+                $this->metrics->recordFailedOperation();
                 throw UnexpectedOperationException::fromPrevious($exception);
             }
         }
 
         $this->metrics->recordFailure();
+        $this->metrics->recordFailedOperation();
 
         if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
             $this->circuitBreaker->recordFailure();
@@ -258,6 +264,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
             $result = $operation();
 
             $this->circuitBreaker?->recordSuccess();
+            $this->metrics->recordSuccessfulOperation();
 
             return $result;
         } catch (\AMQPException $exception) {
@@ -268,6 +275,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
             // next operation probes again.
             if ($this->isPermanentFailure($exception)) {
                 $this->metrics->recordFailure();
+                $this->metrics->recordFailedOperation();
 
                 $this->logger?->warning('Permanent AMQP failure during half-open probe, circuit state unchanged', [
                     'code' => $exception->getCode(),
@@ -280,6 +288,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
 
             $this->circuitBreaker?->recordFailure();
             $this->metrics->recordFailure();
+            $this->metrics->recordFailedOperation();
 
             $this->logger?->warning('Half-open probe failed, circuit re-opening', [
                 'code' => $exception->getCode(),

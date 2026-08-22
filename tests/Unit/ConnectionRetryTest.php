@@ -1007,4 +1007,95 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
         $this->assertSame(CircuitState::CLOSED, $retry->getState(), 'Reaching successThreshold closes the circuit');
     }
+
+    /**
+     * Issue #354: a first-try success must count as a successful operation,
+     * so a healthy workload (everything succeeding on the first try) reports
+     * 100% operation success rate instead of the misleading 0%.
+     */
+    public function testMetricsOperationCounterFirstTrySuccess(): void
+    {
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
+
+        $retry->withRetry(fn(): string => 'success');
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(1, $metrics->getSuccessfulOperations());
+        $this->assertSame(0, $metrics->getFailedOperations());
+        $this->assertSame(100.0, $metrics->getOperationSuccessRate());
+    }
+
+    /**
+     * Issue #354: a permanent failure must count as a failed operation.
+     */
+    public function testMetricsOperationCounterPermanentFailure(): void
+    {
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
+
+        $attempt = 0;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPQueueException('Queue not found');
+            });
+            $this->fail('Expected AMQPQueueException to be thrown');
+        } catch (\AMQPQueueException) {
+            $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
+        }
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(0, $metrics->getSuccessfulOperations());
+        $this->assertSame(1, $metrics->getFailedOperations());
+        $this->assertSame(0.0, $metrics->getOperationSuccessRate());
+    }
+
+    /**
+     * Issue #354: a retry that eventually succeeds is exactly one successful
+     * operation (not two), so the operation rate is 100%.
+     */
+    public function testMetricsOperationCounterRetryThenSuccess(): void
+    {
+        $attempt = 0;
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
+
+        $retry->withRetry(function () use (&$attempt): string {
+            $attempt++;
+            if ($attempt < 2) {
+                throw new \AMQPConnectionException('Connection failed');
+            }
+            return 'success';
+        });
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(1, $metrics->getSuccessfulOperations());
+        $this->assertSame(0, $metrics->getFailedOperations());
+        $this->assertSame(100.0, $metrics->getOperationSuccessRate());
+        $this->assertSame(1, $metrics->getSuccessfulRetries(), 'retry-attempt counters unchanged');
+        $this->assertSame(0, $metrics->getFailedRetries(), 'retry-attempt counters unchanged');
+    }
+
+    /**
+     * Issue #354: exhausted retries count as exactly one failed operation.
+     */
+    public function testMetricsOperationCounterExhaustedRetries(): void
+    {
+        $retry = new ConnectionRetry(maxAttempts: 2, retryDelay: 1000);
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+            $this->fail('Expected RetryExhaustedException to be thrown');
+        } catch (RetryExhaustedException) {
+        }
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(0, $metrics->getSuccessfulOperations());
+        $this->assertSame(1, $metrics->getFailedOperations());
+        $this->assertSame(0.0, $metrics->getOperationSuccessRate());
+    }
 }

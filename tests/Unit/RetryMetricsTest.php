@@ -148,4 +148,54 @@ class RetryMetricsTest extends TestCase
         $this->assertSame(1, $metrics->getFailedRetries());
         $this->assertSame(0.0, $metrics->getRetrySuccessRate());
     }
+
+    public function testOperationCountersRecordSuccessAndFailure(): void
+    {
+        $metrics = new RetryMetrics();
+
+        $metrics->recordAttempt();
+        $metrics->recordSuccessfulOperation();
+
+        $metrics->recordAttempt();
+        $metrics->recordFailedOperation();
+
+        $this->assertSame(1, $metrics->getSuccessfulOperations());
+        $this->assertSame(1, $metrics->getFailedOperations());
+        $this->assertSame(50.0, $metrics->getOperationSuccessRate());
+        $this->assertSame(2, $metrics->getTotalAttempts(), 'Operation counters are independent of attempts');
+    }
+
+    public function testOperationSuccessRateWithNoOperations(): void
+    {
+        $metrics = new RetryMetrics();
+
+        $this->assertSame(0.0, $metrics->getOperationSuccessRate());
+    }
+
+    public function testResetClearsOperationCounters(): void
+    {
+        $metrics = new RetryMetrics();
+
+        $metrics->recordSuccessfulOperation();
+        $metrics->recordFailedOperation();
+
+        $metrics->reset();
+
+        $this->assertSame(0, $metrics->getSuccessfulOperations());
+        $this->assertSame(0, $metrics->getFailedOperations());
+    }
+
+    public function testToArrayIncludesOperationCounters(): void
+    {
+        $metrics = new RetryMetrics();
+
+        $metrics->recordSuccessfulOperation();
+        $metrics->recordFailedOperation();
+
+        $array = $metrics->toArray();
+
+        $this->assertArrayHasKey('successful_operations', $array);
+        $this->assertArrayHasKey('failed_operations', $array);
+        $this->assertArrayHasKey('operation_success_rate', $array);
+    }
 }

@@ -4,6 +4,7 @@
 
 ### Added
 - `E_USER_DEPRECATED` notice emitted when the legacy `amqps://` scheme is parsed and when `DsnParser::validateOptions()` is called, so consumers on the 1.0 removal path get a runtime signal instead of a silent comment-only deprecation (#342)
+- `RetryMetrics` now exposes operation-granularity counters — `recordSuccessfulOperation()`/`recordFailedOperation()`, `getSuccessfulOperations()`/`getFailedOperations()`, and `getOperationSuccessRate()` — counting whole `withRetry()` outcomes instead of only retry attempts. This fixes the misleading success-rate reporting where a healthy workload (every operation succeeding on the first try) reported 0% because `successfulRetries` counted only successful to-retry cases while `failedRetries` counted every failure; existing `successfulRetries`/`failedRetries`/`getRetrySuccessRate()` are unchanged (#354)
 
 ### Fixed
 - `DsnParser::parse()` now refuses reserved query-string keys (`host`, `port`, `user`, `password`, `vhost`, `exchange`) with an `InvalidArgumentException` instead of silently letting them overwrite the values parsed from the DSN authority/path. A DSN such as `amqp-consoomer://guest:guest@realhost/vh/ex?host=evil&password=secret` used to redirect the connection and inject credentials; the authority segment is now authoritative (#207)
