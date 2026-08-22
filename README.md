@@ -126,7 +126,7 @@ For TLS-encrypted connections use the `amqps-consoomer://` scheme (or the legacy
 | `ssl_verify` | Verify the broker's peer certificate | `true` |
 | `allow_insecure_verify` | Programmatic opt-in to allow `ssl_verify=false` (cannot be set from the DSN) | `false` |
 
-> **Pitfall — `ssl_verify` without `ssl_cacert`:** when verification is on (the default) but no CA certificate is pinned, the connection falls back to the **system CA store**. On builds where the system has no trusted CAs the handshake fails, or on some builds it verifies against an empty trust set — both silently. `AmqpFactory::configureSsl()` logs a prominent warning in this case; set `ssl_cacert` explicitly in production to pin the broker's CA.
+> **Pitfall — `ssl_verify` without `ssl_cacert`:** when verification is on (the default) but no CA certificate is pinned, the connection falls back to the **system CA store**. On builds where the system has no trusted CAs the handshake fails, or on some builds it verifies against an empty trust set — both silently. `AmqpFactory::configureSsl()` emits a prominent warning in this case — through the configured logger, or as a PHP `E_USER_WARNING` when no logger is wired (#351); set `ssl_cacert` explicitly in production to pin the broker's CA.
 
 > **Security (#361):** `ssl_verify=false` disables TLS peer-certificate verification, enabling man-in-the-middle / broker impersonation. It is **refused** unless you set `"allow_insecure_verify" => true` in the **programmatic** transport options — it cannot be set from the DSN query string, so a config-file or env-var DSN can never self-authorize the downgrade. Use it only for local development with self-signed certificates.
 

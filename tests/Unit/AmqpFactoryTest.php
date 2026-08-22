@@ -505,4 +505,113 @@ class AmqpFactoryTest extends TestCase
             'allow_insecure_verify' => 'true',
         ]);
     }
+
+    public function testConfigureSslNoCaCertEmitsUserWarningWithoutLogger(): void
+    {
+        // #351: the guard must not depend on logger wiring. Without an injected
+        // logger the signal is an unconditional E_USER_WARNING instead of a
+        // silent no-op.
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(true);
+
+        $warnings = [];
+        set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+            $warnings[] = ['errno' => $errno, 'message' => $errstr];
+
+            return true;
+        });
+
+        try {
+            $factory->configureSsl($connection, [
+                'ssl' => true,
+                'ssl_verify' => true,
+            ]);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertCount(1, $warnings);
+        $this->assertSame(E_USER_WARNING, $warnings[0]['errno']);
+        $this->assertStringContainsString('no CA certificate (ssl_cacert) is configured', $warnings[0]['message']);
+    }
+
+    public function testConfigureSslNoCaCertWithLoggerLogsWarningOnly(): void
+    {
+        // Exactly one channel: with a logger injected the PSR-3 warning fires and
+        // no E_USER_WARNING is emitted (no duplicate signal).
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(true);
+
+        $warnings = [];
+        set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+            $warnings[] = ['errno' => $errno, 'message' => $errstr];
+
+            return true;
+        });
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('no CA certificate'));
+
+        try {
+            $factory->configureSsl($connection, [
+                'ssl' => true,
+                'ssl_verify' => true,
+            ], $logger);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([], $warnings);
+    }
+
+    public function testConfigureSslWithCaCertPinnedEmitsNoWarningWithoutLogger(): void
+    {
+        // A pinned CA cert means the system-store fallback never happens — no
+        // signal of any kind, logger or not.
+        $factory = new AmqpFactory();
+
+        $tempDir = sys_get_temp_dir();
+        $caFile = tempnam($tempDir, 'ca');
+
+        try {
+            $connection = $this->createMock(\AMQPConnection::class);
+            $connection->expects($this->once())
+                ->method('setCaCert')
+                ->with($caFile);
+            $connection->expects($this->once())
+                ->method('setVerify')
+                ->with(true);
+
+            $warnings = [];
+            set_error_handler(static function (int $errno, string $errstr) use (&$warnings): bool {
+                $warnings[] = ['errno' => $errno, 'message' => $errstr];
+
+                return true;
+            });
+
+            try {
+                $factory->configureSsl($connection, [
+                    'ssl' => true,
+                    'ssl_verify' => true,
+                    'ssl_cacert' => $caFile,
+                ]);
+            } finally {
+                restore_error_handler();
+            }
+
+            $this->assertSame([], $warnings);
+        } finally {
+            @unlink($caFile);
+        }
+    }
 }
