@@ -111,6 +111,7 @@ With heartbeat enabled:
 - Connection is checked before each operation (send, get, ack, reject)
 - If stale (elapsed > 2 * heartbeat), automatic reconnect occurs
 - Activity is updated after each operation
+- In-flight messages delivered before a reconnect are not acknowledged on the new channel — their delivery tag belongs to the dead channel, so ack/reject become no-ops and the broker redelivers them on the next get()
 
 ### Retry Configuration
 

@@ -185,4 +185,20 @@ class AmqpReceivedStampTest extends TestCase
 
         $this->assertSame(5, $stamp->getPriority());
     }
+
+    public function testGetChannelGenerationDefaultsToZero(): void
+    {
+        $envelope = $this->createMock(\AMQPEnvelope::class);
+        $stamp = new AmqpReceivedStamp($envelope, 'test_queue');
+
+        $this->assertSame(0, $stamp->getChannelGeneration());
+    }
+
+    public function testGetChannelGenerationReturnsProvidedValue(): void
+    {
+        $envelope = $this->createMock(\AMQPEnvelope::class);
+        $stamp = new AmqpReceivedStamp($envelope, 'test_queue', 7);
+
+        $this->assertSame(7, $stamp->getChannelGeneration());
+    }
 }
