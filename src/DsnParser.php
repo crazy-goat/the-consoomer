@@ -92,6 +92,10 @@ final class DsnParser
             // @deprecated Legacy amqps:// scheme — no longer claimed by AmqpTransportFactory::supports().
             // Only reachable when DsnParser is used independently of AmqpTransport.
             // Will be removed in 1.0. Use amqps-consoomer:// instead.
+            trigger_error(
+                'The amqps:// scheme is deprecated and will be removed in 1.0. Use amqps-consoomer:// instead.',
+                \E_USER_DEPRECATED,
+            );
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
@@ -332,6 +336,11 @@ final class DsnParser
      */
     public function validateOptions(array $options): bool
     {
+        trigger_error(
+            'DsnParser::validateOptions() is deprecated and will be removed in 1.0. '
+            . 'Validation now happens automatically in parse().',
+            \E_USER_DEPRECATED,
+        );
         try {
             $this->validateParsedOptions($options);
             return true;
