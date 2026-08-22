@@ -413,15 +413,14 @@ class AmqpFactoryTest extends TestCase
     public function testConfigureSslRefusesVerifyFalseWithoutOptIn(): void
     {
         // #361: ssl_verify=false must not silently disable peer verification. Without
-        // the explicit allow_insecure_verify opt-in, configureSsl() must throw — even
-        // when a logger is injected (the old warning-only path was a no-op without one).
+        // the explicit allow_insecure_verify opt-in, configureSsl() must throw BEFORE
+        // mutating the connection (setVerify is never called) — even when a logger is
+        // injected (the old warning-only path was a no-op without one).
         $factory = new AmqpFactory();
 
         $connection = $this->createMock(\AMQPConnection::class);
-        $connection->expects($this->once())
-            ->method('setVerify')
-            ->with(false);
-        // setVerify is called before the guard, so it runs once; the throw happens after.
+        $connection->expects($this->never())
+            ->method('setVerify');
 
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
 
