@@ -994,6 +994,12 @@ class ConnectionRetryTest extends TestCase
         // State unchanged: still HALF_OPEN, not bounced back to OPEN.
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'Permanent probe failure must leave the circuit in HALF_OPEN');
 
+        // Issue #339 semantics hold on the half-open path too: the permanent
+        // failure counted as one attempt + one failed retry.
+        $metrics = $retry->getMetrics();
+        $this->assertSame(3, $metrics->getTotalAttempts(), '2 attempts on exhaustion + 1 half-open probe attempt');
+        $this->assertSame(2, $metrics->getFailedRetries(), 'One failure from exhaustion + one from the permanent probe failure');
+
         // The next operation probes again; success closes it after threshold.
         $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'One success below successThreshold keeps HALF_OPEN');
