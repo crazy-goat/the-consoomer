@@ -306,6 +306,16 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
     private function ackMessage(\AMQPEnvelope $message, string $queueName): void
     {
+        // The queue must still be in the map — if it was wiped by a genuine
+        // connection/channel failure (AMQPException) or a reconnect, the
+        // channel that carried this delivery tag is gone and the broker will
+        // redeliver the message on the next get(). Buffering the ack would
+        // either fatal on flush (missing queue) or silently send a stale
+        // delivery tag on the new channel — a protocol error (#220/#272).
+        if (!isset($this->queues[$queueName])) {
+            return;
+        }
+
         $this->lastUnacked[$queueName] = $message;
         $this->unacked[$queueName] = ($this->unacked[$queueName] ?? 0) + 1;
 

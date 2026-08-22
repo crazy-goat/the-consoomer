@@ -1921,4 +1921,92 @@ class ReceiverTest extends TestCase
 
         $receiver->get();
     }
+
+    public function testMultiQueueIdleSecondQueueDoesNotFatalOnAckFlush(): void
+    {
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []]];
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('{"data":"test"}');
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(5);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->willReturn(new Envelope(new \stdClass()));
+
+        // queue_a yields a message; queue_b throws an idle timeout — the
+        // expected outcome of polling a queue with no messages ready (#271).
+        $queueA
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+        $queueA->method('getConsumerTag')->willReturn('tag_a');
+        $queueA->expects($this->once())->method('ack')->with(5, AMQP_MULTIPLE);
+
+        $queueB
+            ->expects($this->once())
+            ->method('consume')
+            ->willThrowException(new \AMQPQueueException('Consumer timeout exceeded'));
+        $queueB->method('getConsumerTag')->willReturn('tag_b');
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        // get() returns queue_a's message and breaks early.
+        $result = $receiver->get();
+        $this->assertCount(1, $result);
+
+        $stamp = $result[0]->last(AmqpReceivedStamp::class);
+        $this->assertSame('queue_a', $stamp->getQueueName());
+
+        // The worker acknowledges the returned envelope — must not fatal.
+        $receiver->ack($result[0]);
+
+        // close() flushes the buffered ack — must not raise Error and must not
+        // lose the ack silently (the queue map survived the idle timeout).
+        $receiver->close();
+    }
+
+    public function testAckDoesNotBufferWhenQueueMissingFromMap(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(42);
+        $envelope = new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, 'test_queue')]);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        // Simulate the queue map being wiped (e.g. a genuine AMQPException
+        // cleared it between get() and ack()) — the delivery tag belongs to
+        // the dead channel, so ackMessage() must refuse to buffer it.
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, []);
+
+        $this->queue->expects($this->never())->method('ack');
+
+        $receiver->ack($envelope);
+
+        // No tracking state must have been written.
+        $unackedProperty = $reflection->getProperty('unacked');
+        $lastUnackedProperty = $reflection->getProperty('lastUnacked');
+        $this->assertSame([], $unackedProperty->getValue($receiver));
+        $this->assertSame([], $lastUnackedProperty->getValue($receiver));
+    }
 }
