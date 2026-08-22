@@ -79,7 +79,10 @@ class AmqpFactory implements AmqpFactoryInterface
      *
      * When SSL is enabled and verification is on but no CA certificate is configured
      * (no `ssl_cacert`), the connection falls back to the system CA store. A prominent
-     * warning is logged via {@see hasCaCertConfigured()}; pin a CA cert in production.
+     * warning is emitted via {@see hasCaCertConfigured()} — logged through the injected
+     * PSR-3 logger when one is wired, otherwise raised as an unconditional
+     * `E_USER_WARNING` so the signal never depends on logger wiring (#351).
+     * Pin a CA cert in production.
      */
     public function configureSsl(\AMQPConnection $connection, array $options, ?LoggerInterface $logger = null): void
     {
@@ -161,11 +164,19 @@ class AmqpFactory implements AmqpFactoryInterface
             // handshake fails silently or verifies against an empty trust set.
             // Drive this from hasCaCertConfigured() so it is no longer dead code. See #231.
             if (!$this->hasCaCertConfigured($options)) {
-                $logger?->warning(
-                    'SSL peer certificate verification is enabled but no CA certificate (ssl_cacert) is configured. '
+                $warning = 'SSL peer certificate verification is enabled but no CA certificate (ssl_cacert) is configured. '
                     . 'The connection relies on the system CA store: if the system has no trusted CAs the handshake '
-                    . 'will fail, or on some builds verify against an empty trust set. Set ssl_cacert explicitly to pin a CA.',
-                );
+                    . 'will fail, or on some builds verify against an empty trust set. Set ssl_cacert explicitly to pin a CA.';
+                // Security (#351): `$logger?->warning(...)` was a complete no-op when no
+                // logger was injected — the unsafe configuration passed with zero signal,
+                // which is the silent-failure mode #231 was filed to fix. Exactly one
+                // channel fires: PSR-3 warning when a logger is wired, otherwise an
+                // unconditional E_USER_WARNING, so the signal never depends on logger wiring.
+                if (!$logger instanceof \Psr\Log\LoggerInterface) {
+                    @trigger_error($warning, E_USER_WARNING);
+                } else {
+                    $logger->warning($warning);
+                }
             }
         } else {
             // Opt-in acknowledged (checked before setVerify above) — log at warning

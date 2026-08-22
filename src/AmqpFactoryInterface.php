@@ -61,6 +61,10 @@ interface AmqpFactoryInterface
     /**
      * Checks if CA certificate is configured.
      *
+     * Used by {@see \CrazyGoat\TheConsoomer\AmqpFactory::configureSsl()} to guard the
+     * verify-on-but-no-CA-pinned case; the resulting warning is emitted even when no
+     * logger is injected (#351).
+     *
      * @param array{ssl_cacert?: string} $options SSL configuration options
      * @return bool True if CA certificate is configured
      */
