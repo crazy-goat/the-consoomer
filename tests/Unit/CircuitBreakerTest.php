@@ -138,6 +138,60 @@ class CircuitBreakerTest extends TestCase
         $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
     }
 
+    public function testSporadicFailuresDoNotTripCircuit(): void
+    {
+        // A healthy service with sporadic transient failures must not open the
+        // breaker: each success clears the consecutive-failure streak, so only
+        // consecutive (not cumulative) failures count toward the threshold.
+        $cb = new CircuitBreaker(
+            threshold: 10,
+            timeout: 60,
+            clock: new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 0.0),
+        );
+
+        for ($i = 0; $i < 100; $i++) {
+            $cb->recordFailure();
+            $cb->recordSuccess();
+        }
+
+        $this->assertSame(CircuitState::CLOSED, $cb->getState());
+        $this->assertTrue($cb->isAvailable());
+    }
+
+    public function testConsecutiveFailuresTripCircuit(): void
+    {
+        $cb = new CircuitBreaker(
+            threshold: 10,
+            timeout: 60,
+            clock: new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 0.0),
+        );
+
+        for ($i = 0; $i < 9; $i++) {
+            $cb->recordFailure();
+        }
+        $this->assertSame(CircuitState::CLOSED, $cb->getState());
+
+        $cb->recordFailure();
+        $this->assertSame(CircuitState::OPEN, $cb->getState());
+    }
+
+    public function testSuccessResetsConsecutiveFailureStreak(): void
+    {
+        $cb = new CircuitBreaker(
+            threshold: 3,
+            timeout: 60,
+            clock: new FrozenClock(new \DateTimeImmutable('2025-01-15 10:00:00'), 0.0),
+        );
+
+        $cb->recordFailure();
+        $cb->recordFailure();
+        $cb->recordSuccess(); // clears the streak
+        $cb->recordFailure();
+        $cb->recordFailure();
+
+        $this->assertSame(CircuitState::CLOSED, $cb->getState());
+    }
+
     private function getSuccessThreshold(CircuitBreaker $cb): int
     {
         $reflection = new \ReflectionClass($cb);

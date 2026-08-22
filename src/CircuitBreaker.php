@@ -50,16 +50,25 @@ final class CircuitBreaker
      * Records a successful operation.
      *
      * In HALF_OPEN state, transitions to CLOSED after reaching success threshold.
+     * In CLOSED state, a success clears the consecutive-failure streak so the
+     * breaker opens only on consecutive (not cumulative) failures.
      */
     public function recordSuccess(): void
     {
-        $this->successCount++;
-
-        if ($this->state === CircuitState::HALF_OPEN && $this->successCount >= $this->successThreshold) {
-            $this->transitionTo(CircuitState::CLOSED);
-            $this->failureCount = 0;
-            $this->successCount = 0;
+        if ($this->state === CircuitState::HALF_OPEN) {
+            $this->successCount++;
+            if ($this->successCount >= $this->successThreshold) {
+                $this->transitionTo(CircuitState::CLOSED);
+                $this->failureCount = 0;
+                $this->successCount = 0;
+            }
+            return;
         }
+
+        // CLOSED: a success clears the consecutive-failure streak and the
+        // (never otherwise reset) success counter, keeping both bounded.
+        $this->failureCount = 0;
+        $this->successCount = 0;
     }
 
     /**
