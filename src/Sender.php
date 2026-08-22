@@ -19,6 +19,13 @@ final class Sender implements SenderInterface
     private ?\AMQPExchange $exchange = null;
     private ?\AMQPExchange $delayExchange = null;
     private readonly float $confirmTimeout;
+    /**
+     * Channel already placed in confirm mode via confirmSelect().
+     * confirm.select is a per-channel setting that persists for the channel
+     * lifetime, so it must be sent only once per channel — not on every
+     * publish (#307). Reset to null whenever the channel is lost (reconnect).
+     */
+    private ?\AMQPChannel $confirmedChannel = null;
     /** @var array<string, true> */
     private array $delayQueuesCreated = [];
     private readonly string $delayExchangeName;
@@ -81,8 +88,35 @@ final class Sender implements SenderInterface
             $this->exchange = null;
             $this->delayExchange = null;
             $this->delayQueuesCreated = [];
+            $this->confirmedChannel = null;
             $this->connect();
         }
+    }
+
+    /**
+     * Returns the current channel in publisher-confirm mode.
+     *
+     * `confirm.select` is a per-channel setting that persists for the channel
+     * lifetime, so it is sent only once per channel — not on every publish
+     * (#307). On reconnect `ensureConnected()` resets `$confirmedChannel`, so
+     * the next call re-enables confirms on the fresh channel.
+     *
+     * @return \AMQPChannel|null The channel in confirm mode, or null when
+     *                           confirms are disabled (confirm_timeout <= 0)
+     */
+    private function confirmChannel(): ?\AMQPChannel
+    {
+        if ($this->confirmTimeout <= 0.0) {
+            return null;
+        }
+
+        $channel = $this->connection->getChannel();
+        if ($this->confirmedChannel !== $channel) {
+            $channel->confirmSelect();
+            $this->confirmedChannel = $channel;
+        }
+
+        return $channel;
     }
 
     /**
@@ -169,10 +203,7 @@ final class Sender implements SenderInterface
             };
         } else {
             $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
-                if ($this->confirmTimeout > 0.0) {
-                    $channel = $this->connection->getChannel();
-                    $channel->confirmSelect();
-                }
+                $channel = $this->confirmChannel();
 
                 $this->exchange->publish(
                     $data['body'],
@@ -181,9 +212,7 @@ final class Sender implements SenderInterface
                     $attributes,
                 );
 
-                if (isset($channel)) {
-                    $channel->waitForConfirm($this->confirmTimeout);
-                }
+                $channel?->waitForConfirm($this->confirmTimeout);
             };
         }
 
@@ -229,10 +258,7 @@ final class Sender implements SenderInterface
             $this->delayQueuesCreated[$delayQueueName] = true;
         }
 
-        if ($this->confirmTimeout > 0.0) {
-            $channel = $this->connection->getChannel();
-            $channel->confirmSelect();
-        }
+        $channel = $this->confirmChannel();
 
         $this->delayExchange->publish(
             $data['body'],
@@ -241,9 +267,7 @@ final class Sender implements SenderInterface
             $attributes,
         );
 
-        if (isset($channel)) {
-            $channel->waitForConfirm($this->confirmTimeout);
-        }
+        $channel?->waitForConfirm($this->confirmTimeout);
     }
 
     private function getDelayQueueName(string $routingKey, int $delay): string

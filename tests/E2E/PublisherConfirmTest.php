@@ -112,4 +112,45 @@ class PublisherConfirmTest extends TestCase
         $this->assertSame('No confirm message', $receivedEnvelope->getMessage()->content);
         $transport->ack($receivedEnvelope);
     }
+
+    /**
+     * confirm.select is a per-channel setting; it must be sent only once per
+     * channel, not on every publish (#307). This E2E test publishes a batch of
+     * messages with confirms enabled on one transport (one channel) and
+     * asserts every message is delivered — proving the single confirmSelect
+     * is sufficient for the whole batch.
+     */
+    public function testPublishBatchWithConfirmsDeliversAllMessages(): void
+    {
+        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'confirm_timeout' => 5,
+            'timeout' => 0.1,
+            'auto_setup' => false,
+        ]);
+
+        $serializer = new PhpSerializer();
+        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
+
+        $count = 100;
+        $sent = [];
+        for ($i = 0; $i < $count; ++$i) {
+            $msg = new \stdClass();
+            $msg->content = 'batch-' . $i;
+            $envelope = new Envelope($msg);
+            $transport->send($envelope);
+            $sent[] = 'batch-' . $i;
+        }
+
+        $received = [];
+        $deadline = microtime(true) + 10;
+        while (count($received) < $count && microtime(true) < $deadline) {
+            foreach ($transport->get() as $envelope) {
+                $received[] = $envelope->getMessage()->content;
+                $transport->ack($envelope);
+            }
+        }
+
+        $this->assertCount($count, $received);
+        $this->assertSame($sent, $received);
+    }
 }

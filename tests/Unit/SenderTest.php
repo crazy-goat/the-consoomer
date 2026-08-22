@@ -620,6 +620,91 @@ class SenderTest extends TestCase
         $sender->send($envelope);
     }
 
+    public function testConfirmSelectCalledOncePerChannelAcrossMultiplePublishes(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 5];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        // confirm.select is a per-channel setting; it must be sent only once
+        // even across many publishes on the same channel (#307).
+        $channel->expects($this->once())->method('confirmSelect');
+        $channel->expects($this->exactly(3))->method('waitForConfirm')->with(5.0);
+
+        $this->connection
+            ->method('getChannel')
+            ->willReturn($channel);
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->connection
+            ->expects($this->exactly(3))
+            ->method('updateActivity');
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->exactly(3))
+            ->method('publish');
+
+        $sender = $this->createSender($options);
+        $sender->send(new Envelope(new \stdClass()));
+        $sender->send(new Envelope(new \stdClass()));
+        $sender->send(new Envelope(new \stdClass()));
+    }
+
+    public function testConfirmSelectReEnabledAfterReconnect(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 5];
+
+        $channelBefore = $this->createMock(\AMQPChannel::class);
+        $channelBefore->expects($this->once())->method('confirmSelect');
+        $channelBefore->expects($this->once())->method('waitForConfirm')->with(5.0);
+
+        $channelAfter = $this->createMock(\AMQPChannel::class);
+        $channelAfter->expects($this->once())->method('confirmSelect');
+        $channelAfter->expects($this->once())->method('waitForConfirm')->with(5.0);
+
+        // getChannel is called: 1) confirmChannel() in 1st send,
+        // 2) connect() during reconnect, 3) confirmChannel() in 2nd send.
+        $this->connection
+            ->method('getChannel')
+            ->willReturnOnConsecutiveCalls($channelBefore, $channelAfter, $channelAfter);
+
+        // checkHeartbeat: 1st send → false, 2nd send → true (reconnect).
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false, true);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        // After reconnect, connect() recreates the exchange via the factory.
+        $this->factory
+            ->method('createExchange')
+            ->willReturn($this->exchange);
+
+        $this->connection
+            ->expects($this->exactly(2))
+            ->method('updateActivity');
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange
+            ->expects($this->exactly(2))
+            ->method('publish');
+
+        $sender = $this->createSender($options);
+        $sender->send(new Envelope(new \stdClass()));
+        $sender->send(new Envelope(new \stdClass()));
+    }
+
     public function testSendWithoutConfirmTimeoutDoesNotEnableConfirms(): void
     {
         $options = ['exchange' => 'test_exchange'];
@@ -690,12 +775,14 @@ class SenderTest extends TestCase
         $sender->send($envelope);
     }
 
-    public function testSendWithConfirmTimeoutAndRetryCallsConfirmEachAttempt(): void
+    public function testSendWithConfirmTimeoutAndRetryCallsConfirmSelectOnceButWaitsForEachPublish(): void
     {
         $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 5, 'retry' => true];
 
         $channel = $this->createMock(\AMQPChannel::class);
-        $channel->expects($this->exactly(2))->method('confirmSelect');
+        // confirm.select is a per-channel setting; it is sent only once even
+        // when retry re-invokes the publish callback on the same channel (#307).
+        $channel->expects($this->once())->method('confirmSelect');
         $channel->expects($this->exactly(2))->method('waitForConfirm')->with(5.0);
 
         $this->connection
