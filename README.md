@@ -11,11 +11,11 @@ Symfony Messenger AMQP transport that uses `consume` instead of `get`.
 
 **the-consoomer** is a custom AMQP transport for the Symfony Messenger component. Unlike the default AMQP transport, which relies on the `get` method for message retrieval, this package uses the `consume` method to process messages from an AMQP broker. This can result in different performance characteristics and is more suitable for certain messaging patterns.
 
-**Requirements:** PHP 8.4+ with the `amqp` extension installed.
+**Requirements:** PHP 8.4+ with the `amqp` extension (PECL `amqp`) **`^2.0`** installed.
 
-| Symfony Messenger | Minimum PHP |
-|-------------------|-------------|
-| 6.4 / 7.4 / 8.0   | 8.4         |
+| Symfony Messenger | Minimum PHP | Minimum `amqp` extension |
+|-------------------|-------------|--------------------------|
+| 6.4 / 7.4 / 8.0   | 8.4         | 2.0                      |
 
 - **Language**: PHP
 - **Framework**: Symfony
