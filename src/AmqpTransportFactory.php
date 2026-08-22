@@ -94,6 +94,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     ssl_key?: string,
      *     ssl_cacert?: string,
      *     ssl_verify?: bool,
+     *     allow_insecure_verify?: bool,
      *     exchange_flags?: int,
      *     queue_flags?: int,
      *     persistent?: bool,

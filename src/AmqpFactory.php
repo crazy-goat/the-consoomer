@@ -70,10 +70,12 @@ class AmqpFactory implements AmqpFactoryInterface
      *     ssl_key?: string,
      *     ssl_cacert?: string,
      *     ssl_verify?: bool,
+     *     allow_insecure_verify?: bool,
      * } $options SSL configuration options
      * @param LoggerInterface|null $logger    Logger instance
      * @throws \InvalidArgumentException When SSL certificate files are not found, not readable,
-     *                                  or ssl_verify is not a valid boolean value
+     *                                  ssl_verify is not a valid boolean value, or ssl_verify=false
+     *                                  is set without the allow_insecure_verify opt-in (#361)
      *
      * When SSL is enabled and verification is on but no CA certificate is configured
      * (no `ssl_cacert`), the connection falls back to the system CA store. A prominent
@@ -129,6 +131,28 @@ class AmqpFactory implements AmqpFactoryInterface
             }
             $sslVerify = $normalized;
         }
+        // Security (#361): disabling peer-certificate verification allows MITM /
+        // impersonation. Previously this only logged a warning — and if no logger
+        // was injected (#351) the warning was a silent no-op, so ssl_verify=false
+        // disabled verification with zero signal. Now refuse it unless an explicit
+        // programmatic opt-in `allow_insecure_verify=true` is present. The opt-in
+        // cannot come from the DSN query string (DsnParser refuses it), so a
+        // config-file / env-var DSN can never self-authorize the downgrade.
+        // Checked before setVerify() so a refused config never mutates the connection.
+        if (!$sslVerify) {
+            $allowInsecure = filter_var(
+                $options['allow_insecure_verify'] ?? false,
+                FILTER_VALIDATE_BOOL,
+            );
+            if ($allowInsecure !== true) {
+                throw new \InvalidArgumentException(
+                    'Refusing ssl_verify=false without an explicit opt-in. Disabling TLS peer-certificate '
+                    . 'verification allows man-in-the-middle / broker impersonation. Set '
+                    . '"allow_insecure_verify" => true in the programmatic transport options to acknowledge '
+                    . 'this risk. This flag cannot be set from the DSN query string.',
+                );
+            }
+        }
         $connection->setVerify($sslVerify);
         if ($sslVerify) {
             $logger?->debug('SSL verify: enabled');
@@ -144,9 +168,9 @@ class AmqpFactory implements AmqpFactoryInterface
                 );
             }
         } else {
-            // Peer certificate validation is off — this is a security-sensitive downgrade.
-            // Log at warning (not debug) so it is visible by default. See #286, #231.
-            $logger?->warning('SSL peer certificate verification is disabled — the broker identity is not checked, allowing MITM / impersonation.');
+            // Opt-in acknowledged (checked before setVerify above) — log at warning
+            // so it is visible by default.
+            $logger?->warning('SSL peer certificate verification is disabled (allow_insecure_verify opt-in) — the broker identity is not checked, allowing MITM / impersonation.');
         }
 
         $logger?->info('SSL handshake configured successfully');

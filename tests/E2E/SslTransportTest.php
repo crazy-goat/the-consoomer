@@ -94,7 +94,7 @@ class SslTransportTest extends SslTestCase
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create(
             $dsn,
-            ['queue' => self::QUEUE_NAME],
+            ['queue' => self::QUEUE_NAME, 'allow_insecure_verify' => true],
             $serializer,
         );
 

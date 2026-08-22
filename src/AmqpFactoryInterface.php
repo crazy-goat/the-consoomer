@@ -49,10 +49,12 @@ interface AmqpFactoryInterface
      *     ssl_key?: string,
      *     ssl_cacert?: string,
      *     ssl_verify?: bool,
+     *     allow_insecure_verify?: bool,
      * } $options SSL configuration options
      * @param LoggerInterface|null $logger Logger instance
      * @throws \InvalidArgumentException When SSL certificate files are not found, not readable,
-     *                                  or ssl_verify is not a valid boolean value
+     *                                  or ssl_verify is not a valid boolean value, or ssl_verify=false
+     *                                  is set without the allow_insecure_verify opt-in (#361)
      */
     public function configureSsl(\AMQPConnection $connection, array $options, ?LoggerInterface $logger = null): void;
 

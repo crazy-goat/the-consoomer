@@ -135,13 +135,26 @@ final class DsnParser
                     ),
                 );
             }
+            // Security (#361): `ssl_verify=false` disables TLS peer-certificate
+            // verification, enabling MITM / impersonation. configureSsl() now refuses
+            // it unless an explicit programmatic opt-in `allow_insecure_verify=true`
+            // is present in $options. That opt-in must NOT be settable from the DSN
+            // query string — a DSN is often env-var / config-file content, and letting
+            // it self-authorize a TLS downgrade defeats the guard. Refuse it here so
+            // misconfiguration surfaces instead of silently bypassing the check.
+            if ((string) $key === 'allow_insecure_verify') {
+                throw new \InvalidArgumentException(
+                    'DSN query parameter "allow_insecure_verify" is not permitted in the DSN. '
+                    . 'It is a programmatic opt-in for ssl_verify=false and must be set in code, not the connection string.',
+                );
+            }
             // Security: a TLS scheme (amqps-consoomer://, amqps://) enables ssl=true.
             // The query string must not be able to silently downgrade that to cleartext
             // by overriding `ssl=false` — that would send broker credentials (SASL PLAIN)
             // and all message traffic over an unencrypted channel with no error or log.
-            // See #286. `ssl_verify` is allowed through (configureSsl logs a warning
-            // when it resolves to false, #231), and explicit `ssl=true` on a plaintext
-            // scheme remains an opt-in upgrade.
+            // See #286. `ssl_verify` is allowed through; configureSsl() refuses it
+            // resolving to false unless allow_insecure_verify is set (#361), and
+            // explicit `ssl=true` on a plaintext scheme remains an opt-in upgrade.
             if ($tlsScheme && (string) $key === 'ssl') {
                 $normalized = $this->normalizeValue($value);
                 if (in_array($normalized, [false, 0, '0', 'false'], true)) {
