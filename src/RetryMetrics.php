@@ -18,7 +18,8 @@ final class RetryMetrics
     private int $circuitBreakerOpens = 0;
 
     /**
-     * Records a retry attempt.
+     * Records a single retry attempt (one invocation of the operation,
+     * regardless of whether it succeeds or fails).
      */
     public function recordAttempt(): void
     {
@@ -82,7 +83,12 @@ final class RetryMetrics
     }
 
     /**
-     * Returns retry success rate as percentage.
+     * Returns retry success rate as percentage of total attempts.
+     *
+     * The denominator is the total number of operation attempts (both
+     * successful and failed), so the rate reflects the true proportion of
+     * attempts that were successful retries. Returns 0.0 when no attempts
+     * have been recorded.
      *
      * @return float Success rate (0-100)
      */
