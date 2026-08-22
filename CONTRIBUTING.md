@@ -164,3 +164,65 @@ git branch -d feature/issue-<NUMBER>-<slug>
 | `composer lint` | Run phpstan, rector, php-cs-fixer |
 | `composer phpstan` | Run static analysis |
 | `composer rector` | Run automatic code fixes |
+## Subagent Workflow
+
+**Prefer implementing and reviewing changes with subagents.** Each subagent
+runs in its own context window and returns only its conclusion, which keeps the
+main conversation focused on decisions rather than raw file contents.
+
+### Code Write
+
+Use an `implementer` subagent for the actual implementation of an issue:
+
+```
+subagent(task="Implement issue #205: <description>. Files: src/CircuitBreaker.php, tests/Unit/CircuitBreakerTest.php. Return the list of changed files and a summary of the change.")
+```
+
+- State what to do, which paths to read/write, and what to return.
+- The subagent sees ONLY the task text — no conversation history. Include
+  everything it needs (issue description, file paths, acceptance criteria).
+- For parallel work, pass `tasks=[...]` in one call. Parallel subagents that
+  write shared paths must lock them (`lock`/`unlock`); prefer
+  `isolation="worktree"` so each writes in its own checkout.
+
+### Code Review
+
+After implementation (before or alongside CI), use a `reviewer` subagent to
+review the diff and report **defects that change behavior**:
+
+```
+subagent(agent="reviewer", task="Review the diff on branch feature/issue-205-... against main. Report behavior-changing defects only: logic bugs, missing edge cases, broken contracts. Do not report style. Return findings as a numbered list with file:line and severity.")
+```
+
+- The reviewer returns **findings worth fixing**, not prose.
+- Fix real defects in a new commit, push, wait for CI again.
+
+## Post-Merge Finding Review
+
+**After the PR is squash-merged and the branch is cleaned up, run a finding
+review on the merged change.** The goal is to catch issues the PR introduced or
+left open that are worth tracking as future work.
+
+```
+subagent(agent="reviewer", task="Review the squash-merged change for issue #205 (commit <sha> on main). Report any findings worth tracking as future GitHub issues: regressions, incomplete fixes, new risks, follow-up gaps. Return each finding with a title, severity, and file:line.")
+```
+
+For each finding the reviewer reports:
+
+1. **Check for an existing issue first** — never create duplicates:
+
+```bash
+gh issue list --search "<finding keywords>" --json number,title,state --jq '.[] | "#\(.number): \(.title) [\(.state)]"'
+```
+
+2. **If no existing issue covers it**, create one:
+
+```bash
+gh issue create --title "<finding title>" --body "<finding body with severity, location, impact, and a link back to the merged PR>" --milestone <lowest-open-milestone-number>
+```
+
+3. If an existing open issue already covers the finding, leave a comment
+   pointing to the merged PR rather than creating a new issue.
+
+This keeps the issue tracker honest: new findings become tracked work, and
+duplicates are avoided by checking before creating.
