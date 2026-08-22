@@ -23,6 +23,14 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     private array $messages = [];
     /** @var array<string, \AMQPQueue> */
     private array $queues = [];
+    /**
+     * Monotonically incremented on every reconnect. Delivery tags are scoped
+     * per channel, so an envelope whose {@see AmqpReceivedStamp} carries an
+     * older generation belongs to a dead channel and must never be acked or
+     * rejected on the current one — the broker re-queues its message and
+     * reissues a fresh tag on the new channel (#220).
+     */
+    private int $channelGeneration = 0;
 
     /**
      * @param array{
@@ -89,6 +97,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->queues = [];
         $this->unacked = [];
         $this->pendingAcks = [];
+        // Bump the generation so any in-flight envelope (carrying an old tag
+        // from the dead channel) is recognised as stale by ack()/reject() and
+        // becomes a no-op instead of a protocol error on the new channel (#220).
+        ++$this->channelGeneration;
 
         return true;
     }
@@ -134,7 +146,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                     }
                     throw $e;
                 }
-                $this->messages[] = $envelope->with(new AmqpReceivedStamp($message, $queueName));
+                $this->messages[] = $envelope->with(new AmqpReceivedStamp(
+                    $message,
+                    $queueName,
+                    $this->channelGeneration,
+                ));
 
                 return count($this->messages) < $this->batchSize;
             };
@@ -163,6 +179,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                 $this->queues = [];
                 $this->unacked = [];
                 $this->pendingAcks = [];
+                // Bump the generation: the channel that issued the buffered
+                // delivery tags is gone, so any in-flight envelope carrying
+                // them must become a no-op for ack/reject on the next channel.
+                ++$this->channelGeneration;
 
                 if ($this->messages !== []) {
                     break;
@@ -198,6 +218,14 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             throw new MissingStampException('No AMQP received stamp');
         }
 
+        // The envelope may predate a reconnect that happened between get() and
+        // ack() (e.g. a later get() rebuilt the queue map on a new channel).
+        // Its delivery tag belongs to the dead channel — acking it on the
+        // current channel is a protocol error; the broker redelivers it (#220).
+        if ($stamp->getChannelGeneration() !== $this->channelGeneration) {
+            return;
+        }
+
         $operation = function () use ($stamp): void {
             $this->ackMessage($stamp->getAmqpEnvelope(), $stamp->getQueueName());
             $this->connection->updateActivity();
@@ -231,6 +259,14 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $stamp = $envelope->last(AmqpReceivedStamp::class);
         if (!$stamp instanceof AmqpReceivedStamp) {
             throw new MissingStampException('No AMQP received stamp');
+        }
+
+        // The envelope may predate a reconnect that happened between get() and
+        // reject() (e.g. a later get() rebuilt the queue map on a new channel).
+        // Its delivery tag belongs to the dead channel — rejecting it on the
+        // current channel is a protocol error; the broker redelivers it (#220).
+        if ($stamp->getChannelGeneration() !== $this->channelGeneration) {
+            return;
         }
 
         $operation = function () use ($stamp): void {

@@ -12,12 +12,19 @@ use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
  * Used by the receiver to track the original AMQP message
  * for acknowledgment and rejection operations.
  * Provides access to message metadata: timestamp, app_id, message_id, headers.
+ *
+ * The channel generation identifies which {@see Receiver} channel instance
+ * delivered the message. Delivery tags are scoped per channel, so an ack/reject
+ * is only valid against the channel of the same generation — after a reconnect
+ * the broker re-queues unacked messages and issues fresh tags on the new
+ * channel, so any ack/reject carrying a stale generation is a no-op (#220).
  */
 final readonly class AmqpReceivedStamp implements NonSendableStampInterface
 {
     public function __construct(
         private \AMQPEnvelope $envelope,
         private string $queueName,
+        private int $channelGeneration = 0,
     ) {
     }
 
@@ -29,6 +36,18 @@ final readonly class AmqpReceivedStamp implements NonSendableStampInterface
     public function getQueueName(): string
     {
         return $this->queueName;
+    }
+
+    /**
+     * Returns the channel generation that delivered this message.
+     *
+     * Delivery tags are only valid on the channel of the same generation; a
+     * mismatch against {@see Receiver}'s current generation means the tag
+     * belongs to a dead channel and the ack/reject must be a no-op.
+     */
+    public function getChannelGeneration(): int
+    {
+        return $this->channelGeneration;
     }
 
     public function getMessageId(): ?string

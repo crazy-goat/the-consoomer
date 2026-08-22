@@ -2147,14 +2147,196 @@ class ReceiverTest extends TestCase
     }
 
     /**
-     * Helper: build an Envelope with an AmqpReceivedStamp carrying the given
-     * delivery tag and queue name.
+     * Reproduces #220: an envelope delivered on a previous channel generation
+     * must never be acked after a reconnect — even when a later get() rebuilt
+     * the queue map on the new channel. The stale delivery tag belongs to the
+     * dead channel; acking it on the current one is a protocol error
+     * (PRECONDITION_FAILED / unknown-delivery-tag) and would crash the worker.
      */
-    private function makeEnvelope(int $deliveryTag, string $queueName): Envelope
+    public function testAckIsNoOpForStaleGenerationEvenWhenQueueMapRebuilt(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        // Simulate a reconnect having bumped the generation from 0 to 1, and a
+        // subsequent get() having rebuilt the queue map (so queues[test_queue]
+        // exists again on the NEW channel). An envelope stamped with generation
+        // 0 carries a delivery tag from the dead channel.
+        $reflection = new \ReflectionClass(Receiver::class);
+        $reflection->getProperty('channelGeneration')->setValue($receiver, 1);
+
+        $envelope = $this->makeEnvelope(123, 'test_queue', 0);
+
+        // No ack must be sent — the tag is from the old channel.
+        $this->queue->expects($this->never())->method('ack');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $receiver->ack($envelope);
+    }
+
+    /**
+     * The symmetric case for reject(): a stale-generation envelope must be a
+     * no-op even when the queue map is populated on the new channel (#220).
+     */
+    public function testRejectIsNoOpForStaleGenerationEvenWhenQueueMapRebuilt(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $reflection->getProperty('channelGeneration')->setValue($receiver, 1);
+
+        $envelope = $this->makeEnvelope(456, 'test_queue', 0);
+
+        $this->queue->expects($this->never())->method('reject');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $receiver->reject($envelope);
+    }
+
+    /**
+     * A reconnect inside ack() must bump the generation so any LATER ack of an
+     * envelope from the old generation is a no-op (#220).
+     */
+    public function testReconnectInsideAckBumpsGeneration(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        // Heartbeat stale → ensureConnected() reconnects and bumps generation.
+        $this->connection->method('checkHeartbeat')->willReturn(true);
+        $this->connection->expects($this->once())->method('reconnect');
+        $this->setup->expects($this->once())->method('resetSetup');
+        $this->queue->expects($this->never())->method('ack');
+
+        $receiver->ack($this->makeEnvelope(7, 'test_queue', 0));
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $this->assertSame(1, $reflection->getProperty('channelGeneration')->getValue($receiver));
+    }
+
+    /**
+     * A genuine AMQPException in get() tears down the channel and must bump the
+     * generation, so in-flight envelopes carried out of that get() (partial
+     * batch) cannot be acked on the next channel (#220).
+     */
+    public function testAmqpExceptionInGetBumpsGeneration(): void
+    {
+        $options = ['queue' => 'test_queue', 'batch_size' => 5];
+
+        $this->serializer->method('decode')->willReturn(new Envelope(new \stdClass()));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['test_queue' => $this->queue]);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $amqpEnvelope = new \AMQPEnvelope();
+                    $refl = new \ReflectionClass(\AMQPEnvelope::class);
+                    $refl->getProperty('body')->setValue($amqpEnvelope, '{"data":"test"}');
+                    $callback($amqpEnvelope);
+                }
+                throw new \AMQPException('Channel lost');
+            });
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('clearChannelCache');
+
+        $result = $receiver->get();
+        $this->assertCount(1, $result);
+
+        // Generation bumped to 1 — the delivered envelope is stamped 0 and must
+        // be a no-op to ack on the next channel.
+        $this->assertSame(1, $reflection->getProperty('channelGeneration')->getValue($receiver));
+
+        $stamp = $result[0]->last(AmqpReceivedStamp::class);
+        $this->assertSame(0, $stamp->getChannelGeneration());
+
+        // Rebuild the queue map (as a later get() would) and confirm the stale
+        // envelope is still a no-op.
+        $queuesProperty->setValue($receiver, ['test_queue' => $this->queue]);
+        $this->queue->expects($this->never())->method('ack');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $receiver->ack($result[0]);
+    }
+
+    /**
+     * Fresh-generation envelopes on the current channel are acked normally —
+     * the generation guard must not suppress legitimate acks (#220).
+     */
+    public function testAckSucceedsForCurrentGeneration(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $reflection->getProperty('channelGeneration')->setValue($receiver, 2);
+
+        $this->queue->expects($this->once())->method('ack')->with(9, AMQP_MULTIPLE);
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $receiver->ack($this->makeEnvelope(9, 'test_queue', 2));
+    }
+
+    /**
+     * The consume callback must stamp every delivered envelope with the current
+     * channel generation, so ack/reject can detect staleness after a reconnect.
+     */
+    public function testGetStampsEnvelopesWithCurrentGeneration(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $this->serializer->method('decode')->willReturn(new Envelope(new \stdClass()));
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['test_queue' => $this->queue]);
+        // Pretend one reconnect already happened.
+        $reflection->getProperty('channelGeneration')->setValue($receiver, 3);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $amqpEnvelope = new \AMQPEnvelope();
+                    $refl = new \ReflectionClass(\AMQPEnvelope::class);
+                    $refl->getProperty('body')->setValue($amqpEnvelope, '{"data":"test"}');
+                    $callback($amqpEnvelope);
+                }
+            });
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $result = $receiver->get();
+
+        $this->assertCount(1, $result);
+        $stamp = $result[0]->last(AmqpReceivedStamp::class);
+        $this->assertSame(3, $stamp->getChannelGeneration());
+    }
+
+    /**
+     * Helper: build an Envelope with an AmqpReceivedStamp carrying the given
+     * delivery tag and queue name (and optional channel generation).
+     */
+    private function makeEnvelope(int $deliveryTag, string $queueName, int $channelGeneration = 0): Envelope
     {
         $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
         $amqpEnvelope->method('getDeliveryTag')->willReturn($deliveryTag);
 
-        return new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, $queueName)]);
+        return new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, $queueName, $channelGeneration)]);
     }
 }
