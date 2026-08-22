@@ -680,7 +680,7 @@ class ConnectionRetryTest extends TestCase
         }
 
         $this->assertSame(1, $attempt, 'Permanent failure code in HALF_OPEN must execute exactly once');
-        $this->assertSame(CircuitState::OPEN, $retry->getState());
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'Permanent failure must not re-open the circuit (#355)');
     }
 
     public function testHalfOpenProbeSuccessAdvancesToClosedAfterThreshold(): void
@@ -930,7 +930,60 @@ class ConnectionRetryTest extends TestCase
         $retry->isCircuitOpen();
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
-        // Half-open probe hits a permanent failure: 1 attempt, 1 failed retry.
+        // Half-open probe hits a transient failure: 1 attempt, 1 failed retry.
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed again');
+            });
+        } catch (\AMQPConnectionException) {
+        }
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(CircuitState::OPEN, $retry->getState(), 'Transient probe failure must re-open the circuit');
+        $this->assertSame(3, $metrics->getTotalAttempts(), '2 attempts on exhaustion + 1 half-open probe attempt');
+        $this->assertSame(0, $metrics->getSuccessfulRetries());
+        $this->assertSame(2, $metrics->getFailedRetries(), 'One failure from exhaustion + one from half-open transient failure');
+    }
+
+    /**
+     * Regression test for issue #355: a permanent failure during a half-open
+     * probe must NOT re-open the circuit. The closed path never counts
+     * permanent failures toward the breaker (a missing queue is an
+     * application error, not broker unhealthiness); the half-open probe now
+     * matches: the exception propagates and metrics record a failed retry,
+     * but the circuit state is left unchanged (HALF_OPEN).
+     */
+    public function testHalfOpenPermanentFailureLeavesCircuitInHalfOpen(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 2,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 60,
+            retryCircuitBreakerSuccessThreshold: 2,
+            clock: $clock,
+        );
+
+        // Transient failure exhausts retries and opens the circuit.
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $this->assertTrue($retry->isCircuitOpen());
+
+        $clock->advance(61);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        // Half-open probe hits a permanent failure.
         try {
             $retry->withRetry(function (): void {
                 throw new \AMQPQueueException('Queue not found');
@@ -938,11 +991,20 @@ class ConnectionRetryTest extends TestCase
         } catch (\AMQPQueueException) {
         }
 
-        $metrics = $retry->getMetrics();
+        // State unchanged: still HALF_OPEN, not bounced back to OPEN.
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'Permanent probe failure must leave the circuit in HALF_OPEN');
 
-        $this->assertSame(CircuitState::OPEN, $retry->getState(), 'Permanent probe failure must re-open the circuit');
+        // Issue #339 semantics hold on the half-open path too: the permanent
+        // failure counted as one attempt + one failed retry.
+        $metrics = $retry->getMetrics();
         $this->assertSame(3, $metrics->getTotalAttempts(), '2 attempts on exhaustion + 1 half-open probe attempt');
-        $this->assertSame(0, $metrics->getSuccessfulRetries());
-        $this->assertSame(2, $metrics->getFailedRetries(), 'One failure from exhaustion + one from half-open permanent failure');
+        $this->assertSame(2, $metrics->getFailedRetries(), 'One failure from exhaustion + one from the permanent probe failure');
+
+        // The next operation probes again; success closes it after threshold.
+        $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'One success below successThreshold keeps HALF_OPEN');
+
+        $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
+        $this->assertSame(CircuitState::CLOSED, $retry->getState(), 'Reaching successThreshold closes the circuit');
     }
 }
