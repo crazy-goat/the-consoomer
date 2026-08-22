@@ -109,6 +109,7 @@ class AmqpFactoryTest extends TestCase
         $factory->configureSsl($connection, [
             'ssl' => true,
             'ssl_verify' => false,
+            'allow_insecure_verify' => true,
         ]);
     }
 
@@ -173,6 +174,7 @@ class AmqpFactoryTest extends TestCase
         $factory->configureSsl($connection, [
             'ssl' => true,
             'ssl_verify' => 'false',
+            'allow_insecure_verify' => true,
         ]);
     }
 
@@ -203,6 +205,7 @@ class AmqpFactoryTest extends TestCase
         $factory->configureSsl($connection, [
             'ssl' => true,
             'ssl_verify' => 0,
+            'allow_insecure_verify' => true,
         ]);
     }
 
@@ -265,6 +268,7 @@ class AmqpFactoryTest extends TestCase
         $factory->configureSsl($connection, [
             'ssl' => true,
             'ssl_verify' => '0',
+            'allow_insecure_verify' => true,
         ]);
     }
 
@@ -298,6 +302,7 @@ class AmqpFactoryTest extends TestCase
             $factory->configureSsl($connection, [
                 'ssl' => true,
                 'ssl_verify' => $value,
+                'allow_insecure_verify' => true,
             ]);
         }
     }
@@ -323,6 +328,7 @@ class AmqpFactoryTest extends TestCase
         $factory->configureSsl($connection, [
             'ssl' => true,
             'ssl_verify' => false,
+            'allow_insecure_verify' => true,
         ], $logger);
     }
 
@@ -402,5 +408,102 @@ class AmqpFactoryTest extends TestCase
         $factory->configureSsl($connection, [
             'ssl' => true,
         ], $logger);
+    }
+
+    public function testConfigureSslRefusesVerifyFalseWithoutOptIn(): void
+    {
+        // #361: ssl_verify=false must not silently disable peer verification. Without
+        // the explicit allow_insecure_verify opt-in, configureSsl() must throw — even
+        // when a logger is injected (the old warning-only path was a no-op without one).
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(false);
+        // setVerify is called before the guard, so it runs once; the throw happens after.
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Refusing ssl_verify=false without an explicit opt-in');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+        ], $logger);
+    }
+
+    public function testConfigureSslRefusesVerifyFalseWithoutOptInAndNoLogger(): void
+    {
+        // #351 + #361: without a logger the old warning was a silent no-op. Now the
+        // throw fires regardless of logger presence.
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Refusing ssl_verify=false without an explicit opt-in');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+        ]);
+    }
+
+    public function testConfigureSslAcceptsVerifyFalseWithOptIn(): void
+    {
+        // Explicit programmatic opt-in acknowledges the risk and allows ssl_verify=false.
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(false);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('allow_insecure_verify opt-in'));
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+            'allow_insecure_verify' => true,
+        ], $logger);
+    }
+
+    public function testConfigureSslRefusesVerifyFalseWithOptInFalse(): void
+    {
+        // allow_insecure_verify=false (explicit) must not grant permission.
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Refusing ssl_verify=false without an explicit opt-in');
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+            'allow_insecure_verify' => false,
+        ]);
+    }
+
+    public function testConfigureSslAcceptsVerifyFalseWithStringOptInTrue(): void
+    {
+        // String "true" normalizes via FILTER_VALIDATE_BOOL, matching the ssl_verify pattern.
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(false);
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
+            'ssl_verify' => false,
+            'allow_insecure_verify' => 'true',
+        ]);
     }
 }

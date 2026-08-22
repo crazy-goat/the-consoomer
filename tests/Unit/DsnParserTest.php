@@ -636,4 +636,24 @@ class DsnParserTest extends TestCase
         $this->assertSame('realhost', $result['host']);
         $this->assertSame(60, $result['heartbeat']);
     }
+
+    public function testDsnRefusesAllowInsecureVerifyInQuery(): void
+    {
+        // #361: allow_insecure_verify is a programmatic opt-in for ssl_verify=false.
+        // It must NOT be settable from the DSN query string — a DSN is config-file /
+        // env-var content and must not self-authorize a TLS verification downgrade.
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('allow_insecure_verify');
+        $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl_verify=false&allow_insecure_verify=true');
+    }
+
+    public function testDsnRefusesAllowInsecureVerifyEvenWithoutSslVerify(): void
+    {
+        // The guard fires on the key alone, regardless of other params.
+        $parser = new DsnParser();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('allow_insecure_verify');
+        $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?allow_insecure_verify=true');
+    }
 }
