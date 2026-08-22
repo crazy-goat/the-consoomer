@@ -106,6 +106,7 @@
 ## [v0.2.0] - 2026-04-22
 
 ### Added
+- `AmqpTransport` now implements `SetupableTransportInterface` - enables `bin/console messenger:setup-transports` command (#112)
 - `AmqpReceivedStamp` - new stamp for received messages with queue name and metadata accessors (#25)
   - Provides `getQueueName()`, `getAmqpEnvelope()` methods
   - Convenience getters for envelope attributes: `getMessageId()`, `getTimestamp()`, `getAppId()`, `getHeaders()`, `getCorrelationId()`, `getReplyTo()`, `getContentType()`, `getDeliveryMode()`, `getPriority()`
@@ -152,14 +153,6 @@
 - Strengthened `CONTRIBUTING.md` rules on issue selection, CI wait, and merge policy (#171)
 - Added contributing workflow guide (#168)
 
-## [v0.1.0] - 2026-04-20
-
-### Added
-- `AmqpTransport` now implements `SetupableTransportInterface` - enables `bin/console messenger:setup-transports` command
-
-### Changed
-- `AmqpTransport` constructor now requires `InfrastructureSetup` parameter (BC break for direct instantiation)
-
-## [v0.1] - 2024-XX-XX
+## [v0.1] - 2026-04-07
 
 Initial release
