@@ -75,6 +75,7 @@ Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=tes
 | `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | 1 |
 | `timeout` | Consumer timeout in seconds | 0.1 |
 | `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
+| `confirm_timeout` | Publisher confirms timeout in seconds (0 = disabled). See [Publish Reliability](#publish-reliability) | 0 |
 | `routing_key` | **Consumer-side**: binding key used when declaring/binding the queue | `''` |
 | `default_publish_routing_key` | **Sender-side**: default routing key used when publishing messages | `''` |
 
@@ -141,6 +142,35 @@ With retry enabled:
 - Non-AMQP exceptions are not retried
 - Permanent AMQP errors (403, 404, 406) are not retried
 - On exhaustion, a `RetryExhaustedException` is thrown with the last failure as previous
+
+### Publish Reliability
+
+> **Warning: without `confirm_timeout`, publishes are fire-and-forget.**
+> `AMQPExchange::publish()` writes to the socket buffer and returns immediately.
+> If the broker is down, the exchange is missing, or the topology was lost after
+> a restart, `send()` still reports success and the message is silently lost.
+> The retry mechanism is inert on the send path without an error signal.
+
+**Enable publisher confirms** (`confirm_timeout > 0`) for reliable publishing:
+
+```yaml
+framework:
+    messenger:
+        transports:
+            consoomer:
+                dsn: 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&confirm_timeout=5&retry=1'
+```
+
+With `confirm_timeout` enabled:
+- The sender calls `confirmSelect()` on the channel (once per channel, cached) and `waitForConfirm()` after each publish
+- The broker acknowledges each publish; a 404 (missing exchange) or nack surfaces as an `AMQPException`
+- Combined with `retry=1`, transient failures are retried automatically
+
+With `retry=1` enabled (regardless of confirms):
+- The sender checks `isConnected()` before each publish attempt and reconnects if the broker is down, giving the retry wrapper an error signal to act on
+
+With `auto_setup=true` (default):
+- Topology (exchange, queues, bindings) is re-declared after a reconnect — `Sender::ensureConnected()` resets the setup flag so `auto_setup` is not a false promise after a broker restart or topology loss
 
 ## Testing
 

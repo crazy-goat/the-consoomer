@@ -64,6 +64,11 @@ class ReadmeDsnRegressionTest extends TestCase
                 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&retry=1&retry_count=3&retry_delay=500000&retry_backoff=1&retry_jitter=1&retry_circuit_breaker=1',
                 'messages',
             ],
+            // README.md "Publish Reliability" section
+            'README publish reliability snippet' => [
+                'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&confirm_timeout=5&retry=1',
+                'messages',
+            ],
         ];
     }
 
@@ -115,5 +120,18 @@ class ReadmeDsnRegressionTest extends TestCase
         $this->assertSame(1, $result['retry_backoff']);
         $this->assertSame(1, $result['retry_jitter']);
         $this->assertSame(1, $result['retry_circuit_breaker']);
+    }
+
+    /**
+     * The publish-reliability snippet must carry confirm_timeout through.
+     */
+    public function testPublishReliabilitySnippetParsesConfirmTimeout(): void
+    {
+        $result = $this->parser->parse(
+            'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&confirm_timeout=5&retry=1',
+        );
+
+        $this->assertSame(5, $result['confirm_timeout']);
+        $this->assertSame(1, $result['retry']);
     }
 }
