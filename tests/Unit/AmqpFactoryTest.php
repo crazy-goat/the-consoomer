@@ -330,6 +330,41 @@ class AmqpFactoryTest extends TestCase
     {
         $factory = new AmqpFactory();
 
+        $tempDir = sys_get_temp_dir();
+        $caFile = tempnam($tempDir, 'ca');
+
+        try {
+            $connection = $this->createMock(\AMQPConnection::class);
+            $connection->expects($this->once())
+                ->method('setCaCert')
+                ->with($caFile);
+            $connection->expects($this->once())
+                ->method('setVerify')
+                ->with(true);
+
+            // With a CA cert pinned there are two debug calls (cacert + verify enabled)
+            // and no warning. Assert on the absence of warning; the debug "SSL verify:
+            // enabled" line is covered by testConfigureSslLogsWarningWhenVerifyEnabledButNoCaCert.
+            $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+            $logger->expects($this->atLeastOnce())
+                ->method('debug');
+            $logger->expects($this->never())
+                ->method('warning');
+
+            $factory->configureSsl($connection, [
+                'ssl' => true,
+                'ssl_verify' => true,
+                'ssl_cacert' => $caFile,
+            ], $logger);
+        } finally {
+            @unlink($caFile);
+        }
+    }
+
+    public function testConfigureSslLogsWarningWhenVerifyEnabledButNoCaCert(): void
+    {
+        $factory = new AmqpFactory();
+
         $connection = $this->createMock(\AMQPConnection::class);
         $connection->expects($this->once())
             ->method('setVerify')
@@ -337,14 +372,35 @@ class AmqpFactoryTest extends TestCase
 
         $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
         $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('no CA certificate'));
+        $logger->expects($this->once())
             ->method('debug')
             ->with('SSL verify: enabled');
-        $logger->expects($this->never())
-            ->method('warning');
 
         $factory->configureSsl($connection, [
             'ssl' => true,
             'ssl_verify' => true,
+        ], $logger);
+    }
+
+    public function testConfigureSslVerifyDefaultNoCaCertLogsWarning(): void
+    {
+        // ssl_verify defaults to true when unset; with no CA cert the guard fires.
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->expects($this->once())
+            ->method('setVerify')
+            ->with(true);
+
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->expects($this->once())
+            ->method('warning')
+            ->with($this->stringContains('no CA certificate'));
+
+        $factory->configureSsl($connection, [
+            'ssl' => true,
         ], $logger);
     }
 }

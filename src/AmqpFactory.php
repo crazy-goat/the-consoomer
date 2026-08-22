@@ -74,6 +74,10 @@ class AmqpFactory implements AmqpFactoryInterface
      * @param LoggerInterface|null $logger    Logger instance
      * @throws \InvalidArgumentException When SSL certificate files are not found, not readable,
      *                                  or ssl_verify is not a valid boolean value
+     *
+     * When SSL is enabled and verification is on but no CA certificate is configured
+     * (no `ssl_cacert`), the connection falls back to the system CA store. A prominent
+     * warning is logged via {@see hasCaCertConfigured()}; pin a CA cert in production.
      */
     public function configureSsl(\AMQPConnection $connection, array $options, ?LoggerInterface $logger = null): void
     {
@@ -128,6 +132,17 @@ class AmqpFactory implements AmqpFactoryInterface
         $connection->setVerify($sslVerify);
         if ($sslVerify) {
             $logger?->debug('SSL verify: enabled');
+            // Guard for the "verify on but no CA pinned" case. ext-amqp/rabbitmq-c
+            // then falls back to the system CA store; on builds without one the
+            // handshake fails silently or verifies against an empty trust set.
+            // Drive this from hasCaCertConfigured() so it is no longer dead code. See #231.
+            if (!$this->hasCaCertConfigured($options)) {
+                $logger?->warning(
+                    'SSL peer certificate verification is enabled but no CA certificate (ssl_cacert) is configured. '
+                    . 'The connection relies on the system CA store: if the system has no trusted CAs the handshake '
+                    . 'will fail, or on some builds verify against an empty trust set. Set ssl_cacert explicitly to pin a CA.',
+                );
+            }
         } else {
             // Peer certificate validation is off — this is a security-sensitive downgrade.
             // Log at warning (not debug) so it is visible by default. See #286, #231.
@@ -140,8 +155,10 @@ class AmqpFactory implements AmqpFactoryInterface
     /**
      * {@inheritdoc}
      *
+     * Used by {@see configureSsl()} to guard the verify-on-but-no-CA-pinned case.
+     *
      * @param array{ssl_cacert?: string} $options SSL configuration options
-     * @return bool True if CA certificate is configured
+     * @return bool True if a CA certificate is configured
      */
     public function hasCaCertConfigured(array $options): bool
     {
