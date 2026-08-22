@@ -225,7 +225,23 @@ class DsnParserTest extends TestCase
     public function testParsesLegacyAmqpsScheme(): void
     {
         $parser = new DsnParser();
-        $result = $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange');
+
+        $caught = null;
+        set_error_handler(static function (int $errno, string $errstr) use (&$caught): bool {
+            if ($errno === \E_USER_DEPRECATED) {
+                $caught = $errstr;
+                return true;
+            }
+            return false;
+        });
+
+        try {
+            $result = $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange');
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame('The amqps:// scheme is deprecated and will be removed in 1.0. Use amqps-consoomer:// instead.', $caught);
 
         $this->assertSame('localhost', $result['host']);
         $this->assertSame(5671, $result['port']);
@@ -443,7 +459,15 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('Refusing to disable TLS via "?ssl=false"');
-        $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange?ssl=false');
+
+        // Suppress the E_USER_DEPRECATED emitted for the legacy amqps:// scheme —
+        // this test targets the security guard, not the deprecation notice (#342).
+        set_error_handler(static fn(int $errno): bool => $errno === \E_USER_DEPRECATED);
+        try {
+            $parser->parse('amqps://guest:guest@localhost/%2f/my_exchange?ssl=false');
+        } finally {
+            restore_error_handler();
+        }
     }
 
     public function testPlaintextSchemeAllowsSslTrueAsOptInUpgrade(): void
@@ -467,7 +491,7 @@ class DsnParserTest extends TestCase
     public function testValidateOptionsReturnsTrueForValidOptions(): void
     {
         $parser = new DsnParser();
-        $this->assertTrue($parser->validateOptions([
+        $this->assertTrue($this->validateOptionsSuppressed($parser, [
             'host' => 'localhost',
             'port' => 5672,
             'user' => 'guest',
@@ -480,7 +504,7 @@ class DsnParserTest extends TestCase
     public function testValidateOptionsReturnsFalseForInvalidOptions(): void
     {
         $parser = new DsnParser();
-        $this->assertFalse($parser->validateOptions([
+        $this->assertFalse($this->validateOptionsSuppressed($parser, [
             'host' => 'localhost',
             'port' => 5672,
             'user' => 'guest',
@@ -493,7 +517,7 @@ class DsnParserTest extends TestCase
     public function testValidateOptionsReturnsFalseForInvalidExchangeType(): void
     {
         $parser = new DsnParser();
-        $this->assertFalse($parser->validateOptions([
+        $this->assertFalse($this->validateOptionsSuppressed($parser, [
             'host' => 'localhost',
             'port' => 5672,
             'user' => 'guest',
@@ -507,7 +531,7 @@ class DsnParserTest extends TestCase
     public function testValidateOptionsReturnsTrueForValidExchangeType(): void
     {
         $parser = new DsnParser();
-        $this->assertTrue($parser->validateOptions([
+        $this->assertTrue($this->validateOptionsSuppressed($parser, [
             'host' => 'localhost',
             'port' => 5672,
             'user' => 'guest',
@@ -516,5 +540,52 @@ class DsnParserTest extends TestCase
             'exchange' => 'my_exchange',
             'exchange_type' => 'fanout',
         ]));
+    }
+
+    /**
+     * Calls validateOptions() while suppressing the E_USER_DEPRECATED
+     * notice it emits (#342). Use this in tests that check the validation
+     * result, not the deprecation itself.
+     *
+     * @param array<string, mixed> $options
+     */
+    private function validateOptionsSuppressed(DsnParser $parser, array $options): bool
+    {
+        set_error_handler(static fn(int $errno): bool => $errno === \E_USER_DEPRECATED);
+        try {
+            return $parser->validateOptions($options);
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    public function testValidateOptionsEmitsDeprecation(): void
+    {
+        $parser = new DsnParser();
+
+        $caught = null;
+        set_error_handler(static function (int $errno, string $errstr) use (&$caught): bool {
+            if ($errno === \E_USER_DEPRECATED) {
+                $caught = $errstr;
+                return true;
+            }
+            return false;
+        });
+
+        try {
+            $result = $parser->validateOptions([
+                'host' => 'localhost',
+                'port' => 5672,
+                'user' => 'guest',
+                'password' => 'guest',
+                'vhost' => '/',
+                'exchange' => 'my_exchange',
+            ]);
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame('DsnParser::validateOptions() is deprecated and will be removed in 1.0. Validation now happens automatically in parse().', $caught);
+        $this->assertTrue($result);
     }
 }
