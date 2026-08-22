@@ -463,4 +463,30 @@ class DsnParserTest extends TestCase
         // on empty($options['ssl'])), but it must not be refused — only the TLS scheme is locked.
         $this->assertFalse($result['ssl']);
     }
+
+    public function testValidateOptionsReturnsTrueForValidOptions(): void
+    {
+        $parser = new DsnParser();
+        $this->assertTrue($parser->validateOptions([
+            'host' => 'localhost',
+            'port' => 5672,
+            'user' => 'guest',
+            'password' => 'guest',
+            'vhost' => '/',
+            'exchange' => 'my_exchange',
+        ]));
+    }
+
+    public function testValidateOptionsReturnsFalseForInvalidOptions(): void
+    {
+        $parser = new DsnParser();
+        $this->assertFalse($parser->validateOptions([
+            'host' => 'localhost',
+            'port' => 5672,
+            'user' => 'guest',
+            'password' => 'guest',
+            'vhost' => '/',
+            'exchange' => '',
+        ]));
+    }
 }
