@@ -147,6 +147,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
                 return $result;
             } catch (\AMQPException $exception) {
                 if ($this->isPermanentFailure($exception)) {
+                    $this->metrics->recordFailure();
                     $this->logger?->warning('Permanent AMQP failure, not retrying', [
                         'code' => $exception->getCode(),
                         'type' => $exception::class,

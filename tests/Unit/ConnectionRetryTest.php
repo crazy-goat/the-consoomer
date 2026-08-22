@@ -862,4 +862,87 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(1, $metrics->getFailedRetries());
         $this->assertSame(25.0, $metrics->getRetrySuccessRate(), '1 successful retry / 4 total attempts');
     }
+
+    /**
+     * Regression test for issue #339: a permanent failure rethrown from the
+     * retry loop must still count as a failed retry. recordAttempt() already
+     * fired at the loop top, so without recordFailure() totalAttempts would
+     * grow while neither successfulRetries nor failedRetries accounts for it.
+     */
+    public function testMetricsPermanentFailureRecordsFailedRetry(): void
+    {
+        $attempt = 0;
+        $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
+
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPQueueException('Queue not found');
+            });
+            $this->fail('Expected AMQPQueueException to be thrown');
+        } catch (\AMQPQueueException) {
+            $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
+        }
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(1, $metrics->getTotalAttempts());
+        $this->assertSame(0, $metrics->getSuccessfulRetries());
+        $this->assertSame(1, $metrics->getFailedRetries(), 'Permanent failure must count as a failed retry');
+    }
+
+    /**
+     * Regression test for issue #339: the same permanent failure must count
+     * as a failed retry on both code paths — closed (retry loop) and half-open
+     * (probe). The half-open path always recorded it; this asserts the closed
+     * path now matches after the first operation opened the circuit.
+     * Half-open is reached the way existing tests in this file do: FrozenClock
+     * injection plus advance() past the breaker timeout, then an explicit
+     * availability check flips OPEN to HALF_OPEN.
+     */
+    public function testMetricsHalfOpenPermanentFailureMatchesClosedPath(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 2,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 60,
+            retryCircuitBreakerSuccessThreshold: 2,
+            clock: $clock,
+        );
+
+        // Transient failure exhausts retries and opens the circuit:
+        // 2 attempts recorded, 1 failed retry.
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $this->assertTrue($retry->isCircuitOpen());
+
+        $clock->advance(61);
+
+        $retry->isCircuitOpen();
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        // Half-open probe hits a permanent failure: 1 attempt, 1 failed retry.
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPQueueException('Queue not found');
+            });
+        } catch (\AMQPQueueException) {
+        }
+
+        $metrics = $retry->getMetrics();
+
+        $this->assertSame(CircuitState::OPEN, $retry->getState(), 'Permanent probe failure must re-open the circuit');
+        $this->assertSame(3, $metrics->getTotalAttempts(), '2 attempts on exhaustion + 1 half-open probe attempt');
+        $this->assertSame(0, $metrics->getSuccessfulRetries());
+        $this->assertSame(2, $metrics->getFailedRetries(), 'One failure from exhaustion + one from half-open permanent failure');
+    }
 }
