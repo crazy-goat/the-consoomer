@@ -8,6 +8,7 @@
 ### Fixed
 - `RetryMetrics::recordAttempt()` now fires on every retry loop iteration (both success and failure paths) instead of only after a successful operation, so `getTotalAttempts()` counts real attempts and `getRetrySuccessRate()` uses a denominator that includes failures. The half-open probe path has the same fix. Misleading success-rate metrics are now correct (#206)
 - Malformed-DSN exception no longer embeds the cleartext broker password — the userinfo segment (`user:password@`) is redacted to `***@` before interpolation, preventing credential leakage into logs, error trackers and stderr during container boot or `messenger:consume` startup (#287)
+- `AmqpTransportFactory::create()` `$options` PHPDoc array-shape now lists the accepted programmatic options that downstream `Sender`/`Receiver`/`InfrastructureSetup` read from the merged array (`confirm_timeout`, `delay`, `batch_size`, `binding_keys`, `binding_arguments`, `exchange_bindings`), so the documented API of the library's main factory matches its real surface (#298)
 
 ## [v0.3.0] - 2026-04-23
 
