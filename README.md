@@ -171,6 +171,29 @@ With retry enabled:
   For generic `AMQPException`, reply codes 403/404/406 are treated as permanent.
 - On exhaustion, a `RetryExhaustedException` is thrown with the last failure as previous
 
+### Circuit Breaker Scope
+
+> **The circuit-breaker state is per-process and in-memory only.** There is no shared
+> store behind it, so its protection is limited to the lifetime of the current process:
+>
+> - **PHP-FPM / request-scoped senders:** a new `CircuitBreaker` instance is created on
+>   every request, so failure counters reset each time and a high `retry_circuit_breaker_threshold`
+>   is effectively never reached. Only failures that recur within a single request count.
+> - **Worker fleet (`messenger:consume`):** each consumer process has its own independent
+>   breaker. A broker-wide outage is not coordinated across the fleet — every process must
+>   trip (and recover) on its own.
+> - **Long-lived single workers:** this is where the breaker works as documented — counters
+>   persist between operations and the circuit opens after `retry_circuit_breaker_threshold`
+>   consecutive failures.
+
+To size the breaker usefully, keep the effective failure budget in mind: with the defaults
+(`retry_count=3` attempts per operation) an `OPEN` circuit is reached after roughly
+`retry_circuit_breaker_threshold / retry_count` consecutive failed operations — by default
+`10 / 3`, i.e. after about 3–4 consecutive failing operations.
+
+No shared-state backend (APCu, Redis, …) is currently provided; do not treat
+`retry_circuit_breaker_*` as fleet-wide or request-spanning protection.
+
 ### Publish Reliability
 
 > **Warning: without `confirm_timeout`, publishes are fire-and-forget.**

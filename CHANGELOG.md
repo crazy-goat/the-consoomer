@@ -4,6 +4,9 @@
 
 ### Added
 - `E_USER_DEPRECATED` notice emitted when the legacy `amqps://` scheme is parsed and when `DsnParser::validateOptions()` is called, so consumers on the 1.0 removal path get a runtime signal instead of a silent comment-only deprecation (#342)
+
+### Documentation
+- Documented the per-process, in-memory-only scope of the circuit breaker: state lives on the `CircuitBreaker` instance created per `ConnectionRetry` inside one process, so under PHP-FPM (request-scoped transport) the counters reset every request and the threshold is effectively never reached, while a `messenger:consume` fleet trips only per process — a broker-wide outage is not coordinated. Failure-budget note added (`threshold` counts consecutive attempts, so with `retry_count=3` the default `threshold=10` opens after ~3–4 consecutive failing operations) and an explicit warning that no shared-state backend (APCu/Redis) is provided (#236)
 - `RetryMetrics` now exposes operation-granularity counters — `recordSuccessfulOperation()`/`recordFailedOperation()`, `getSuccessfulOperations()`/`getFailedOperations()`, and `getOperationSuccessRate()` — counting whole `withRetry()` outcomes instead of only retry attempts. This fixes the misleading success-rate reporting where a healthy workload (every operation succeeding on the first try) reported 0% because `successfulRetries` counted only successful to-retry cases while `failedRetries` counted every failure; existing `successfulRetries`/`failedRetries`/`getRetrySuccessRate()` are unchanged (#354)
 
 ### Fixed
