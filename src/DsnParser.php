@@ -240,12 +240,10 @@ final class DsnParser
         }
 
         if (isset($options['exchange_type'])) {
-            if (self::$validExchangeTypes === null) {
-                self::$validExchangeTypes = array_map(
-                    fn(\CrazyGoat\TheConsoomer\Enum\ExchangeType $type) => $type->value,
-                    \CrazyGoat\TheConsoomer\Enum\ExchangeType::cases(),
-                );
-            }
+            self::$validExchangeTypes ??= array_map(
+                fn(\CrazyGoat\TheConsoomer\Enum\ExchangeType $type) => $type->value,
+                \CrazyGoat\TheConsoomer\Enum\ExchangeType::cases(),
+            );
             if (!in_array($options['exchange_type'], self::$validExchangeTypes, true)) {
                 throw new \InvalidArgumentException(
                     sprintf(
