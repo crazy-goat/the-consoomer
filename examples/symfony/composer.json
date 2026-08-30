@@ -8,6 +8,7 @@
         "ext-ctype": "*",
         "ext-iconv": "*",
         "symfony/console": "^7.4",
+        "symfony/amqp-messenger": "^7.4",
         "symfony/dotenv": "^7.4",
         "symfony/flex": "^2",
         "symfony/framework-bundle": "^7.4",
