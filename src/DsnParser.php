@@ -40,6 +40,7 @@ final class DsnParser
      *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
      *     max_unacked_messages?: int,
      *     batch_size?: int,
+     *     max_body_bytes?: int,
      *     auto_setup?: bool,
      *     retry?: bool,
      *     retry_count?: int,

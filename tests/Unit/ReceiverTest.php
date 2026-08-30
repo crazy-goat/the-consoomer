@@ -1593,10 +1593,9 @@ class ReceiverTest extends TestCase
             ->method('checkHeartbeat')
             ->willReturn(false);
 
-        $this->expectException(MessageDecodingFailedException::class);
-        $this->expectExceptionMessage('Cannot decode message');
-
-        $receiver->get();
+        // The poison message is rejected and the batch survives (#288) — the
+        // decode failure must NOT abort the whole get() cycle.
+        $this->assertSame([], iterator_to_array($receiver->get()));
     }
 
     public function testGetStillThrowsDecodeFailureWhenRejectThrows(): void
@@ -1624,7 +1623,9 @@ class ReceiverTest extends TestCase
                 }
             });
 
-        // reject() itself fails (e.g. broken channel) — decode exception must still propagate.
+        // reject() itself fails (e.g. broken channel) — the decode exception
+        // must still propagate and abort the cycle: the poison message stays
+        // on the queue and would redeliver forever if we swallowed it.
         $this->queue
             ->expects($this->once())
             ->method('reject')
@@ -1685,10 +1686,9 @@ class ReceiverTest extends TestCase
         $this->connection->method('checkHeartbeat')->willReturn(false);
         $this->connection->expects($this->atLeastOnce())->method('updateActivity');
 
-        $this->expectException(MessageDecodingFailedException::class);
-        $this->expectExceptionMessage('Cannot decode message');
-
-        $receiver->get();
+        // Poison message rejected via the retry wrapper and the batch
+        // survives (#288) — the decode failure must NOT abort the get() cycle.
+        $this->assertSame([], iterator_to_array($receiver->get()));
     }
 
     public function testGetPoisonMessageInFirstQueuePropagatesAndSkipsSecondQueue(): void
@@ -1723,10 +1723,18 @@ class ReceiverTest extends TestCase
                 }
             });
 
-        $queueA->expects($this->once())->method('reject')->with(5);
+        // The poison message's reject() itself fails (broken channel), so the
+        // decode failure must propagate and abort the cycle before queue_b.
+        $queueA
+            ->expects($this->once())
+            ->method('reject')
+            ->with(5)
+            ->willThrowException(new \AMQPChannelException('Channel closed'));
         $queueA->method('getConsumerTag')->willReturn('tag_a');
 
-        // queue_b must never be consumed this round — exception propagates out of get().
+        // queue_b must never be consumed this round — the poison message could
+        // not be rejected (reject() throws), so the decode failure propagates
+        // and aborts the get() cycle instead of silently looping.
         $queueB->expects($this->never())->method('consume');
         $queueB->method('getConsumerTag')->willReturn('tag_b');
 
@@ -1736,6 +1744,271 @@ class ReceiverTest extends TestCase
         $this->expectExceptionMessage('Cannot decode message');
 
         $receiver->get();
+    }
+
+    public function testGetRejectsOversizedBodyWithoutDecoding(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_body_bytes' => 10];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('12345678901'); // 11 bytes > 10
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(7);
+
+        // The oversized body must never reach the serializer.
+        $this->serializer->expects($this->never())->method('decode');
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        $this->queue->expects($this->once())->method('reject')->with(7);
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->expects($this->atLeastOnce())->method('updateActivity');
+
+        $this->assertSame([], iterator_to_array($receiver->get()));
+    }
+
+    public function testGetRejectsEachOversizedMessageAndKeepsValidOnes(): void
+    {
+        $options = ['queue' => 'test_queue', 'batch_size' => 5, 'max_body_bytes' => 10];
+
+        $oversized1 = $this->createMock(\AMQPEnvelope::class);
+        $oversized1->method('getBody')->willReturn(str_repeat('x', 20));
+        $oversized1->method('getDeliveryTag')->willReturn(1);
+
+        $valid = $this->createMock(\AMQPEnvelope::class);
+        $valid->method('getBody')->willReturn('ok');
+        $valid->method('getDeliveryTag')->willReturn(2);
+
+        $oversized2 = $this->createMock(\AMQPEnvelope::class);
+        $oversized2->method('getBody')->willReturn(str_repeat('y', 20));
+        $oversized2->method('getDeliveryTag')->willReturn(3);
+
+        // Only the single valid body is decoded — oversized ones are skipped.
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => 'ok', 'headers' => []])
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $delivered = [$oversized1, $valid, $oversized2];
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($delivered): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    foreach ($delivered as $amqpEnvelope) {
+                        $callback($amqpEnvelope);
+                    }
+                }
+            });
+
+        $rejectedTags = [];
+        $this->queue
+            ->expects($this->exactly(2))
+            ->method('reject')
+            ->willReturnCallback(function (int $deliveryTag) use (&$rejectedTags): void {
+                $rejectedTags[] = $deliveryTag;
+            });
+
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('updateActivity');
+
+        $messages = iterator_to_array($receiver->get());
+
+        $this->assertSame([1, 3], $rejectedTags);
+        $this->assertCount(1, $messages);
+    }
+
+    public function testMaxBodyBytesZeroDisablesSizeGuard(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_body_bytes' => 0];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn(str_repeat('a', 20));
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(4);
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+
+        // Guard disabled: the body is handed to the serializer as before.
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => str_repeat('a', 20), 'headers' => []])
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        $this->queue->expects($this->never())->method('reject');
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $this->assertCount(1, iterator_to_array($receiver->get()));
+    }
+
+    public function testMaxBodyBytesGuardIsActiveByDefault(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn(str_repeat('a', 17 * 1024 * 1024));
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(9);
+
+        $this->serializer->expects($this->never())->method('decode');
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        $this->queue->expects($this->once())->method('reject')->with(9);
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('updateActivity');
+
+        $this->assertSame([], iterator_to_array($receiver->get()));
+    }
+
+    /**
+     * A body of exactly max_body_bytes must pass the guard (strict >), and the
+     * limit must be enforced before the serializer ever sees the payload.
+     */
+    public function testBodyExactlyAtLimitIsDecoded(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_body_bytes' => 10];
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('1234567890'); // exactly 10 bytes
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(11);
+        $amqpEnvelope->method('getHeaders')->willReturn([]);
+
+        $this->serializer
+            ->expects($this->once())
+            ->method('decode')
+            ->with(['body' => '1234567890', 'headers' => []])
+            ->willReturn(new Envelope(new \stdClass()));
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($amqpEnvelope);
+                }
+            });
+
+        $this->queue->expects($this->never())->method('reject');
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $this->assertCount(1, iterator_to_array($receiver->get()));
+    }
+
+    /**
+     * A multi-queue cycle must survive a poison message whose reject succeeds:
+     * the batch flows on and later queues are still consumed (#288 × #204).
+     */
+    public function testPoisonMessageInFirstQueueDoesNotStarveSecondQueue(): void
+    {
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []]];
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $queuesProperty = $reflection->getProperty('queues');
+        $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
+
+        $poison = $this->createMock(\AMQPEnvelope::class);
+        $poison->method('getBody')->willReturn('not-json');
+        $poison->method('getDeliveryTag')->willReturn(5);
+
+        $valid = $this->createMock(\AMQPEnvelope::class);
+        $valid->method('getBody')->willReturn('good');
+        $valid->method('getDeliveryTag')->willReturn(6);
+        $valid->method('getHeaders')->willReturn([]);
+
+        $this->serializer
+            ->method('decode')
+            ->willReturnCallback(static fn(array $encoded): Envelope => match ($encoded['body']) {
+                'not-json' => throw new MessageDecodingFailedException('Cannot decode message'),
+                default => new Envelope(new \stdClass()),
+            });
+
+        $queueA
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($poison): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($poison);
+                }
+            });
+        $queueA->expects($this->once())->method('reject')->with(5);
+        $queueA->method('getConsumerTag')->willReturn('tag_a');
+
+        // The poison message is rejected and the cycle continues into queue_b.
+        $queueB
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($valid): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($valid);
+                }
+            });
+        $queueB->expects($this->never())->method('reject');
+        $queueB->method('getConsumerTag')->willReturn('tag_b');
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $messages = iterator_to_array($receiver->get());
+
+        $this->assertCount(1, $messages);
+        $this->assertSame('queue_b', $messages[0]->last(AmqpReceivedStamp::class)?->getQueueName());
+    }
+
+    public function testConstructorThrowsOnNegativeMaxBodyBytes(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('max_body_bytes');
+
+        new Receiver($this->factory, $this->connection, $this->serializer, ['queue' => 'q', 'max_body_bytes' => -1], $this->setup);
+    }
+
+    public function testConstructorThrowsOnNonIntegerMaxBodyBytes(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('max_body_bytes');
+
+        new Receiver($this->factory, $this->connection, $this->serializer, ['queue' => 'q', 'max_body_bytes' => 'none'], $this->setup);
     }
 
     public function testAckIsNoOpWhenReconnectHappensMidOperation(): void

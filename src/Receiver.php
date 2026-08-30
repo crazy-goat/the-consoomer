@@ -15,6 +15,15 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 {
     public const DEFAULT_MAX_UNACKED_MESSAGES = 100;
     public const DEFAULT_BATCH_SIZE = 1;
+    /**
+     * Default cap for a single message body handed to the serializer (#288).
+     *
+     * A body larger than this limit is rejected without calling decode() at
+     * all: even a "safe" serializer can be pushed into memory pressure by an
+     * oversized payload, and unbounded broker-controlled input must not be
+     * the thing that decides how much memory the consumer allocates.
+     */
+    public const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
     /** @var array<string, int> */
     private array $unacked = [];
     /** @var array<string, list<int>> */
@@ -45,6 +54,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *     exchange?: string,
      *     max_unacked_messages?: int,
      *     batch_size?: int,
+     *     max_body_bytes?: int,
      *     auto_setup?: bool,
      *     routing_key?: string,
      * } $options
@@ -59,10 +69,29 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     ) {
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? self::DEFAULT_MAX_UNACKED_MESSAGES));
         $this->batchSize = max(1, intval($this->options['batch_size'] ?? self::DEFAULT_BATCH_SIZE));
+
+        $rawMaxBodyBytes = $this->options['max_body_bytes'] ?? self::DEFAULT_MAX_BODY_BYTES;
+        // Fail closed (#288): a negative or non-integer value is a config error,
+        // not "no guard" — 0 disables the guard entirely, so clamping invalid
+        // input there would silently remove the only size protection against
+        // broker-controlled bytes. filter_var() returns false (not null) for
+        // out-of-range values, so the check must be explicit.
+        $maxBodyBytes = filter_var($rawMaxBodyBytes, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($maxBodyBytes === false) {
+            throw new \InvalidArgumentException(sprintf('Option "max_body_bytes" must be a non-negative integer, got "%s".', get_debug_type($rawMaxBodyBytes)));
+        }
+        $this->maxBodyBytes = $maxBodyBytes;
     }
 
     private readonly int $maxUnackedMessages;
     private readonly int $batchSize;
+    /**
+     * Upper bound on the raw body length accepted per message (#288).
+     *
+     * 0 disables the guard: the body of any size is handed to the serializer,
+     * exactly as before the option existed.
+     */
+    private readonly int $maxBodyBytes;
 
     /**
      * @return list<string>
@@ -160,19 +189,45 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             // queues each contribute at most one message (#204).
             $consumed = 0;
             $callback = function (\AMQPEnvelope $message) use ($queueName, $queue, &$consumed): bool {
+                $body = $message->getBody();
+
                 try {
+                    // Defense in depth (#288): broker-controlled bytes are
+                    // untrusted input. The size guard runs before decode() so
+                    // an oversized body never reaches the serializer (memory
+                    // pressure DoS).
+                    if ($this->maxBodyBytes > 0 && \strlen($body) > $this->maxBodyBytes) {
+                        $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
+                        ++$consumed;
+
+                        return $consumed < $this->perQueueBudget()
+                            && count($this->messages) < $this->batchSize;
+                    }
+
                     $envelope = $this->serializer->decode([
-                        'body' => $message->getBody(),
+                        'body' => $body,
                         'headers' => $message->getHeaders(),
                     ]);
                 } catch (MessageDecodingFailedException $e) {
                     try {
                         $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
                     } catch (\Throwable) {
-                        // Best-effort reject: the decode exception must still propagate.
+                        // The poison message could not be taken off the queue
+                        // (broken channel / retries exhausted) — rethrow the
+                        // decode failure so the problem stays visible instead
+                        // of silently looping on broker redelivery.
+                        throw $e;
                     }
-                    throw $e;
+
+                    // Poison message rejected (dropped or dead-lettered per
+                    // broker policy). The batch survives (#288): keep consuming
+                    // instead of aborting the whole get() cycle.
+                    ++$consumed;
+
+                    return $consumed < $this->perQueueBudget()
+                        && count($this->messages) < $this->batchSize;
                 }
+
                 $this->messages[] = $envelope->with(new AmqpReceivedStamp(
                     $message,
                     $queueName,
