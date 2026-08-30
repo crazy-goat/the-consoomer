@@ -7,13 +7,13 @@
         "php": "^8.4",
         "ext-ctype": "*",
         "ext-iconv": "*",
-        "symfony/console": "7.2.*",
-        "symfony/dotenv": "7.2.*",
+        "symfony/console": "^7.4",
+        "symfony/dotenv": "^7.4",
         "symfony/flex": "^2",
-        "symfony/framework-bundle": "7.2.*",
-        "symfony/messenger": "7.2.*",
-        "symfony/runtime": "7.2.*",
-        "symfony/yaml": "7.2.*"
+        "symfony/framework-bundle": "^7.4",
+        "symfony/messenger": "^7.4",
+        "symfony/runtime": "^7.4",
+        "symfony/yaml": "^7.4"
     },
     "config": {
         "allow-plugins": {
@@ -62,7 +62,7 @@
     "extra": {
         "symfony": {
             "allow-contrib": false,
-            "require": "7.2.*"
+            "require": "^7.4"
         }
     },
     "require-dev": {
