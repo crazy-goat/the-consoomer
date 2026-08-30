@@ -75,6 +75,7 @@ Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=tes
 | `queue` | Queue name to consume from | (required) |
 | `max_unacked_messages` | Prefetch count and ack-batch flush threshold | 100 |
 | `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | 1 |
+| `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded | 16777216 (16 MiB) |
 | `timeout` | Consumer timeout in seconds | 0.1 |
 | `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
 | `confirm_timeout` | Publisher confirms timeout in seconds (0 = disabled). See [Publish Reliability](#publish-reliability) | 0 |
@@ -195,6 +196,27 @@ To size the breaker usefully, keep the effective failure budget in mind: with th
 
 No shared-state backend (APCu, Redis, …) is currently provided; do not treat
 `retry_circuit_breaker_*` as fleet-wide or request-spanning protection.
+
+### Untrusted brokers and poison messages
+
+The raw AMQP body is broker-controlled input: anyone who can publish to (or impersonate) a
+consumed queue decides what bytes reach your serializer. Two guards apply on the receive
+path (#288):
+
+- **Size guard** — a body larger than `max_body_bytes` is rejected without ever being
+  handed to the serializer, so a single oversized publish cannot push the consumer into
+  memory pressure. Set `max_body_bytes: 0` to disable the guard.
+- **Poison-pill containment** — when the serializer rejects a body (raises
+  `MessageDecodingFailedException`), the offending message is rejected (dropped or
+  dead-lettered per broker policy) and the current batch keeps flowing. If the message
+  cannot even be rejected (broken channel), the decode failure propagates so the problem
+  stays visible instead of looping silently on broker redelivery.
+
+> **Warning: do not use `PhpSerializer` with untrusted publishers.**
+> Symfony's `PhpSerializer` runs `unserialize()` on the raw body. That is PHP object
+> injection and gadget-chain RCE, not a data error — no size limit changes that. It is a
+> supported option only for first-party publishers you fully trust; with anything
+> untrusted, use a data-format serializer (JSON) and validate on the application side.
 
 ### Publish Reliability
 
