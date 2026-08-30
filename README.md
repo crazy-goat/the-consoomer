@@ -75,7 +75,7 @@ Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=tes
 | `queue` | Queue name to consume from | (required) |
 | `max_unacked_messages` | Prefetch count and ack-batch flush threshold | 100 |
 | `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | 1 |
-| `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded | 16777216 (16 MiB) |
+| `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded. Non-integer/negative values are rejected at construction | 16777216 (16 MiB) |
 | `timeout` | Consumer timeout in seconds | 0.1 |
 | `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
 | `confirm_timeout` | Publisher confirms timeout in seconds (0 = disabled). See [Publish Reliability](#publish-reliability) | 0 |

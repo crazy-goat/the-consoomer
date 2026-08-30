@@ -69,7 +69,18 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     ) {
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? self::DEFAULT_MAX_UNACKED_MESSAGES));
         $this->batchSize = max(1, intval($this->options['batch_size'] ?? self::DEFAULT_BATCH_SIZE));
-        $this->maxBodyBytes = max(0, intval($this->options['max_body_bytes'] ?? self::DEFAULT_MAX_BODY_BYTES));
+
+        $rawMaxBodyBytes = $this->options['max_body_bytes'] ?? self::DEFAULT_MAX_BODY_BYTES;
+        // Fail closed (#288): a negative or non-integer value is a config error,
+        // not "no guard" — 0 disables the guard entirely, so clamping invalid
+        // input there would silently remove the only size protection against
+        // broker-controlled bytes. filter_var() returns false (not null) for
+        // out-of-range values, so the check must be explicit.
+        $maxBodyBytes = filter_var($rawMaxBodyBytes, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+        if ($maxBodyBytes === false) {
+            throw new \InvalidArgumentException(sprintf('Option "max_body_bytes" must be a non-negative integer, got "%s".', get_debug_type($rawMaxBodyBytes)));
+        }
+        $this->maxBodyBytes = $maxBodyBytes;
     }
 
     private readonly int $maxUnackedMessages;
