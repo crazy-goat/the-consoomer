@@ -41,11 +41,16 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      */
     private int $channelGeneration = 0;
     /**
-     * Index of the queue that starts the next {@see get()} cycle. Rotated on
-     * every call so that, in multi-queue mode with a single total batch budget,
-     * no queue is permanently first in the (stable) iteration order (#204).
+     * Maps broker-issued consumer tags to the queue they were registered for.
+     *
+     * All consumers share one channel, so a single {@see \AMQPQueue::consume()}
+     * delivery loop receives messages for every one of them; the callback uses
+     * the envelope's consumer tag to resolve which queue a delivery belongs to
+     * (#309).
+     *
+     * @var array<string, string>
      */
-    private int $nextQueueOffset = 0;
+    private array $tagToQueue = [];
 
     /**
      * @param array{
@@ -130,6 +135,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->connection->reconnect();
         $this->setup->resetSetup();
         $this->queues = [];
+        $this->tagToQueue = [];
         $this->unacked = [];
         $this->pendingAcks = [];
         // Bump the generation so any in-flight envelope (carrying an old tag
@@ -152,9 +158,62 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         foreach ($this->getQueueNames() as $queueName) {
             $queue = $this->factory->createQueue($channel);
             $queue->setName($queueName);
+            // Register the consumer without running a delivery loop: the tag
+            // it returns is what the single get() loop (and the tag→queue map)
+            // is built from (#309).
             $queue->consume(null, AMQP_NOPARAM);
             $this->queues[$queueName] = $queue;
         }
+
+        $this->rebuildConsumerTagMap();
+    }
+
+    /**
+     * Rebuilds the consumer-tag → queue-name map from the registered queues.
+     *
+     * Called after connect() and at the start of every {@see get()} so queues
+     * that were injected directly (tests, custom wiring) are covered too. Tags
+     * that are empty are skipped rather than mapped to an empty string.
+     */
+    private function rebuildConsumerTagMap(): void
+    {
+        $this->tagToQueue = [];
+
+        foreach ($this->queues as $queueName => $queue) {
+            $tag = $queue->getConsumerTag();
+            if (is_string($tag) && $tag !== '') {
+                $this->tagToQueue[$tag] = $queueName;
+            }
+        }
+    }
+
+    /**
+     * Resolves the queue a delivered message belongs to from its consumer tag.
+     *
+     * Every consumer on the shared channel is registered in {@see connect()},
+     * so a well-formed broker delivery carries a tag present in the map. When a
+     * single queue is configured the only queue is used as a fallback for
+     * envelopes that carry no tag. A delivery whose tag cannot be mapped in
+     * multi-queue mode is unroutable (its ack/reject would target the wrong
+     * queue) and fails loudly instead of being silently mis-attributed.
+     */
+    private function resolveQueueName(\AMQPEnvelope $message): string
+    {
+        $tag = $message->getConsumerTag();
+        if (is_string($tag) && $tag !== '' && isset($this->tagToQueue[$tag])) {
+            return $this->tagToQueue[$tag];
+        }
+
+        $queueNames = array_keys($this->queues);
+        if (count($queueNames) === 1) {
+            return $queueNames[0];
+        }
+
+        throw new \RuntimeException(sprintf(
+            'Cannot resolve the queue for an AMQP delivery with consumer tag "%s"; known tags: "%s".',
+            is_string($tag) ? $tag : get_debug_type($tag),
+            implode('", "', array_keys($this->tagToQueue)),
+        ));
     }
 
     public function get(): iterable
@@ -166,116 +225,109 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
         $this->connect();
 
-        // Iterate the queues round-robin (rotating the starting offset between
-        // get() calls) and stop entering further queues once the total batch
-        // budget is spent, so no single queue drains everything (#204).
-        $requests = [];
-        $queueNames = array_keys($this->queues);
-        $count = count($queueNames);
-        for ($i = 0; $i < $count; $i++) {
-            $queueName = $queueNames[($this->nextQueueOffset + $i) % $count];
-            $requests[] = [$queueName, $this->queues[$queueName]];
+        if ($this->queues === []) {
+            $this->connection->updateActivity();
+
+            return $this->messages;
         }
-        $this->nextQueueOffset = ($this->nextQueueOffset + 1) % max(1, $count);
 
-        foreach ($requests as [$queueName, $queue]) {
-            if (count($this->messages) >= $this->batchSize) {
-                break;
-            }
+        // One consume loop serves every consumer registered on the shared
+        // channel: ext-amqp dispatches deliveries for all consumers to this
+        // callback, which resolves the owning queue from the envelope's
+        // consumer tag. Calling consume() once per queue instead would block
+        // for read_timeout on each queue that is idle, making an idle get()
+        // take N × read_timeout and delaying a message published to a later
+        // queue until every earlier consumer has timed out (#309). The broker
+        // round-robins deliveries across the registered consumers, so no queue
+        // starves the others (#204).
+        $this->rebuildConsumerTagMap();
+        $driverQueueName = array_key_first($this->queues);
+        $driverQueue = $this->queues[$driverQueueName];
 
-            // Per-queue consumed count for this cycle: the stop predicate must
-            // be relative to this queue, not the global buffer, otherwise the
-            // first queue drains until the global budget is met and later
-            // queues each contribute at most one message (#204).
-            $consumed = 0;
-            $callback = function (\AMQPEnvelope $message) use ($queueName, $queue, &$consumed): bool {
-                $body = $message->getBody();
+        // A delivery that is rejected as poison does not count toward the
+        // returned batch, so a queue full of undecodable messages could be
+        // drained in a single cycle. Bound the total number of deliveries
+        // handled per cycle to the old per-queue budget summed over all
+        // queues, keeping the work per get() predictable.
+        $maxProcessed = $this->batchSize * max(1, count($this->queues));
+        $processed = 0;
 
-                try {
-                    // Defense in depth (#288): broker-controlled bytes are
-                    // untrusted input. The size guard runs before decode() so
-                    // an oversized body never reaches the serializer (memory
-                    // pressure DoS).
-                    if ($this->maxBodyBytes > 0 && \strlen($body) > $this->maxBodyBytes) {
-                        $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
-                        ++$consumed;
+        $callback = function (\AMQPEnvelope $message) use (&$processed, $maxProcessed): bool {
+            ++$processed;
 
-                        return $consumed < $this->perQueueBudget()
-                            && count($this->messages) < $this->batchSize;
-                    }
-
-                    $envelope = $this->serializer->decode([
-                        'body' => $body,
-                        'headers' => $message->getHeaders(),
-                    ]);
-                } catch (MessageDecodingFailedException $e) {
-                    try {
-                        $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
-                    } catch (\Throwable) {
-                        // The poison message could not be taken off the queue
-                        // (broken channel / retries exhausted) — rethrow the
-                        // decode failure so the problem stays visible instead
-                        // of silently looping on broker redelivery.
-                        throw $e;
-                    }
-
-                    // Poison message rejected (dropped or dead-lettered per
-                    // broker policy). The batch survives (#288): keep consuming
-                    // instead of aborting the whole get() cycle.
-                    ++$consumed;
-
-                    return $consumed < $this->perQueueBudget()
-                        && count($this->messages) < $this->batchSize;
-                }
-
-                $this->messages[] = $envelope->with(new AmqpReceivedStamp(
-                    $message,
-                    $queueName,
-                    $this->channelGeneration,
-                ));
-
-                // Stop consuming from this queue once it has contributed its
-                // share (or the global budget is spent); the outer loop then
-                // moves on to the next queue.
-                ++$consumed;
-
-                return $consumed < $this->perQueueBudget()
-                    && count($this->messages) < $this->batchSize;
-            };
+            $queueName = $this->resolveQueueName($message);
+            $queue = $this->queues[$queueName];
+            $body = $message->getBody();
 
             try {
-                $queue->consume($callback, AMQP_JUST_CONSUME, $queue->getConsumerTag());
-            } catch (\AMQPQueueException) {
-                // Idle consume timeout: the expected outcome of polling a queue
-                // that has no messages ready. The channel, consumers, and all
-                // buffered acks remain valid — do NOT tear them down. The old
-                // behaviour wiped pending acks here on every empty poll, causing
-                // redelivery of already-processed messages (#271).
-                if ($this->messages !== []) {
-                    break;
-                }
-            } catch (\AMQPException) {
-                // Genuine connection/channel failure: flush buffered acks
-                // best-effort before tearing down so the broker requeues only
-                // what could not be acknowledged.
-                try {
-                    $this->ackPending();
-                } catch (\Throwable) {
-                    // Channel is dead — acks cannot be sent; broker will redeliver.
-                }
-                $this->connection->clearChannelCache();
-                $this->queues = [];
-                $this->unacked = [];
-                $this->pendingAcks = [];
-                // Bump the generation: the channel that issued the buffered
-                // delivery tags is gone, so any in-flight envelope carrying
-                // them must become a no-op for ack/reject on the next channel.
-                ++$this->channelGeneration;
+                // Defense in depth (#288): broker-controlled bytes are
+                // untrusted input. The size guard runs before decode() so
+                // an oversized body never reaches the serializer (memory
+                // pressure DoS).
+                if ($this->maxBodyBytes > 0 && \strlen($body) > $this->maxBodyBytes) {
+                    $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
 
-                if ($this->messages !== []) {
-                    break;
+                    return $processed < $maxProcessed && count($this->messages) < $this->batchSize;
                 }
+
+                $envelope = $this->serializer->decode([
+                    'body' => $body,
+                    'headers' => $message->getHeaders(),
+                ]);
+            } catch (MessageDecodingFailedException $e) {
+                try {
+                    $this->rejectPoisonMessage($queue, (int) $message->getDeliveryTag());
+                } catch (\Throwable) {
+                    // The poison message could not be taken off the queue
+                    // (broken channel / retries exhausted) — rethrow the
+                    // decode failure so the problem stays visible instead
+                    // of silently looping on broker redelivery.
+                    throw $e;
+                }
+
+                // Poison message rejected (dropped or dead-lettered per
+                // broker policy). The batch survives (#288): keep consuming
+                // instead of aborting the whole get() cycle.
+                return $processed < $maxProcessed && count($this->messages) < $this->batchSize;
             }
+
+            $this->messages[] = $envelope->with(new AmqpReceivedStamp(
+                $message,
+                $queueName,
+                $this->channelGeneration,
+            ));
+
+            // Stop the delivery loop once the global batch budget is spent;
+            // the broker keeps the remaining messages for the next cycle.
+            return $processed < $maxProcessed && count($this->messages) < $this->batchSize;
+        };
+
+        try {
+            $driverQueue->consume($callback, AMQP_JUST_CONSUME, $driverQueue->getConsumerTag());
+        } catch (\AMQPQueueException) {
+            // Idle consume timeout: the expected outcome of polling the
+            // channel that has no messages ready. The channel, consumers, and
+            // all buffered acks remain valid — do NOT tear them down. The old
+            // behaviour wiped pending acks here on every empty poll, causing
+            // redelivery of already-processed messages (#271).
+        } catch (\AMQPException) {
+            // Genuine connection/channel failure: flush buffered acks
+            // best-effort before tearing down so the broker requeues only
+            // what could not be acknowledged.
+            try {
+                $this->ackPending();
+            } catch (\Throwable) {
+                // Channel is dead — acks cannot be sent; broker will redeliver.
+            }
+            $this->connection->clearChannelCache();
+            $this->queues = [];
+            $this->tagToQueue = [];
+            $this->unacked = [];
+            $this->pendingAcks = [];
+            // Bump the generation: the channel that issued the buffered
+            // delivery tags is gone, so any in-flight envelope carrying
+            // them must become a no-op for ack/reject on the next channel.
+            ++$this->channelGeneration;
         }
 
         $this->connection->updateActivity();
@@ -482,23 +534,6 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     private function isMultiQueue(): bool
     {
         return count($this->getQueueNames()) > 1;
-    }
-
-    /**
-     * Per-queue consume budget for a {@see get()} cycle.
-     *
-     * The total {@see batch_size} is a single batch across all queues, so each
-     * queue's callback must stop draining once the global budget is met — but
-     * before then it may consume freely so a slow/drained earlier queue does
-     * not starve a later one. In multi-queue mode the budget is divided evenly
-     * across the configured queues; round-robin start rotation then spreads
-     * any remainder so no queue is systematically short-changed (#204).
-     */
-    private function perQueueBudget(): int
-    {
-        $queueCount = count($this->getQueueNames());
-
-        return $queueCount > 1 ? max(1, intdiv($this->batchSize, $queueCount)) : $this->batchSize;
     }
 
     public function close(): void
