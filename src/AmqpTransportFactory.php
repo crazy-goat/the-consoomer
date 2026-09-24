@@ -64,6 +64,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
      *     routing_key?: string,
      *     default_publish_routing_key?: string,
+     *     publisher_confirms?: bool,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,

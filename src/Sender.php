@@ -34,6 +34,16 @@ final class Sender implements SenderInterface
     private ?\AMQPExchange $delayExchange = null;
     private readonly float $confirmTimeout;
     /**
+     * Whether publisher confirms are enabled.
+     *
+     * Decoupled from {@see $confirmTimeout} (#244): the timeout is a duration
+     * (0 = wait indefinitely, matching ext-amqp's `waitForConfirm(0)`), not a
+     * feature flag. When `publisher_confirms` is absent this defaults to true
+     * iff a positive `confirm_timeout` is configured, preserving the behaviour
+     * before the flag existed; set it explicitly to override either way.
+     */
+    private readonly bool $publisherConfirms;
+    /**
      * Whether the durable topology is re-declared after a reconnect.
      *
      * Durable exchanges/queues survive client disconnects by definition, so
@@ -61,6 +71,7 @@ final class Sender implements SenderInterface
      *     auto_setup?: bool,
      *     redeclare_on_reconnect?: bool,
      *     retry?: bool,
+     *     publisher_confirms?: bool,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,
@@ -81,12 +92,39 @@ final class Sender implements SenderInterface
             throw new \InvalidArgumentException('confirm_timeout must be a non-negative value');
         }
         $this->confirmTimeout = (float) $confirmTimeout;
+        $this->publisherConfirms = $this->resolvePublisherConfirms();
         $this->redeclareOnReconnect = (bool) ($this->options['redeclare_on_reconnect'] ?? false);
 
         $this->delayExchangeName = $this->options['delay']['exchange_name']
             ?? ($this->options['exchange'] ?? '') . '_delay';
         $this->delayQueueNamePattern = $this->options['delay']['queue_name_pattern']
             ?? 'delay_{delay}_{queue}';
+    }
+
+    /**
+     * Resolves whether publisher confirms are enabled (#244).
+     *
+     * An explicit `publisher_confirms` wins; otherwise a positive
+     * `confirm_timeout` enables confirms (backwards compatibility with the
+     * pre-#244 overloaded semantics), and an absent/0 timeout leaves them off.
+     */
+    private function resolvePublisherConfirms(): bool
+    {
+        $explicit = $this->options['publisher_confirms'] ?? null;
+
+        if ($explicit === null) {
+            return $this->confirmTimeout > 0.0;
+        }
+
+        $resolved = filter_var($explicit, \FILTER_VALIDATE_BOOLEAN, \FILTER_NULL_ON_FAILURE);
+        if ($resolved === null) {
+            throw new \InvalidArgumentException(sprintf(
+                'Option "publisher_confirms" must be a boolean, got "%s".',
+                get_debug_type($explicit),
+            ));
+        }
+
+        return $resolved;
     }
 
     /**
@@ -137,11 +175,11 @@ final class Sender implements SenderInterface
      * the next call re-enables confirms on the fresh channel.
      *
      * @return \AMQPChannel|null The channel in confirm mode, or null when
-     *                           confirms are disabled (confirm_timeout <= 0)
+     *                           confirms are disabled (`publisher_confirms` off)
      */
     private function confirmChannel(): ?\AMQPChannel
     {
-        if ($this->confirmTimeout <= 0.0) {
+        if (!$this->publisherConfirms) {
             return null;
         }
 
