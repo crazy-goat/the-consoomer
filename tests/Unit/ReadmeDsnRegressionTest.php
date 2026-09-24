@@ -69,6 +69,11 @@ class ReadmeDsnRegressionTest extends TestCase
                 'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&confirm_timeout=5&retry=1',
                 'messages',
             ],
+            // README.md "Multi-queue mode" section
+            'README multi-queue snippet' => [
+                'amqp-consoomer://guest:guest@localhost:5672/%2f/events?queues[orders][binding_keys][0]=order.created&queues[payments][binding_keys][0]=payment.*&batch_size=10',
+                'events',
+            ],
         ];
     }
 
