@@ -114,15 +114,18 @@ class AmqpFactory implements AmqpFactoryInterface
 
         if (!empty($options['ssl_cert'])) {
             $connection->setCert($options['ssl_cert']);
-            $logger?->debug('Using SSL certificate: {cert}', ['cert' => $options['ssl_cert']]);
+            // Do not log the path: it reveals the deployment layout (operator /
+            // log-reader information disclosure). Presence is enough to debug.
+            // Security hardening (#290).
+            $logger?->debug('Using an SSL client certificate');
         }
         if (!empty($options['ssl_key'])) {
             $connection->setKey($options['ssl_key']);
-            $logger?->debug('Using SSL key: {key}', ['key' => $options['ssl_key']]);
+            $logger?->debug('Using an SSL client key');
         }
         if (!empty($options['ssl_cacert'])) {
             $connection->setCaCert($options['ssl_cacert']);
-            $logger?->debug('Using SSL CA certificate: {cacert}', ['cacert' => $options['ssl_cacert']]);
+            $logger?->debug('Using an SSL CA certificate');
         }
 
         $sslVerify = $options['ssl_verify'] ?? true;
