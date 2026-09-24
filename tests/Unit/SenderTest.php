@@ -297,7 +297,7 @@ class SenderTest extends TestCase
     public function testSendCallsSetupFirst(): void
     {
         $setup = $this->createMock(InfrastructureSetupInterface::class);
-        $setup->expects($this->once())->method('setup');
+        $setup->expects($this->once())->method('setupExchange');
 
         $channel = $this->createMock(\AMQPChannel::class);
 
@@ -1018,7 +1018,7 @@ class SenderTest extends TestCase
 
         $this->setup
             ->expects($this->once())
-            ->method('setup');
+            ->method('setupExchange');
 
         $sender = $this->createSender($options);
         $sender->send($envelope);
@@ -1114,7 +1114,7 @@ class SenderTest extends TestCase
 
         $this->setup
             ->expects($this->once())
-            ->method('setup');
+            ->method('setupExchange');
 
         $sender = $this->createSender($options);
         $sender->send($envelope);
@@ -1162,7 +1162,7 @@ class SenderTest extends TestCase
             ->method('encode')
             ->willReturn(['body' => 'test', 'headers' => []]);
 
-        $this->setup->method('setup');
+        $this->setup->method('setupExchange');
 
         $this->connection
             ->expects($this->once())
@@ -1214,7 +1214,7 @@ class SenderTest extends TestCase
             ->expects($this->exactly(2))
             ->method('publish');
 
-        $this->setup->method('setup');
+        $this->setup->method('setupExchange');
 
         $sender = $this->createSender($options);
         $sender->send($envelope1);
@@ -1288,7 +1288,7 @@ class SenderTest extends TestCase
             ->method('encode')
             ->willReturn(['body' => 'test', 'headers' => []]);
 
-        $this->setup->method('setup');
+        $this->setup->method('setupExchange');
 
         $sender = $this->createSender($options);
         $sender->send($envelope);
@@ -1338,20 +1338,69 @@ class SenderTest extends TestCase
             ->method('publish')
             ->with('test', 'custom_2000_ms_my.routing.key', \AMQP_NOPARAM, []);
 
-        $this->setup->method('setup');
+        $this->setup->method('setupExchange');
 
         $sender = $this->createSender($options);
         $sender->send($envelope);
     }
 
     /**
-     * Fix (a) for #273: ensureConnected() must call resetSetup() after a
-     * heartbeat-stale reconnect so that auto_setup re-declares topology on
-     * the fresh connection — mirroring Receiver::ensureConnected().
+     * By default a reconnect does not re-declare durable topology (#308): the
+     * setup flag is left alone, so setupExchange() after the reconnect is a
+     * no-op at the InfrastructureSetup level.
      */
-    public function testReconnectCallsResetSetup(): void
+    public function testReconnectDoesNotResetSetupByDefault(): void
     {
         $options = ['exchange' => 'test_exchange', 'auto_setup' => true];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+
+        $this->connection
+            ->method('getChannel')
+            ->willReturn($channel);
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(true);
+
+        $this->connection
+            ->expects($this->once())
+            ->method('reconnect');
+
+        $this->setup
+            ->expects($this->never())
+            ->method('resetSetup');
+
+        $this->setup
+            ->expects($this->once())
+            ->method('setupExchange');
+
+        $this->factory
+            ->method('createExchange')
+            ->willReturn($this->exchange);
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        $this->exchange->method('publish');
+
+        $this->connection
+            ->method('isConnected')
+            ->willReturn(true);
+
+        $sender = $this->createSender($options);
+        $sender->send(new Envelope(new \stdClass()));
+    }
+
+    /**
+     * With redeclare_on_reconnect=true, ensureConnected() resets the setup flag
+     * after a heartbeat-stale reconnect so auto_setup re-declares topology on
+     * the fresh connection (#308, #273).
+     */
+    public function testReconnectCallsResetSetupWhenEnabled(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'auto_setup' => true, 'redeclare_on_reconnect' => true];
 
         $channel = $this->createMock(\AMQPChannel::class);
 
@@ -1373,7 +1422,7 @@ class SenderTest extends TestCase
 
         $this->setup
             ->expects($this->once())
-            ->method('setup');
+            ->method('setupExchange');
 
         $this->factory
             ->method('createExchange')
@@ -1443,7 +1492,7 @@ class SenderTest extends TestCase
      */
     public function testRetryReconnectsWhenConnectionIsDown(): void
     {
-        $options = ['exchange' => 'test_exchange', 'retry' => true, 'auto_setup' => true];
+        $options = ['exchange' => 'test_exchange', 'retry' => true, 'auto_setup' => true, 'redeclare_on_reconnect' => true];
 
         $channel = $this->createMock(\AMQPChannel::class);
 
@@ -1466,7 +1515,7 @@ class SenderTest extends TestCase
 
         $this->setup
             ->expects($this->once())
-            ->method('setup');
+            ->method('setupExchange');
 
         $this->connection
             ->method('getChannel')

@@ -11,7 +11,8 @@ namespace CrazyGoat\TheConsoomer;
 interface InfrastructureSetupInterface
 {
     /**
-     * Sets up AMQP infrastructure (exchange, queue, binding).
+     * Sets up the full AMQP topology (exchange, exchange bindings, queues and
+     * queue bindings).
      *
      * Idempotent - safe to call multiple times.
      *
@@ -19,6 +20,28 @@ interface InfrastructureSetupInterface
      * @throws \AMQPException When AMQP declaration fails
      */
     public function setup(): void;
+
+    /**
+     * Declares only the message exchange.
+     *
+     * A producer needs nothing more: queues, queue bindings and
+     * exchange-to-exchange bindings are consumer-side topology. Kept separate
+     * from {@see setupQueues()} so a send-only transport does not declare
+     * every consumer queue on the first publish (#308). Idempotent.
+     *
+     * @throws \AMQPException When the exchange declaration fails
+     */
+    public function setupExchange(): void;
+
+    /**
+     * Declares the queues, their bindings and the exchange-to-exchange
+     * bindings (declaring the exchange first if it has not been set up yet).
+     *
+     * Idempotent - safe to call multiple times.
+     *
+     * @throws \AMQPException When a declaration fails
+     */
+    public function setupQueues(): void;
 
     /**
      * Resets the setup state so the next call to setup() re-declares topology.

@@ -245,7 +245,8 @@ With `retry=1` enabled (regardless of confirms):
 - The sender checks `isConnected()` before each publish attempt and reconnects if the broker is down, giving the retry wrapper an error signal to act on
 
 With `auto_setup=true` (default):
-- Topology (exchange, queues, bindings) is re-declared after a reconnect — `Sender::ensureConnected()` resets the setup flag so `auto_setup` is not a false promise after a broker restart or topology loss
+- A producer declares only its exchange on send; queues and bindings are consumer-side topology and are declared by the receiver
+- Topology is **not** re-declared on every reconnect by default — durable exchanges/queues survive disconnects. Set `redeclare_on_reconnect=true` to re-declare after a reconnect (useful when an operator may delete the topology while the worker is connected); `Sender::ensureConnected()`/`Receiver::ensureConnected()` then reset the setup flag
 
 ## Testing
 
