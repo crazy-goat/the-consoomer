@@ -66,6 +66,8 @@ amqp-consoomer://<user>:<password>@<host>:<port>/<vhost>/<exchange>/?queue=<queu
 
 Example: `amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange/?queue=test`
 
+The path has at most two segments, `<vhost>/<exchange>` (the trailing slash is optional). A leading `//` means the default vhost `/` (e.g. `...//my_exchange`). Any additional segment is a configuration error and throws `InvalidArgumentException` instead of being silently discarded (#234).
+
 > **Reserved query keys:** the query string must not use the keys `host`, `port`, `user`, `password`, `vhost` or `exchange` — these come from the DSN authority/path and are authoritative. A query parameter with one of these keys (e.g. `?host=evil&password=secret`) throws `InvalidArgumentException` at parse time instead of being applied (#207/#360) — a previously-silent connection/credential override was a security hole, so this is an intentional BC break rather than a deprecation.
 
 ### Options
