@@ -169,6 +169,15 @@ Each entry under `queues` supports `binding_keys` (list), `binding_arguments`
 (map) and `arguments` (map) for that queue. With `queues`, the single `queue`
 option is not used.
 
+> **Fairness caveat (shared channel).** All configured queues share one channel,
+> and AMQP prefetch is per-consumer. Under a sustained backlog on one queue the
+> broker keeps delivering that queue's messages, so the batch can fill before
+> the other queues are polled — the round-robin start rotation spreads this
+> across `get()` calls but does not eliminate it. For workloads where strict
+> per-queue fairness matters, run one transport (hence one channel) per queue.
+> Tracked as #374; a shared-channel fix would require per-queue channels or a
+> pull model.
+
 ### Delayed messages
 
 Attach `AmqpDelayStamp` (delay in milliseconds) and the sender publishes to a
