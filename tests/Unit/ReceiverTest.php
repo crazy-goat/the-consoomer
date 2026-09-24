@@ -1263,30 +1263,33 @@ class ReceiverTest extends TestCase
         $receiver->purgeQueue();
     }
 
-    public function testPurgeQueueWithQueuesOptionUsesFirstQueue(): void
+    /**
+     * In multi-queue mode a null queue name purges every configured queue and
+     * returns the total, instead of silently purging only the first (#243).
+     */
+    public function testPurgeQueueWithQueuesOptionPurgesAllQueues(): void
     {
         $options = ['queues' => ['queue_a' => [], 'queue_b' => []]];
 
         $channel = $this->createMock(\AMQPChannel::class);
         $this->connection->method('getChannel')->willReturn($channel);
 
-        $purgeQueue = $this->createMock(\AMQPQueue::class);
-        $purgeQueue
-            ->expects($this->once())
-            ->method('setName')
-            ->with('queue_a');
-        $purgeQueue
-            ->expects($this->once())
-            ->method('purge')
-            ->willReturn(42);
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueA->expects($this->once())->method('setName')->with('queue_a');
+        $queueA->expects($this->once())->method('purge')->willReturn(42);
+
+        $queueB = $this->createMock(\AMQPQueue::class);
+        $queueB->expects($this->once())->method('setName')->with('queue_b');
+        $queueB->expects($this->once())->method('purge')->willReturn(8);
 
         $this->factory
+            ->expects($this->exactly(2))
             ->method('createQueue')
-            ->willReturn($purgeQueue);
+            ->willReturnOnConsecutiveCalls($queueA, $queueB);
 
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
-        $this->assertSame(42, $receiver->purgeQueue());
+        $this->assertSame(50, $receiver->purgeQueue());
     }
 
     public function testGetMessageCountCallsUpdateActivity(): void
