@@ -2526,6 +2526,61 @@ class ReceiverTest extends TestCase
     }
 
     /**
+     * Retrying the ack flush must not re-run the non-idempotent bookkeeping: the
+     * delivery tag is buffered once and the counters are not inflated across
+     * attempts (#277).
+     */
+    public function testAckFlushRetryDoesNotInflateBookkeeping(): void
+    {
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+
+        $retry = $this->createMock(\CrazyGoat\TheConsoomer\ConnectionRetryInterface::class);
+        $retry->method('withRetry')->willReturnCallback(function (\Closure $operation): mixed {
+            $attempts = 0;
+            while (true) {
+                try {
+                    $operation();
+
+                    return null;
+                } catch (\AMQPException $exception) {
+                    if (++$attempts >= 3) {
+                        throw $exception;
+                    }
+                }
+            }
+        });
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $reflection->getProperty('queues')->setValue($receiver, ['test_queue' => $this->queue]);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        // The flush fails twice, then succeeds, all for the same delivery tag.
+        $ackCalls = 0;
+        $ackedTags = [];
+        $this->queue
+            ->method('ack')
+            ->willReturnCallback(function (int $tag, int $flags = \AMQP_NOPARAM) use (&$ackCalls, &$ackedTags): void {
+                ++$ackCalls;
+                $ackedTags[] = $tag;
+                if ($ackCalls <= 2) {
+                    throw new \AMQPChannelException('channel temporarily closed');
+                }
+            });
+
+        $receiver->ack($this->makeEnvelope(42, 'test_queue'));
+
+        // The tag was buffered exactly once and the buffer is empty afterwards.
+        $this->assertSame(0, $reflection->getProperty('unacked')->getValue($receiver)['test_queue'] ?? 0);
+        $this->assertSame([], $reflection->getProperty('pendingAcks')->getValue($receiver)['test_queue'] ?? []);
+
+        // Every attempt used the same single tag — no duplication/inflation.
+        $this->assertSame([42, 42, 42], $ackedTags);
+    }
+
+    /**
      * get() marks the start of the consume cycle as activity, so a long consume
      * loop is not counted against the staleness window (#235).
      */

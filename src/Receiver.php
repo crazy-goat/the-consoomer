@@ -426,16 +426,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             return;
         }
 
-        $operation = function () use ($stamp): void {
-            $this->ackMessage($stamp->getAmqpEnvelope(), $stamp->getQueueName());
-            $this->connection->updateActivity();
-        };
-
-        if ($this->retry instanceof ConnectionRetryInterface) {
-            $this->retry->withRetry($operation);
-        } else {
-            $operation();
-        }
+        // Bookkeeping runs exactly once; only the flush inside ackMessage() is
+        // retryable. Wrapping the whole ack in withRetry would re-run the
+        // non-idempotent bookkeeping on every attempt and corrupt the counters
+        // (#277).
+        $this->ackMessage($stamp->getAmqpEnvelope(), $stamp->getQueueName());
+        $this->connection->updateActivity();
     }
 
     /**
@@ -463,16 +459,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             return;
         }
 
-        $operation = function () use ($stamp): void {
-            $this->rejectMessage($stamp);
-            $this->connection->updateActivity();
-        };
-
-        if ($this->retry instanceof ConnectionRetryInterface) {
-            $this->retry->withRetry($operation);
-        } else {
-            $operation();
-        }
+        // As with ack(), only the I/O inside rejectMessage() is retryable; the
+        // rejection itself must not be retried as a whole (#277).
+        $this->rejectMessage($stamp);
+        $this->connection->updateActivity();
     }
 
     /**
@@ -504,7 +494,18 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $this->ackPending($queueName);
 
-        $this->queues[$queueName]->reject($stamp->getAmqpEnvelope()->getDeliveryTag());
+        $queue = $this->queues[$queueName];
+        $deliveryTag = $stamp->getAmqpEnvelope()->getDeliveryTag();
+
+        $operation = function () use ($queue, $deliveryTag): void {
+            $queue->reject($deliveryTag);
+        };
+
+        if ($this->retry instanceof ConnectionRetryInterface) {
+            $this->retry->withRetry($operation);
+        } else {
+            $operation();
+        }
     }
 
     public function ackPending(?string $queueName = null): void
@@ -534,27 +535,45 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             return;
         }
 
+        // Take the tags off the buffer BEFORE any I/O (#277): a retry of the
+        // flush must not re-buffer or re-count them. If the flush ultimately
+        // fails, the tags are gone and the broker redelivers the messages —
+        // at-least-once, never a corrupted counter or a double ack.
         $tags = $this->pendingAcks[$queueName];
-        $queue = $this->queues[$queueName];
-
-        if ($this->isMultiQueue()) {
-            // Multi-queue mode: all queues share one channel, so AMQP_MULTIPLE
-            // would acknowledge every message on the channel up to and including
-            // the highest tag — including in-flight messages belonging to other
-            // queues. Ack each tag individually to stay within this queue's own
-            // delivery tags and avoid silent cross-queue message loss (#202).
-            foreach ($tags as $tag) {
-                $queue->ack($tag, \AMQP_NOPARAM);
-            }
-        } else {
-            // Single-queue mode: the channel carries only this queue's tags, so
-            // a single AMQP_MULTIPLE ack up to the highest tag is both correct
-            // and efficient (one RTT instead of N).
-            $queue->ack(end($tags), AMQP_MULTIPLE);
-        }
-
         $this->pendingAcks[$queueName] = [];
         $this->unacked[$queueName] = 0;
+
+        $operation = function () use ($queueName, $tags): void {
+            $queue = $this->queues[$queueName] ?? null;
+            if (!$queue instanceof \AMQPQueue) {
+                // The queue map was wiped between attempts (reconnect); the
+                // broker redelivers, so there is nothing left to ack.
+                return;
+            }
+
+            if ($this->isMultiQueue()) {
+                // Multi-queue mode: all queues share one channel, so
+                // AMQP_MULTIPLE would acknowledge every message on the channel
+                // up to and including the highest tag — including in-flight
+                // messages belonging to other queues. Ack each tag individually
+                // to stay within this queue's own delivery tags and avoid
+                // silent cross-queue message loss (#202).
+                foreach ($tags as $tag) {
+                    $queue->ack($tag, \AMQP_NOPARAM);
+                }
+            } else {
+                // Single-queue mode: the channel carries only this queue's tags,
+                // so a single AMQP_MULTIPLE ack up to the highest tag is both
+                // correct and efficient (one RTT instead of N).
+                $queue->ack(end($tags), AMQP_MULTIPLE);
+            }
+        };
+
+        if ($this->retry instanceof ConnectionRetryInterface) {
+            $this->retry->withRetry($operation);
+        } else {
+            $operation();
+        }
     }
 
     private function ackMessage(\AMQPEnvelope $message, string $queueName): void
