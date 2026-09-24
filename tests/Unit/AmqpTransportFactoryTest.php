@@ -76,6 +76,69 @@ class AmqpTransportFactoryTest extends TestCase
         $this->assertInstanceOf(AmqpTransport::class, $transport);
     }
 
+    public function testCreateTransportAppliesReadWriteAndConnectTimeouts(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+        $serializer = $this->createMock(SerializerInterface::class);
+
+        $factory
+            ->expects($this->once())
+            ->method('createConnection')
+            ->with($this->callback(static fn(array $options): bool => ($options['connect_timeout'] ?? null) === 5))
+            ->willReturn($connection);
+
+        $connection->expects($this->once())->method('setReadTimeout')->with(2.0);
+        $connection->expects($this->once())->method('setWriteTimeout')->with(3.0);
+        $connection->expects($this->never())->method('connect');
+
+        AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange?read_timeout=2&write_timeout=3&connect_timeout=5',
+            ['queue' => 'test-queue'],
+            $serializer,
+            $factory,
+        );
+    }
+
+    public function testLegacyTimeoutSetsReadTimeoutOnly(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+        $serializer = $this->createMock(SerializerInterface::class);
+
+        $factory->method('createConnection')->willReturn($connection);
+
+        $connection->expects($this->once())->method('setReadTimeout')->with(4.0);
+        $connection->expects($this->never())->method('setWriteTimeout');
+
+        AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange?timeout=4',
+            ['queue' => 'test-queue'],
+            $serializer,
+            $factory,
+        );
+    }
+
+    public function testProgrammaticTimeoutIsHonoured(): void
+    {
+        $factory = $this->createMock(AmqpFactoryInterface::class);
+        $connection = $this->createMock(\AMQPConnection::class);
+        $serializer = $this->createMock(SerializerInterface::class);
+
+        $factory->method('createConnection')->willReturn($connection);
+
+        // #278: `timeout` used to be read from the parsed DSN only, so a
+        // programmatic override was silently ignored.
+        $connection->expects($this->once())->method('setReadTimeout')->with(7.0);
+
+        AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange',
+            ['queue' => 'test-queue', 'timeout' => 7],
+            $serializer,
+            $factory,
+        );
+    }
+
     public function testCreateTransportWithAmqpsScheme(): void
     {
         $factory = $this->createMock(AmqpFactoryInterface::class);

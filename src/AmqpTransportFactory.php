@@ -71,6 +71,9 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *         queue_name_pattern?: string,
      *     },
      *     timeout?: float|int,
+     *     read_timeout?: float|int,
+     *     write_timeout?: float|int,
+     *     connect_timeout?: float|int,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
      *     binding_keys?: list<string>,
@@ -125,8 +128,8 @@ class AmqpTransportFactory implements TransportFactoryInterface
         // Set via constructor to ensure RabbitMQ sees the heartbeat value
         $connection = $factory->createConnection($mergedOptions);
 
-        // Connection parameters (host, port, vhost, user, password, timeout) are always
-        // taken from $parsedDsn, not from $mergedOptions. These are part of the DSN
+        // Connection authority (host, port, vhost, user, password) is always taken
+        // from $parsedDsn, not from $mergedOptions. These are part of the DSN
         // authority/path and cannot be overridden by programmatic $options. The DSN
         // query string is likewise barred from overriding them (#207: DsnParser refuses
         // reserved keys in the query string rather than silently clobbering authority).
@@ -135,7 +138,25 @@ class AmqpTransportFactory implements TransportFactoryInterface
         $connection->setVhost($parsedDsn['vhost']);
         $connection->setLogin($parsedDsn['user']);
         $connection->setPassword($parsedDsn['password']);
-        $connection->setReadTimeout((float) ($parsedDsn['timeout'] ?? self::DEFAULT_READ_TIMEOUT));
+
+        // Timeouts are ordinary options, not authority/path, so they are read from
+        // $mergedOptions — the DSN query string and programmatic options can both set
+        // them (#278). `read_timeout`/`write_timeout` are explicit; the legacy
+        // `timeout` remains the fallback, and only `read_timeout` has a default.
+        $connection->setReadTimeout((float) (
+            $mergedOptions['read_timeout']
+            ?? $mergedOptions['timeout']
+            ?? self::DEFAULT_READ_TIMEOUT
+        ));
+
+        // Only an explicit `write_timeout` sets the write timeout; the legacy
+        // `timeout` keeps meaning "read timeout" (as documented) so existing
+        // configs do not suddenly start timing out writes.
+        if (isset($mergedOptions['write_timeout'])) {
+            $connection->setWriteTimeout((float) $mergedOptions['write_timeout']);
+        }
+        // ext-amqp has no setConnectTimeout(); `connect_timeout` is applied by
+        // AmqpFactory::createConnection() through the AMQPConnection constructor.
 
         $factory->configureSsl($connection, $mergedOptions, $logger);
 

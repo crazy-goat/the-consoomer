@@ -78,7 +78,10 @@ Every key below is accepted both in the DSN query string and programmatically (t
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `timeout` | Socket read timeout in seconds | `0.1` |
+| `timeout` | Socket read timeout in seconds (legacy alias of `read_timeout`) | `0.1` |
+| `read_timeout` | Socket read timeout in seconds; overrides `timeout` | `timeout`, else `0.1` |
+| `write_timeout` | Socket write timeout in seconds | ext-amqp default |
+| `connect_timeout` | TCP connect timeout in seconds | ext-amqp default |
 | `heartbeat` | AMQP heartbeat interval in seconds (0 = disabled); also drives the client-side staleness reconnect — see [Heartbeat](#heartbeat) | `0` |
 | `persistent` | Use a persistent connection (`pconnect`) | `false` |
 

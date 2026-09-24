@@ -16,13 +16,18 @@ class AmqpFactory implements AmqpFactoryInterface
     /**
      * {@inheritdoc}
      *
-     * @param array{heartbeat?: int} $options Connection options
+     * @param array{heartbeat?: int, connect_timeout?: float|int} $options Connection options
      */
     public function createConnection(array $options = []): \AMQPConnection
     {
         $connectionOptions = [];
         if (isset($options['heartbeat'])) {
             $connectionOptions['heartbeat'] = $options['heartbeat'];
+        }
+        // ext-amqp exposes no setConnectTimeout(); the value is only honoured
+        // through the constructor (#278).
+        if (isset($options['connect_timeout'])) {
+            $connectionOptions['connect_timeout'] = $options['connect_timeout'];
         }
 
         return new \AMQPConnection($connectionOptions);

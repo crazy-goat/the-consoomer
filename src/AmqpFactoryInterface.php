@@ -14,7 +14,7 @@ interface AmqpFactoryInterface
     /**
      * Creates an AMQP connection.
      *
-     * @param array{heartbeat?: int} $options Connection options
+     * @param array{heartbeat?: int, connect_timeout?: float|int} $options Connection options
      */
     public function createConnection(array $options = []): \AMQPConnection;
 
