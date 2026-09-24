@@ -26,9 +26,10 @@ final class Sender implements SenderInterface
      * name (#289). Routing keys are frequently derived from message content or
      * tenant IDs, so an unrestricted key would let a publisher shape the AMQP
      * entity name (queue name, dead-letter routing key) far beyond its
-     * intended meaning.
+     * intended meaning. Anchored with `\z` (not `$`, which also matches before
+     * a trailing newline) so a control byte cannot slip through.
      */
-    private const SAFE_ROUTING_KEY_PATTERN = '/^[A-Za-z0-9._-]*$/';
+    private const SAFE_ROUTING_KEY_PATTERN = '/^[A-Za-z0-9._-]*\z/';
     private ?\AMQPExchange $exchange = null;
     private ?\AMQPExchange $delayExchange = null;
     private readonly float $confirmTimeout;
@@ -235,8 +236,13 @@ final class Sender implements SenderInterface
 
         $delayStamp = $envelope->last(AmqpDelayStamp::class);
         if ($delayStamp instanceof AmqpDelayStamp) {
-            $publishCallback = function () use ($data, $routingKey, $flags, $attributes, $delayStamp): void {
-                $this->sendWithDelay($data, $routingKey, $flags, $attributes, $delayStamp);
+            // Validate before the retry wrapper: a routing key that cannot be
+            // turned into a safe entity name is a caller error, not a transient
+            // failure, and must not be retried or re-typed (#289).
+            $delayQueueName = $this->prepareDelayQueueName($routingKey, $delayStamp->getDelay());
+
+            $publishCallback = function () use ($data, $routingKey, $flags, $attributes, $delayStamp, $delayQueueName): void {
+                $this->sendWithDelay($data, $routingKey, $flags, $attributes, $delayStamp, $delayQueueName);
             };
         } else {
             $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
@@ -315,21 +321,8 @@ final class Sender implements SenderInterface
         int $flags,
         array $attributes,
         AmqpDelayStamp $delayStamp,
+        string $delayQueueName,
     ): void {
-        // Reject a publisher-controlled routing key that would be injected into
-        // AMQP entity names before any declaration side effect happens (#289).
-        $this->assertSafeEntityRoutingKey($routingKey);
-
-        $delayQueueName = $this->getDelayQueueName($routingKey, $delayStamp->getDelay());
-
-        if (\strlen($delayQueueName) > self::MAX_AMQP_NAME_BYTES) {
-            throw new \InvalidArgumentException(sprintf(
-                'Delay queue name "%s" exceeds the AMQP %d-byte limit; shorten the delay queue_name_pattern or the routing key.',
-                $delayQueueName,
-                self::MAX_AMQP_NAME_BYTES,
-            ));
-        }
-
         $this->ensureDelayExchange();
 
         if (!isset($this->delayQueuesCreated[$delayQueueName])) {
@@ -347,6 +340,34 @@ final class Sender implements SenderInterface
         );
 
         $channel?->waitForConfirm($this->confirmTimeout);
+    }
+
+    /**
+     * Validates the publisher-controlled inputs and builds the delay queue name.
+     *
+     * Called from {@see send()} *before* the retry wrapper so a validation
+     * failure keeps its {@see \InvalidArgumentException} type instead of being
+     * re-wrapped as {@see UnexpectedOperationException} by the retry path, and
+     * before any declaration side effect (#289).
+     *
+     * @throws \InvalidArgumentException When the routing key is too long or
+     *                                   unsafe, or the queue name is too long
+     */
+    private function prepareDelayQueueName(string $routingKey, int $delay): string
+    {
+        $this->assertSafeEntityRoutingKey($routingKey);
+
+        $delayQueueName = $this->getDelayQueueName($routingKey, $delay);
+
+        if (\strlen($delayQueueName) > self::MAX_AMQP_NAME_BYTES) {
+            throw new \InvalidArgumentException(sprintf(
+                'Delay queue name "%s" exceeds the AMQP %d-byte limit; shorten the delay queue_name_pattern or the routing key.',
+                $delayQueueName,
+                self::MAX_AMQP_NAME_BYTES,
+            ));
+        }
+
+        return $delayQueueName;
     }
 
     private function getDelayQueueName(string $routingKey, int $delay): string

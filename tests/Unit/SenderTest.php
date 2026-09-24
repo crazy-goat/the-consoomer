@@ -1605,6 +1605,47 @@ class SenderTest extends TestCase
         ])->send($envelope);
     }
 
+    /**
+     * PCRE `$` also matches before a trailing newline; the safety check must
+     * reject a key ending in "\n" (regression guard for the unanchored regex).
+     */
+    public function testSendWithDelayRejectsRoutingKeyWithTrailingNewline(): void
+    {
+        $this->serializer->method('encode')->willReturn(['body' => 'x', 'headers' => []]);
+
+        $envelope = new Envelope(new \stdClass(), [
+            new AmqpDelayStamp(1000),
+            new AmqpStamp("abc\n"),
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('delay entity name');
+
+        $this->createSender(['exchange' => 'test_exchange'])->send($envelope);
+    }
+
+    /**
+     * Validation runs before the retry wrapper, so a bad routing key keeps its
+     * InvalidArgumentException type and is not retried (#289).
+     */
+    public function testSendWithDelayValidationIsNotWrappedByRetry(): void
+    {
+        $this->serializer->method('encode')->willReturn(['body' => 'x', 'headers' => []]);
+
+        $retry = $this->createMock(ConnectionRetryInterface::class);
+        $retry->expects($this->never())->method('withRetry');
+
+        $envelope = new Envelope(new \stdClass(), [
+            new AmqpDelayStamp(1000),
+            new AmqpStamp('bad/key'),
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('delay entity name');
+
+        $this->createSenderWithRetry(['exchange' => 'test_exchange', 'retry' => true], $retry)->send($envelope);
+    }
+
     private function createSender(array $options): Sender
     {
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
