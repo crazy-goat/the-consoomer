@@ -233,4 +233,50 @@ class AmqpTransportTest extends TestCase
 
         $transport->close();
     }
+
+    /**
+     * A failing ack flush must not leak the connection: connection->close() is
+     * still called (#284).
+     */
+    public function testCloseStillClosesConnectionWhenReceiverCloseThrows(): void
+    {
+        $receiver = new class ($this->createMock(ReceiverInterface::class)) implements ReceiverInterface {
+            public function __construct(private readonly ReceiverInterface $inner)
+            {
+            }
+
+            public function get(): iterable
+            {
+                return $this->inner->get();
+            }
+
+            public function ack(Envelope $envelope): void
+            {
+                $this->inner->ack($envelope);
+            }
+
+            public function reject(Envelope $envelope): void
+            {
+                $this->inner->reject($envelope);
+            }
+
+            public function close(): never
+            {
+                throw new \RuntimeException('ack flush failed');
+            }
+        };
+
+        $this->connection
+            ->expects($this->once())
+            ->method('close');
+
+        $transport = new AmqpTransport($receiver, $this->sender, $this->setup, $this->connection);
+
+        try {
+            $transport->close();
+            $this->fail('the flush failure should still propagate');
+        } catch (\RuntimeException) {
+            // The connection was closed regardless (asserted above).
+        }
+    }
 }

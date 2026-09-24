@@ -101,9 +101,15 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
      */
     public function close(): void
     {
-        if (method_exists($this->receiver, 'close')) {
-            $this->receiver->close();
+        // The ack flush can throw during shutdown (dead broker, stale tags);
+        // the connection must still be closed so a persistent socket is not
+        // leaked into the next process (#284).
+        try {
+            if (method_exists($this->receiver, 'close')) {
+                $this->receiver->close();
+            }
+        } finally {
+            $this->connection->close();
         }
-        $this->connection->close();
     }
 }
