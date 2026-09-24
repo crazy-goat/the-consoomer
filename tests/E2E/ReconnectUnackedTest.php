@@ -78,12 +78,15 @@ class ReconnectUnackedTest extends TestCase
         $this->assertSame(0, $stamp->getChannelGeneration());
 
         // Let the connection go stale past the heartbeat window (threshold is
-        // 2 * heartbeat). The next operation triggers ensureConnected(), which
-        // reconnects onto a fresh channel and bumps the channel generation.
+        // 2 * heartbeat). ack()/reject() deliberately do NOT reconnect on
+        // staleness (#235), so drive the reconnect through a management call
+        // that does not consume: getMessageCount() → ensureConnected().
         sleep(3);
+        $transport->getMessageCount();
 
         // Acking the stale envelope must NOT throw and must NOT send the stale
-        // delivery tag to the new channel (no protocol error, no silent loss).
+        // delivery tag to the new channel (no protocol error, no silent loss):
+        // its generation no longer matches, so it is a no-op (#220).
         $transport->ack($messages[0]);
 
         // The message must still be ready for redelivery — no ack reached the
@@ -131,10 +134,13 @@ class ReconnectUnackedTest extends TestCase
         $messages = iterator_to_array($transport->get());
         $this->assertCount(1, $messages);
 
-        // Stale the connection past the heartbeat window → next op reconnects.
+        // Stale the connection past the heartbeat window. ack()/reject() do not
+        // reconnect on staleness (#235); drive the reconnect via getMessageCount().
         sleep(3);
+        $transport->getMessageCount();
 
-        // Rejecting the stale envelope must NOT throw a protocol error.
+        // Rejecting the stale envelope must NOT throw a protocol error (its
+        // generation no longer matches → no-op, #220).
         $transport->reject($messages[0]);
 
         // Message is still queued for redelivery (no reject reached the broker).

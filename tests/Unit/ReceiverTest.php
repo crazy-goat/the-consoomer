@@ -383,8 +383,9 @@ class ReceiverTest extends TestCase
             ->method('getConsumerTag')
             ->willReturn('test_tag');
 
+        // Once at the start of the consume cycle (#235), once when it returns.
         $this->connection
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('updateActivity');
 
         $this->connection
@@ -2011,9 +2012,14 @@ class ReceiverTest extends TestCase
         new Receiver($this->factory, $this->connection, $this->serializer, ['queue' => 'q', 'max_body_bytes' => 'none'], $this->setup);
     }
 
-    public function testAckIsNoOpWhenReconnectHappensMidOperation(): void
+    /**
+     * A stale heartbeat after a slow-but-healthy handler must NOT reconnect
+     * inside ack(): doing so would wipe in-flight delivery tags and redeliver
+     * messages (#235). The ack is sent on the current channel instead.
+     */
+    public function testAckDoesNotReconnectOnStaleHeartbeat(): void
     {
-        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1, 'redeclare_on_reconnect' => true];
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
 
         $receiver = $this->createReceiverWithQueue($options);
 
@@ -2023,20 +2029,22 @@ class ReceiverTest extends TestCase
         $stamp = new AmqpReceivedStamp($amqpEnvelope, 'test_queue');
         $envelope = new Envelope(new \stdClass(), [$stamp]);
 
-        // Heartbeat is stale → ensureConnected() reconnects and wipes the queue map.
         $this->connection->method('checkHeartbeat')->willReturn(true);
-        $this->connection->expects($this->once())->method('reconnect');
-        $this->setup->expects($this->once())->method('resetSetup');
+        $this->connection->expects($this->never())->method('reconnect');
+        $this->connection->expects($this->atLeastOnce())->method('updateActivity');
+        $this->setup->expects($this->never())->method('resetSetup');
 
-        // No ack must be sent — the delivery tag belongs to the dead channel.
-        $this->queue->expects($this->never())->method('ack');
+        $this->queue->expects($this->once())->method('ack')->with(123);
 
         $receiver->ack($envelope);
     }
 
-    public function testRejectIsNoOpWhenReconnectHappensMidOperation(): void
+    /**
+     * Symmetric to {@see testAckDoesNotReconnectOnStaleHeartbeat} for reject().
+     */
+    public function testRejectDoesNotReconnectOnStaleHeartbeat(): void
     {
-        $options = ['queue' => 'test_queue', 'redeclare_on_reconnect' => true];
+        $options = ['queue' => 'test_queue'];
 
         $receiver = $this->createReceiverWithQueue($options);
 
@@ -2046,13 +2054,12 @@ class ReceiverTest extends TestCase
         $stamp = new AmqpReceivedStamp($amqpEnvelope, 'test_queue');
         $envelope = new Envelope(new \stdClass(), [$stamp]);
 
-        // Heartbeat is stale → ensureConnected() reconnects and wipes the queue map.
         $this->connection->method('checkHeartbeat')->willReturn(true);
-        $this->connection->expects($this->once())->method('reconnect');
-        $this->setup->expects($this->once())->method('resetSetup');
+        $this->connection->expects($this->never())->method('reconnect');
+        $this->connection->expects($this->atLeastOnce())->method('updateActivity');
+        $this->setup->expects($this->never())->method('resetSetup');
 
-        // No reject must be sent — the delivery tag belongs to the dead channel.
-        $this->queue->expects($this->never())->method('reject');
+        $this->queue->expects($this->once())->method('reject')->with(456);
 
         $receiver->reject($envelope);
     }
@@ -2470,25 +2477,44 @@ class ReceiverTest extends TestCase
     }
 
     /**
-     * A reconnect inside ack() must bump the generation so any LATER ack of an
-     * envelope from the old generation is a no-op (#220).
+     * ack() must not bump the channel generation on heartbeat staleness: only a
+     * real reconnect (heartbeat check in get(), or a genuine failure) does, so
+     * an envelope from the current channel stays ackable (#235/#220).
      */
-    public function testReconnectInsideAckBumpsGeneration(): void
+    public function testAckDoesNotBumpGenerationOnStaleHeartbeat(): void
     {
-        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1, 'redeclare_on_reconnect' => true];
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
 
         $receiver = $this->createReceiverWithQueue($options);
 
-        // Heartbeat stale → ensureConnected() reconnects and bumps generation.
         $this->connection->method('checkHeartbeat')->willReturn(true);
-        $this->connection->expects($this->once())->method('reconnect');
-        $this->setup->expects($this->once())->method('resetSetup');
-        $this->queue->expects($this->never())->method('ack');
+        $this->connection->expects($this->never())->method('reconnect');
+        $this->queue->expects($this->once())->method('ack');
 
         $receiver->ack($this->makeEnvelope(7, 'test_queue', 0));
 
         $reflection = new \ReflectionClass(Receiver::class);
-        $this->assertSame(1, $reflection->getProperty('channelGeneration')->getValue($receiver));
+        $this->assertSame(0, $reflection->getProperty('channelGeneration')->getValue($receiver));
+    }
+
+    /**
+     * get() marks the start of the consume cycle as activity, so a long consume
+     * loop is not counted against the staleness window (#235).
+     */
+    public function testGetRefreshesActivityAtStartOfCycle(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue->method('consume')->willThrowException(new \AMQPQueueException('idle'));
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        // At least one bump for the start of the cycle, one for the end.
+        $this->connection->expects($this->atLeastOnce())->method('updateActivity');
+
+        iterator_to_array($receiver->get());
     }
 
     /**
@@ -2810,11 +2836,17 @@ class ReceiverTest extends TestCase
 
         $receiver = $this->createReceiverWithQueue($options);
 
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+
+        // get() is where a stale heartbeat still reconnects (#235).
         $this->connection->method('checkHeartbeat')->willReturn(true);
         $this->connection->expects($this->once())->method('reconnect');
         $this->setup->expects($this->never())->method('resetSetup');
 
-        $receiver->ack($this->makeEnvelope(1, 'test_queue'));
+        iterator_to_array($receiver->get());
     }
 
     /**

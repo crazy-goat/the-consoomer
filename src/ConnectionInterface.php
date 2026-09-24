@@ -25,9 +25,15 @@ interface ConnectionInterface
     public function getConnection(): \AMQPConnection;
 
     /**
-     * Checks if heartbeat timeout indicates stale connection.
+     * Checks whether the wall-clock staleness window has elapsed since the last
+     * application activity.
      *
-     * @return bool True if reconnection is needed
+     * This is not a liveness probe — the broker-negotiated heartbeat on the
+     * native connection detects a dead socket. Only use it to decide whether to
+     * renew the channel before an idempotent read; never inside `ack()`/
+     * `reject()`, where a false positive redelivers in-flight messages (#235).
+     *
+     * @return bool True if the staleness window has elapsed
      */
     public function checkHeartbeat(): bool;
 
@@ -40,6 +46,10 @@ interface ConnectionInterface
 
     /**
      * Updates the last activity timestamp.
+     *
+     * Callers should bump this at the start and end of long operations so the
+     * staleness window is measured from real interactions, not handler time
+     * (#235).
      */
     public function updateActivity(): void;
 
