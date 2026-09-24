@@ -410,6 +410,46 @@ class ConnectionRetryTest extends TestCase
         }
     }
 
+    /**
+     * An aggressive retry_delay/count used to overflow to float before the cap,
+     * leaking garbage into jitter and throwing ValueError from random_int()
+     * (#209). The delay must stay a bounded, valid int.
+     */
+    public function testAggressiveBackoffWithJitterDoesNotOverflow(): void
+    {
+        $retry = new ConnectionRetry(
+            maxAttempts: 1,
+            retryDelay: intdiv(\PHP_INT_MAX, 1024),
+            retryBackoff: true,
+            retryMaxDelay: 30000000,
+            retryJitter: true,
+        );
+
+        $calculateDelay = (new \ReflectionMethod($retry, 'calculateDelay'))->getClosure($retry);
+
+        for ($attempt = 1; $attempt <= 40; $attempt++) {
+            $delay = $calculateDelay($attempt);
+            $this->assertGreaterThanOrEqual(0, $delay);
+            $this->assertLessThanOrEqual(30000000, $delay);
+        }
+    }
+
+    public function testConstructorRejectsNegativeRetryDelay(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('retryDelay must not be negative');
+
+        new ConnectionRetry(maxAttempts: 2, retryDelay: -100, retryJitter: true);
+    }
+
+    public function testConstructorRejectsNegativeRetryMaxDelay(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('retryMaxDelay must not be negative');
+
+        new ConnectionRetry(maxAttempts: 2, retryMaxDelay: -1);
+    }
+
     public function testExponentialBackoff(): void
     {
         $retry = new ConnectionRetry(

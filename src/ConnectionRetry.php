@@ -89,6 +89,23 @@ final class ConnectionRetry implements ConnectionRetryInterface
             ));
         }
 
+        // A negative base or cap makes the jitter range invalid
+        // (random_int(min > max) throws ValueError) — reject it at
+        // construction instead of crashing on the first retry (#282).
+        if ($this->retryDelay < 0) {
+            throw new \InvalidArgumentException(sprintf(
+                'retryDelay must not be negative, %d given',
+                $this->retryDelay,
+            ));
+        }
+
+        if ($this->retryMaxDelay < 0) {
+            throw new \InvalidArgumentException(sprintf(
+                'retryMaxDelay must not be negative, %d given',
+                $this->retryMaxDelay,
+            ));
+        }
+
         $this->metrics = new RetryMetrics();
 
         if ($this->retryCircuitBreaker) {
@@ -313,14 +330,22 @@ final class ConnectionRetry implements ConnectionRetryInterface
      */
     private function calculateDelay(int $attempt): int
     {
-        $delay = $this->retryDelay;
-
+        // The exponential term is computed in floating point after bounding the
+        // exponent, then clamped to retry_max_delay *before* it can overflow
+        // PHP_INT_MAX and leak a float / garbage into the jitter computation
+        // (#209). The base and cap are non-negative (validated in the
+        // constructor, #282).
         if ($this->retryBackoff) {
-            $delay = $this->retryDelay * (2 ** ($attempt - 1));
+            $exponent = min(max(0, $attempt - 1), 62);
+            $delay = (int) min((float) $this->retryDelay * (2 ** $exponent), (float) $this->retryMaxDelay);
+        } else {
+            $delay = min($this->retryDelay, $this->retryMaxDelay);
         }
 
         if ($this->retryJitter) {
-            $variation = (int) ($delay * self::JITTER_VARIATION_FACTOR);
+            // $delay is a non-negative int here, so the variation is too and
+            // random_int() can never receive min > max (#282).
+            $variation = max(0, (int) ($delay * self::JITTER_VARIATION_FACTOR));
             $delay += random_int(-$variation, $variation);
         }
 
