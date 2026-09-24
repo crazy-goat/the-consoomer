@@ -3,7 +3,7 @@
 
 Symfony Messenger AMQP transport that uses `consume` instead of `get`.
 
-![alt text](docs/theconsoomer.webp)
+![alt text](assets/theconsoomer.webp)
 
 ---
 
@@ -420,8 +420,11 @@ E2E tests require RabbitMQ. The `test-e2e-full` script automatically:
 ### Code quality
 
 ```bash
-# Run rector + php-cs-fixer
+# Check everything: phpstan + rector + php-cs-fixer (dry-run; fixes nothing)
 composer lint
+
+# Apply fixes: rector then php-cs-fixer
+composer lint:fix
 ```
 
 ## Contributing

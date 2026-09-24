@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
 use CrazyGoat\TheConsoomer\Exception\MissingStampException;
+use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
+use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
@@ -261,6 +264,8 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * `auto_setup` is enabled.
      *
      * @return list<Envelope> The collected messages (possibly empty)
+     * @throws RetryExhaustedException When a poison-message reject exhausts retries (retry enabled)
+     * @throws UnexpectedOperationException When a poison-message reject wraps a non-AMQP failure (retry enabled)
      */
     public function get(): iterable
     {
@@ -432,6 +437,9 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * and becomes a no-op (#220).
      *
      * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
+     * @throws RetryExhaustedException When the ack flush exhausts retries (retry enabled)
+     * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
+     * @throws UnexpectedOperationException When the ack flush wraps a non-AMQP failure (retry enabled)
      */
     public function ack(Envelope $envelope): void
     {
@@ -468,6 +476,9 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * activity is refreshed and a stale-generation envelope is a no-op (#220).
      *
      * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
+     * @throws RetryExhaustedException When the reject or ack flush exhausts retries (retry enabled)
+     * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
+     * @throws UnexpectedOperationException When the reject wraps a non-AMQP failure (retry enabled)
      */
     public function reject(Envelope $envelope): void
     {
@@ -539,6 +550,9 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * Flushes buffered acknowledgements to the broker.
      *
      * @param string|null $queueName Flush only this queue, or all queues when null
+     * @throws RetryExhaustedException When the flush exhausts retries (retry enabled)
+     * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
+     * @throws UnexpectedOperationException When the flush wraps a non-AMQP failure (retry enabled)
      */
     public function ackPending(?string $queueName = null): void
     {
@@ -698,6 +712,9 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *        mode used to purge only the first queue, silently — #243).
      *
      * @throws \InvalidArgumentException When no queue is given and none is configured
+     * @throws RetryExhaustedException When the purge exhausts retries (retry enabled)
+     * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
+     * @throws UnexpectedOperationException When the purge wraps a non-AMQP failure (retry enabled)
      */
     public function purgeQueue(?string $queueName = null): int
     {
@@ -738,6 +755,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *
      * Uses a passive declare per queue, so it reflects the broker's ready
      * count (messages delivered but not yet acked are not counted).
+     *
+     * @throws RetryExhaustedException When the passive declare exhausts retries (retry enabled)
+     * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
+     * @throws UnexpectedOperationException When the declare wraps a non-AMQP failure (retry enabled)
      */
     public function getMessageCount(): int
     {

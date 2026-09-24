@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
+use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
+use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Sender\SenderInterface;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
@@ -258,6 +261,9 @@ final class Sender implements SenderInterface
      * @param Envelope $envelope The envelope to send
      * @return Envelope The sent envelope
      * @throws \AMQPException When connection or publish fails
+     * @throws RetryExhaustedException When retries are exhausted (retry enabled)
+     * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
+     * @throws UnexpectedOperationException When a non-AMQP failure is wrapped (retry enabled)
      */
     public function send(Envelope $envelope): Envelope
     {
