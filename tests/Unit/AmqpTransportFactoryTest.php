@@ -139,6 +139,24 @@ class AmqpTransportFactoryTest extends TestCase
         );
     }
 
+    /**
+     * A publish-only transport must be creatable without a queue (#279).
+     */
+    public function testCreateSendOnlyTransportWithoutQueue(): void
+    {
+        [$factory, $connection] = $this->createMockFactoryAndConnection();
+        $serializer = $this->createMock(SerializerInterface::class);
+
+        $transport = AmqpTransportFactory::create(
+            'amqp-consoomer://guest:guest@localhost:5672/vhost/test-exchange?auto_setup=false',
+            [],
+            $serializer,
+            $factory,
+        );
+
+        $this->assertInstanceOf(AmqpTransport::class, $transport);
+    }
+
     public function testCreateTransportWithAmqpsScheme(): void
     {
         $factory = $this->createMock(AmqpFactoryInterface::class);
