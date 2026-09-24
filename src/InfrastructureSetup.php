@@ -45,9 +45,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             throw new \InvalidArgumentException('exchange option is required');
         }
 
-        if (!isset($options['queue']) && !isset($options['queues'])) {
-            throw new \InvalidArgumentException('either queue or queues option is required');
-        }
+        // A queue is only needed to declare consumer topology, so it is required
+        // by declareQueues()/setup() rather than the constructor. A send-only
+        // transport (auto_setup=false, never consumes) can be created without a
+        // dummy queue (#279).
 
         if (isset($options['queues'])) {
             $this->validateQueues($options['queues']);
@@ -178,6 +179,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      */
     private function declareQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
     {
+        if (!isset($this->options['queue']) && !isset($this->options['queues'])) {
+            throw new \InvalidArgumentException('either queue or queues option is required to declare consumer topology');
+        }
+
         if (isset($this->options['queues'])) {
             $this->setupMultipleQueues($channel, $exchange);
         } else {

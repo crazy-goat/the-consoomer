@@ -450,13 +450,21 @@ class InfrastructureSetupTest extends TestCase
         $setup->setup();
     }
 
-    public function testConstructorThrowsWhenNeitherQueueNorQueuesProvided(): void
+    /**
+     * The queue is required only to declare consumer topology (#279): the
+     * constructor accepts a publish-only setup, and setup() is where the
+     * requirement is enforced.
+     */
+    public function testSetupThrowsWhenNeitherQueueNorQueuesProvided(): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-
-        new InfrastructureSetup($this->factory, $this->connection, [
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
             'exchange' => 'test_exchange',
         ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('either queue or queues option is required');
+
+        $setup->setup();
     }
 
     public function testConstructorThrowsWhenQueuesIsNotAnArray(): void
@@ -1136,6 +1144,21 @@ class InfrastructureSetupTest extends TestCase
 
         $setup->setupExchange();
         $setup->resetSetup();
+        $setup->setupExchange();
+    }
+
+    public function testSetupExchangeWithoutQueueDoesNotThrow(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->willReturn($this->exchange);
+
+        $this->exchange->expects($this->once())->method('declareExchange');
+        $this->factory->expects($this->never())->method('createQueue');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+        ]);
+
         $setup->setupExchange();
     }
 }
