@@ -317,9 +317,14 @@ framework:
 With retry enabled:
 - Connection and channel failures are retried automatically up to `retry_count` times (including the first attempt)
 - Non-AMQP exceptions are not retried
-- Resource errors (`AMQPQueueException`, `AMQPExchangeException`) are permanent and not retried;
-  connection/channel errors (`AMQPConnectionException`, `AMQPChannelException`) are always retried.
-  For generic `AMQPException`, reply codes 403/404/406 are treated as permanent.
+- Permanent failures are identified by reply code, not by exception type: `403` (access refused),
+  `404` (not found), `405` (resource locked) and `406` (precondition failed), read from
+  `AMQPException::getCode()` or the symbolic name in the broker message
+  (`ACCESS_REFUSED`/`NOT_FOUND`/`RESOURCE_LOCKED`/`PRECONDITION_FAILED`), are not retried.
+  Everything else is retried, including `AMQPQueueException`/`AMQPExchangeException` without a
+  permanent reply code — ext-amqp raises `AMQPQueueException` for a plain read timeout, which is
+  transient. Connection/channel errors (`AMQPConnectionException`, `AMQPChannelException`) are
+  always retried.
 - On exhaustion, a `RetryExhaustedException` is thrown with the last failure as previous
 
 ### Circuit Breaker Scope
