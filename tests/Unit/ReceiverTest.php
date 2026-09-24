@@ -156,6 +156,20 @@ class ReceiverTest extends TestCase
         $this->assertInstanceOf(AmqpReceivedStamp::class, $result[0]->last(AmqpReceivedStamp::class));
     }
 
+    /**
+     * The collected batch must not be stored as instance state: keeping it on
+     * the Receiver retained the whole previous batch (envelopes + decoded
+     * messages) alive until the next get(), roughly doubling peak memory for
+     * large payloads in a long-running worker (#312).
+     */
+    public function testBatchIsNotStoredOnTheReceiver(): void
+    {
+        $this->assertFalse(
+            (new \ReflectionClass(Receiver::class))->hasProperty('messages'),
+            'get() must return a local batch, not retain it on the Receiver (#312)',
+        );
+    }
+
     public function testGetPassesHeadersToDecode(): void
     {
         $options = ['queue' => 'test_queue'];

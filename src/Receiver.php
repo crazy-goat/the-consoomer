@@ -42,8 +42,6 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     private array $unacked = [];
     /** @var array<string, list<int>> */
     private array $pendingAcks = [];
-    /** @var array<Envelope> */
-    private array $messages = [];
     /** @var array<string, \AMQPQueue> */
     private array $queues = [];
     /**
@@ -269,7 +267,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      */
     public function get(): iterable
     {
-        $this->messages = [];
+        // The collected batch is a local, not instance state: keeping it on the
+        // object retained the whole previous batch (envelopes + decoded
+        // messages) between get() calls, roughly doubling peak memory for a
+        // long-running worker with large payloads (#312).
+        $messages = [];
         $this->ensureConnected();
         if ($this->options['auto_setup'] ?? true) {
             $this->setup->setup();
@@ -296,7 +298,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $first = true;
         foreach ($requests as [$queueName, $queue]) {
-            if (count($this->messages) >= $this->batchSize) {
+            if (count($messages) >= $this->batchSize) {
                 break;
             }
 
@@ -315,7 +317,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             // first queue drains until the global budget is met and later
             // queues each contribute at most one message (#204).
             $consumed = 0;
-            $callback = function (\AMQPEnvelope $message) use ($queueName, $queue, &$consumed): bool {
+            $callback = function (\AMQPEnvelope $message) use ($queueName, $queue, &$consumed, &$messages): bool {
                 // The delivery may belong to another queue's consumer on the
                 // shared channel; attribute it to the queue that actually owns
                 // the consumer (#309).
@@ -334,7 +336,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                         ++$consumed;
 
                         return $consumed < $this->perQueueBudget()
-                            && count($this->messages) < $this->batchSize;
+                            && count($messages) < $this->batchSize;
                     }
 
                     $envelope = $this->serializer->decode([
@@ -358,10 +360,10 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                     ++$consumed;
 
                     return $consumed < $this->perQueueBudget()
-                        && count($this->messages) < $this->batchSize;
+                        && count($messages) < $this->batchSize;
                 }
 
-                $this->messages[] = $envelope->with(new AmqpReceivedStamp(
+                $messages[] = $envelope->with(new AmqpReceivedStamp(
                     $message,
                     $resolvedQueueName,
                     $this->channelGeneration,
@@ -373,7 +375,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                 ++$consumed;
 
                 return $consumed < $this->perQueueBudget()
-                    && count($this->messages) < $this->batchSize;
+                    && count($messages) < $this->batchSize;
             };
 
             try {
@@ -418,7 +420,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $this->connection->updateActivity();
 
-        return $this->messages;
+        return $messages;
     }
 
     /**
