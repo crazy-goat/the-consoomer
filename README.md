@@ -113,10 +113,11 @@ framework:
 ```
 
 With heartbeat enabled:
-- Connection is checked before each operation (send, get, ack, reject)
-- If stale (elapsed > 2 * heartbeat), automatic reconnect occurs
-- Activity is updated after each operation
-- In-flight messages delivered before a reconnect are not acknowledged on the new channel — their delivery tag belongs to the dead channel, so ack/reject become no-ops and the broker redelivers them on the next get()
+- The staleness check (`elapsed > 2 * heartbeat`, measured from the last application activity) runs before `send()` and `get()`, and before queue-management calls. If stale, the channel is renewed.
+- `ack()`/`reject()` deliberately do **not** reconnect on staleness (#235): they run after the (possibly slow) message handler, and reconnecting there would wipe in-flight delivery tags and redeliver messages. They refresh the activity timestamp instead, so a slow-but-healthy handler does not cause a reconnect on the next `get()`.
+- Activity is updated at the start and end of the consume cycle and around ack/reject.
+- This wall-clock staleness is **not** a liveness probe — the broker-negotiated AMQP heartbeat on the native connection detects a genuinely dead socket.
+- In-flight messages whose channel was genuinely lost are not acknowledged on the new channel — their delivery tag belongs to the dead channel, so ack/reject become no-ops and the broker redelivers them on the next `get()`
 
 ### SSL/TLS
 

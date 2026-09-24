@@ -128,7 +128,11 @@ final class Connection implements ConnectionInterface
     /**
      * {@inheritdoc}
      *
-     * @return bool True if heartbeat timeout detected (connection needs reconnection)
+     * Wall-clock staleness since the last application activity (#235), not a
+     * liveness probe: the broker-negotiated heartbeat on the native
+     * `\AMQPConnection` is what detects a dead socket. Intended for renewing the
+     * channel before an idempotent read (get()/management calls); never for
+     * `ack()`/`reject()`, where a false positive redelivers in-flight messages.
      */
     public function checkHeartbeat(): bool
     {

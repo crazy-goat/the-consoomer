@@ -237,6 +237,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
         $this->connect();
 
+        // Mark the start of the consume cycle: this is the long operation, so
+        // activity is refreshed before it (and again when it returns). Without
+        // this the whole loop duration counted against the staleness window
+        // (#235).
+        $this->connection->updateActivity();
+
         // Iterate the queues round-robin (rotating the starting offset between
         // get() calls) and stop entering further queues once the total batch
         // budget is spent, so no single queue drains everything (#204).
@@ -379,20 +385,21 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     /**
      * Acknowledges the given envelope on the AMQP queue it was received from.
      *
-     * If the connection was stale and a reconnect happened inside this call,
-     * the operation is a no-op: the old channel (and its delivery tag) is gone,
-     * so the ack cannot be sent and the broker will redeliver the message.
+     * Does NOT reconnect on heartbeat staleness (#235): ack() runs after the
+     * (possibly slow) message handler, and a slow-but-healthy handler must not
+     * force a reconnect here — that would wipe in-flight delivery tags and
+     * redeliver messages. Activity is refreshed instead. An envelope from a
+     * channel that was already lost is detected by the generation check below
+     * and becomes a no-op (#220).
      *
      * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
      */
     public function ack(Envelope $envelope): void
     {
-        if ($this->ensureConnected()) {
-            // A reconnect wiped the channel — the delivery tag is dead and the
-            // broker will redeliver the message on the next get(). Acking it on
-            // the new channel would be a no-op at best or a protocol error.
-            return;
-        }
+        // The handler has finished, so mark liveness before touching the
+        // channel; this is what keeps the next get() from seeing false
+        // staleness after a long handler (#235).
+        $this->connection->updateActivity();
 
         $stamp = $envelope->last(AmqpReceivedStamp::class);
         if (!$stamp instanceof AmqpReceivedStamp) {
@@ -422,20 +429,14 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     /**
      * Rejects the given envelope on the AMQP queue it was received from.
      *
-     * If the connection was stale and a reconnect happened inside this call,
-     * the operation is a no-op: the old channel (and its delivery tag) is gone,
-     * so the reject cannot be sent and the broker will redeliver the message.
+     * Like {@see ack()} it does not reconnect on heartbeat staleness (#235);
+     * activity is refreshed and a stale-generation envelope is a no-op (#220).
      *
      * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
      */
     public function reject(Envelope $envelope): void
     {
-        if ($this->ensureConnected()) {
-            // A reconnect wiped the channel — the delivery tag is dead and the
-            // broker will redeliver the message on the next get(). Rejecting it
-            // on the new channel would be a no-op at best or a protocol error.
-            return;
-        }
+        $this->connection->updateActivity();
 
         $stamp = $envelope->last(AmqpReceivedStamp::class);
         if (!$stamp instanceof AmqpReceivedStamp) {
