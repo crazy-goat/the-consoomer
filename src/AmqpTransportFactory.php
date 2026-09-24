@@ -69,6 +69,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     delay?: array{
      *         exchange_name?: string,
      *         queue_name_pattern?: string,
+     *         max_tracked_queues?: int,
      *     },
      *     timeout?: float|int,
      *     read_timeout?: float|int,

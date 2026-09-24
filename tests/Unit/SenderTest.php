@@ -1443,6 +1443,100 @@ class SenderTest extends TestCase
     }
 
     /**
+     * The in-process delay-queue cache must not grow without bound when a
+     * worker publishes many distinct (delay, routing key) pairs (#211).
+     */
+    public function testDelayQueueCacheIsBoundedByMaxTrackedQueues(): void
+    {
+        $options = [
+            'exchange' => 'test_exchange',
+            'delay' => ['max_tracked_queues' => 3],
+        ];
+
+        $delayExchange = $this->createMock(\AMQPExchange::class);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('isConnected')->willReturn(true);
+        $this->connection->method('getChannel')->willReturn($this->createMock(\AMQPChannel::class));
+        $this->factory->method('createExchange')->willReturn($delayExchange);
+        $delayExchange->method('declareExchange');
+        $delayExchange->method('publish');
+        $this->factory->method('createQueue')->willReturn($this->createMock(\AMQPQueue::class));
+        $this->serializer->method('encode')->willReturn(['body' => 'test', 'headers' => []]);
+        $this->setup->method('setupExchange');
+
+        $sender = $this->createSender($options);
+
+        for ($i = 1; $i <= 10; $i++) {
+            $sender->send(new Envelope(new \stdClass(), [
+                new AmqpStamp('rk' . $i),
+                new AmqpDelayStamp($i * 1000),
+            ]));
+        }
+
+        $reflection = new \ReflectionClass(Sender::class);
+        /** @var array<string, true> $created */
+        $created = $reflection->getProperty('delayQueuesCreated')->getValue($sender);
+        /** @var array<string, array<string, true>> $bindings */
+        $bindings = $reflection->getProperty('delayQueueBindings')->getValue($sender);
+
+        $this->assertCount(3, $created);
+        $this->assertLessThanOrEqual(3, count($bindings));
+    }
+
+    /**
+     * Evicting an entry only forgets the local optimisation: the next publish
+     * re-declares the queue, which must stay safe (idempotent on the broker).
+     */
+    public function testEvictedDelayQueueIsRedeclaredOnNextSend(): void
+    {
+        $options = [
+            'exchange' => 'test_exchange',
+            'delay' => ['max_tracked_queues' => 2],
+        ];
+
+        $delayExchange = $this->createMock(\AMQPExchange::class);
+        $queue = $this->createMock(\AMQPQueue::class);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('isConnected')->willReturn(true);
+        $this->connection->method('getChannel')->willReturn($this->createMock(\AMQPChannel::class));
+        $this->factory->method('createExchange')->willReturn($delayExchange);
+        $delayExchange->method('declareExchange');
+        $delayExchange->method('publish');
+        $this->factory->method('createQueue')->willReturn($queue);
+        $this->serializer->method('encode')->willReturn(['body' => 'test', 'headers' => []]);
+        $this->setup->method('setupExchange');
+
+        // rk1, rk2, rk3 evicts rk1; sending rk1 again re-declares it.
+        $queue->expects($this->exactly(4))->method('declareQueue');
+
+        $sender = $this->createSender($options);
+
+        foreach (['rk1', 'rk2', 'rk3', 'rk1'] as $routingKey) {
+            $sender->send(new Envelope(new \stdClass(), [
+                new AmqpStamp($routingKey),
+                new AmqpDelayStamp(500),
+            ]));
+        }
+    }
+
+    /**
+     * A non-positive limit would make the cache useless (and could evict the
+     * entry just inserted); it is clamped to at least 1 (#211).
+     */
+    public function testMaxTrackedQueuesIsClampedToAtLeastOne(): void
+    {
+        $sender = $this->createSender([
+            'exchange' => 'test_exchange',
+            'delay' => ['max_tracked_queues' => 0],
+        ]);
+
+        $reflection = new \ReflectionClass(Sender::class);
+        $this->assertSame(1, $reflection->getProperty('maxTrackedDelayQueues')->getValue($sender));
+    }
+
+    /**
      * By default a reconnect does not re-declare durable topology (#308): the
      * setup flag is left alone, so setupExchange() after the reconnect is a
      * no-op at the InfrastructureSetup level.

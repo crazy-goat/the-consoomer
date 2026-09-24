@@ -87,6 +87,7 @@ final class DsnParser
      *     delay?: array{
      *         exchange_name?: string,
      *         queue_name_pattern?: string,
+     *         max_tracked_queues?: int,
      *     },
      *     ssl_cert?: string,
      *     ssl_key?: string,

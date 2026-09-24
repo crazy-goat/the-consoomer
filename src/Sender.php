@@ -33,6 +33,18 @@ final class Sender implements SenderInterface
      * a trailing newline) so a control byte cannot slip through.
      */
     private const SAFE_ROUTING_KEY_PATTERN = '/^[A-Za-z0-9._-]*\z/';
+    /**
+     * Default upper bound on the number of delay queues (and per-queue
+     * bindings) remembered in-process.
+     *
+     * The delay-queue cache is only a local optimisation: re-declaring a queue
+     * and re-binding a routing key are idempotent on the broker. A bounded cache
+     * therefore never changes behaviour, it only avoids repeating round-trips
+     * for the queues that are actually reused. Without a bound a worker that
+     * publishes many distinct `(delay, routing key)` pairs leaks memory for the
+     * whole process lifetime (#211).
+     */
+    private const DEFAULT_MAX_TRACKED_DELAY_QUEUES = 1000;
     private ?\AMQPExchange $exchange = null;
     private ?\AMQPExchange $delayExchange = null;
     private readonly float $confirmTimeout;
@@ -76,6 +88,11 @@ final class Sender implements SenderInterface
     private array $delayQueueBindings = [];
     private readonly string $delayExchangeName;
     private readonly string $delayQueueNamePattern;
+    /**
+     * Upper bound on the number of delay queue entries kept in
+     * {@see $delayQueuesCreated} and {@see $delayQueueBindings} (#211).
+     */
+    private readonly int $maxTrackedDelayQueues;
 
     /**
      * @param array{
@@ -89,6 +106,7 @@ final class Sender implements SenderInterface
      *     delay?: array{
      *         exchange_name?: string,
      *         queue_name_pattern?: string,
+     *         max_tracked_queues?: int,
      *     },
      * } $options
      */
@@ -112,6 +130,10 @@ final class Sender implements SenderInterface
             ?? ($this->options['exchange'] ?? '') . '_delay';
         $this->delayQueueNamePattern = $this->options['delay']['queue_name_pattern']
             ?? 'delay_{delay}_{queue}';
+        $this->maxTrackedDelayQueues = max(
+            1,
+            (int) ($this->options['delay']['max_tracked_queues'] ?? self::DEFAULT_MAX_TRACKED_DELAY_QUEUES),
+        );
     }
 
     /**
@@ -388,8 +410,7 @@ final class Sender implements SenderInterface
 
         if (!isset($this->delayQueuesCreated[$delayQueueName])) {
             $this->createDelayQueue($delayQueueName, $delayStamp->getDelay(), $routingKey);
-            $this->delayQueuesCreated[$delayQueueName] = true;
-            $this->delayQueueBindings[$delayQueueName][$routingKey] = true;
+            $this->trackCreatedDelayQueue($delayQueueName, $routingKey);
         } else {
             $this->ensureDelayBinding($delayQueueName, $routingKey);
         }
@@ -502,6 +523,48 @@ final class Sender implements SenderInterface
         $queue->setFlags(\AMQP_DURABLE);
         $queue->bind($this->delayExchangeName, $routingKey);
 
+        $this->trackDelayBinding($queueName, $routingKey);
+    }
+
+    /**
+     * Remembers a freshly declared delay queue and its first binding (#211).
+     *
+     * The map is kept insertion-ordered (PHP array semantics) and trimmed
+     * first-in-first-out once it exceeds {@see $maxTrackedDelayQueues}. Eviction
+     * only forgets the local optimisation: the next publish re-declares the
+     * queue and re-binds the routing key, both idempotent on the broker.
+     */
+    private function trackCreatedDelayQueue(string $queueName, string $routingKey): void
+    {
+        $this->delayQueuesCreated[$queueName] = true;
+
+        if (count($this->delayQueuesCreated) > $this->maxTrackedDelayQueues) {
+            $oldest = array_key_first($this->delayQueuesCreated);
+            if ($oldest !== null) {
+                unset($this->delayQueuesCreated[$oldest], $this->delayQueueBindings[$oldest]);
+            }
+        }
+
+        $this->trackDelayBinding($queueName, $routingKey);
+    }
+
+    /**
+     * Remembers one `(queue, routing key)` binding, bounded per queue (#211).
+     *
+     * A shared `queue_name_pattern` that omits `{queue}` maps many routing keys
+     * onto one queue, so the inner map needs its own bound to avoid unbounded
+     * growth within a single cached queue.
+     */
+    private function trackDelayBinding(string $queueName, string $routingKey): void
+    {
         $this->delayQueueBindings[$queueName][$routingKey] = true;
+
+        while (count($this->delayQueueBindings[$queueName]) > $this->maxTrackedDelayQueues) {
+            $oldest = array_key_first($this->delayQueueBindings[$queueName]);
+            if ($oldest === null) {
+                break;
+            }
+            unset($this->delayQueueBindings[$queueName][$oldest]);
+        }
     }
 }

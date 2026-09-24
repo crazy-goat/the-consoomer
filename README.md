@@ -122,6 +122,7 @@ The factory does **not** connect at construction: the first operation that needs
 | `confirm_timeout` | Publisher confirms wait duration in seconds (**0 = wait indefinitely**). Only meaningful when `publisher_confirms` is on. See [Publish Reliability](#publish-reliability) | `0` |
 | `delay.exchange_name` | Name of the delay (dead-letter) exchange | `<exchange>_delay` |
 | `delay.queue_name_pattern` | Delay queue name template supporting `{delay}` and `{queue}` | `delay_{delay}_{queue}` |
+| `delay.max_tracked_queues` | Upper bound on delay queues/bindings remembered in-process (avoids unbounded memory with high-cardinality delays) | `1000` |
 
 ### Routing Key Resolution
 
@@ -201,6 +202,15 @@ patterns without `{queue}`, where several routing keys share one delay queue
 (#276). The routing key used here is validated: only `A-Z a-z 0-9 . _ -` are
 allowed and it must fit the AMQP 255-byte name limit, otherwise `send()` throws
 `InvalidArgumentException` (#289).
+
+The set of declared delay queues (and their bindings) is cached in-process and
+bounded to `delay.max_tracked_queues` entries (default `1000`) so that a worker
+publishing many distinct `(delay, routing key)` pairs — e.g. per-message delays —
+does not grow memory for the process lifetime. The cache is only an optimisation:
+once an entry is evicted the next publish re-declares the queue and re-binds the
+key, both idempotent on the broker. Note that the broker-side queues themselves
+are durable and are **not** removed on eviction; draw delays from a small, fixed
+set of levels to avoid broker-side queue proliferation (#211).
 
 ### Message priorities
 
