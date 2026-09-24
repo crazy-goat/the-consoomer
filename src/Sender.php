@@ -16,6 +16,19 @@ use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
  */
 final class Sender implements SenderInterface
 {
+    /**
+     * AMQP entity names and shortstr values (including routing keys) are
+     * limited to 255 bytes by the protocol.
+     */
+    private const MAX_AMQP_NAME_BYTES = 255;
+    /**
+     * Characters allowed in a routing key that is templated into a delay queue
+     * name (#289). Routing keys are frequently derived from message content or
+     * tenant IDs, so an unrestricted key would let a publisher shape the AMQP
+     * entity name (queue name, dead-letter routing key) far beyond its
+     * intended meaning.
+     */
+    private const SAFE_ROUTING_KEY_PATTERN = '/^[A-Za-z0-9._-]*$/';
     private ?\AMQPExchange $exchange = null;
     private ?\AMQPExchange $delayExchange = null;
     private readonly float $confirmTimeout;
@@ -295,9 +308,21 @@ final class Sender implements SenderInterface
         array $attributes,
         AmqpDelayStamp $delayStamp,
     ): void {
-        $this->ensureDelayExchange();
+        // Reject a publisher-controlled routing key that would be injected into
+        // AMQP entity names before any declaration side effect happens (#289).
+        $this->assertSafeEntityRoutingKey($routingKey);
 
         $delayQueueName = $this->getDelayQueueName($routingKey, $delayStamp->getDelay());
+
+        if (\strlen($delayQueueName) > self::MAX_AMQP_NAME_BYTES) {
+            throw new \InvalidArgumentException(sprintf(
+                'Delay queue name "%s" exceeds the AMQP %d-byte limit; shorten the delay queue_name_pattern or the routing key.',
+                $delayQueueName,
+                self::MAX_AMQP_NAME_BYTES,
+            ));
+        }
+
+        $this->ensureDelayExchange();
 
         if (!isset($this->delayQueuesCreated[$delayQueueName])) {
             $this->createDelayQueue($delayQueueName, $routingKey, $delayStamp->getDelay());
@@ -323,6 +348,30 @@ final class Sender implements SenderInterface
             [(string) $delay, $routingKey],
             $this->delayQueueNamePattern,
         );
+    }
+
+    /**
+     * Validates a routing key that will be templated into delay entity names.
+     *
+     * @throws \InvalidArgumentException When the key is too long or contains
+     *                                   characters unsafe for AMQP entity names
+     */
+    private function assertSafeEntityRoutingKey(string $routingKey): void
+    {
+        if (\strlen($routingKey) > self::MAX_AMQP_NAME_BYTES) {
+            throw new \InvalidArgumentException(sprintf(
+                'Routing key exceeds the AMQP %d-byte limit (%d bytes).',
+                self::MAX_AMQP_NAME_BYTES,
+                \strlen($routingKey),
+            ));
+        }
+
+        if (preg_match(self::SAFE_ROUTING_KEY_PATTERN, $routingKey) !== 1) {
+            throw new \InvalidArgumentException(sprintf(
+                'Routing key "%s" contains characters not allowed in a delay entity name; only A-Z, a-z, 0-9, ".", "_" and "-" are permitted.',
+                $routingKey,
+            ));
+        }
     }
 
     private function createDelayQueue(string $queueName, string $routingKey, int $delay): void

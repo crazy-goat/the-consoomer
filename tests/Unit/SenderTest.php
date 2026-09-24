@@ -1548,6 +1548,61 @@ class SenderTest extends TestCase
         $sender->send(new Envelope(new \stdClass()));
     }
 
+    /**
+     * A publisher-controlled routing key with characters that are unsafe for
+     * AMQP entity names must be rejected before any declaration (#289).
+     */
+    public function testSendWithDelayRejectsUnsafeRoutingKey(): void
+    {
+        $this->serializer->method('encode')->willReturn(['body' => 'x', 'headers' => []]);
+
+        $this->factory->expects($this->never())->method('createExchange');
+        $this->factory->expects($this->never())->method('createQueue');
+
+        $envelope = new Envelope(new \stdClass(), [
+            new AmqpDelayStamp(1000),
+            new AmqpStamp('evil{queue}/../x'),
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('delay entity name');
+
+        $this->createSender(['exchange' => 'test_exchange'])->send($envelope);
+    }
+
+    public function testSendWithDelayRejectsRoutingKeyLongerThanAmqpLimit(): void
+    {
+        $this->serializer->method('encode')->willReturn(['body' => 'x', 'headers' => []]);
+
+        $envelope = new Envelope(new \stdClass(), [
+            new AmqpDelayStamp(1000),
+            new AmqpStamp(str_repeat('a', 256)),
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('255-byte limit');
+
+        $this->createSender(['exchange' => 'test_exchange'])->send($envelope);
+    }
+
+    public function testSendWithDelayRejectsOverlongDelayQueueName(): void
+    {
+        $this->serializer->method('encode')->willReturn(['body' => 'x', 'headers' => []]);
+
+        $envelope = new Envelope(new \stdClass(), [
+            new AmqpDelayStamp(1000),
+            new AmqpStamp('abc'),
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('exceeds the AMQP 255-byte limit');
+
+        $this->createSender([
+            'exchange' => 'test_exchange',
+            'delay' => ['queue_name_pattern' => str_repeat('p', 256)],
+        ])->send($envelope);
+    }
+
     private function createSender(array $options): Sender
     {
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
