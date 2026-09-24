@@ -693,9 +693,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     /**
      * Purges messages from a queue and returns the number removed.
      *
-     * @param string|null $queueName Queue to purge. When null the single
-     *        `queue` option is used; in multi-queue mode only the **first**
-     *        configured queue is purged.
+     * @param string|null $queueName Queue to purge. When null, **every**
+     *        configured queue is purged and the counts are summed (multi-queue
+     *        mode used to purge only the first queue, silently — #243).
+     *
+     * @throws \InvalidArgumentException When no queue is given and none is configured
      */
     public function purgeQueue(?string $queueName = null): int
     {
@@ -704,31 +706,31 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             $this->setup->setup();
         }
 
-        $queueName ??= $this->options['queue'] ?? '';
-        if ($queueName === '' && !isset($this->options['queues'])) {
+        $queueNames = $queueName !== null && $queueName !== ''
+            ? [$queueName]
+            : $this->getQueueNames();
+
+        if ($queueNames === []) {
             throw new \InvalidArgumentException('Queue name must be provided either as argument or in receiver options.');
         }
 
-        if ($queueName === '' && isset($this->options['queues'])) {
-            $queueName = $this->getQueueNames()[0] ?? '';
-            if ($queueName === '') {
-                throw new \InvalidArgumentException('No queues configured for purge.');
-            }
-        }
-
         $channel = $this->connection->getChannel();
-        $purgeQueue = $this->factory->createQueue($channel);
-        $purgeQueue->setName($queueName);
+        $total = 0;
 
-        $purgeOperation = fn(): int => $purgeQueue->purge();
+        foreach ($queueNames as $name) {
+            $purgeQueue = $this->factory->createQueue($channel);
+            $purgeQueue->setName($name);
 
-        $result = $this->retry instanceof ConnectionRetryInterface
-            ? $this->retry->withRetry($purgeOperation)
-            : $purgeOperation();
+            $purgeOperation = fn(): int => $purgeQueue->purge();
+
+            $total += $this->retry instanceof ConnectionRetryInterface
+                ? $this->retry->withRetry($purgeOperation)
+                : $purgeOperation();
+        }
 
         $this->connection->updateActivity();
 
-        return $result;
+        return $total;
     }
 
     /**
