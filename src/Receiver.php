@@ -106,6 +106,13 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->maxBodyBytes = $maxBodyBytes;
     }
 
+    /**
+     * Target total for unacknowledged deliveries across the channel (#239).
+     *
+     * Prefetch itself is per-consumer, so {@see prefetchPerConsumer()} divides
+     * this value across the configured queues; acks are buffered per queue and
+     * flushed at that same divided value, keeping the two scopes consistent.
+     */
     private readonly int $maxUnackedMessages;
     private readonly int $batchSize;
     /**
@@ -173,7 +180,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
 
         $channel = $this->connection->getChannel();
-        $channel->qos(0, $this->maxUnackedMessages);
+        // Prefetch is per-consumer, so it is divided evenly across the queues
+        // (#239): N consumers on this channel then hold at most
+        // N × prefetchPerConsumer() ≈ max_unacked_messages unacked deliveries
+        // in total. (RabbitMQ does not honour the channel-global `qos(...,
+        // true)` flag, so dividing is the reliable way to bound the total.)
+        $channel->qos(0, $this->prefetchPerConsumer());
 
         foreach ($this->getQueueNames() as $queueName) {
             $queue = $this->factory->createQueue($channel);
@@ -561,7 +573,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->pendingAcks[$queueName][] = $deliveryTag;
         $this->unacked[$queueName] = ($this->unacked[$queueName] ?? 0) + 1;
 
-        if (($this->unacked[$queueName] ?? 0) >= $this->maxUnackedMessages) {
+        // Flush at the same per-consumer prefetch that gates delivery for this
+        // queue: flushing at the (larger) channel-wide value would stall the
+        // consumer — the broker stops at the prefetch, unacked reaches the
+        // threshold and the buffered acks are never sent (#239).
+        if (($this->unacked[$queueName] ?? 0) >= $this->prefetchPerConsumer()) {
             $this->ackPending($queueName);
         }
     }
@@ -576,6 +592,26 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     private function isMultiQueue(): bool
     {
         return count($this->getQueueNames()) > 1;
+    }
+
+    /**
+     * Prefetch applied to each consumer on the shared channel.
+     *
+     * AMQP prefetch is per-consumer and RabbitMQ does not honour the
+     * channel-global `qos(..., true)` flag, so to keep the total in-flight
+     * bounded by `max_unacked_messages` the value is divided evenly across the
+     * configured queues (#239). With a single queue it is simply
+     * `max_unacked_messages`. The same value is used as the per-queue ack-batch
+     * flush threshold so buffered acks are always flushed before the consumer's
+     * prefetch stalls delivery.
+     */
+    private function prefetchPerConsumer(): int
+    {
+        $queueCount = max(1, count($this->getQueueNames()));
+
+        return $queueCount > 1
+            ? max(1, intdiv($this->maxUnackedMessages, $queueCount))
+            : $this->maxUnackedMessages;
     }
 
     /**

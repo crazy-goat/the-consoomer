@@ -613,7 +613,8 @@ class ReceiverTest extends TestCase
         $channel
             ->expects($this->once())
             ->method('qos')
-            ->with(0, 10);
+            // max_unacked_messages (10) divided across the two queues (#239).
+            ->with(0, 5);
 
         $queueA = $this->createMock(\AMQPQueue::class);
         $queueB = $this->createMock(\AMQPQueue::class);
@@ -638,6 +639,34 @@ class ReceiverTest extends TestCase
 
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
+        $receiver->get();
+    }
+
+    public function testPrefetchIsDividedAcrossQueuesWithFloorDivision(): void
+    {
+        $options = ['queues' => ['q1' => [], 'q2' => [], 'q3' => []], 'max_unacked_messages' => 7];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        // 7 across 3 queues → 2 per consumer (floor); total in-flight <= 7.
+        $channel->expects($this->once())->method('qos')->with(0, 2);
+
+        $queues = [];
+        foreach (array_keys(['q1', 'q2', 'q3']) as $index) {
+            $queue = $this->createMock(\AMQPQueue::class);
+            $queue->method('getConsumerTag')->willReturn('tag_' . $index);
+            $queues[] = $queue;
+        }
+
+        $this->connection->expects($this->once())->method('getChannel')->willReturn($channel);
+        $this->factory
+            ->expects($this->exactly(3))
+            ->method('createQueue')
+            ->with($channel)
+            ->willReturnOnConsecutiveCalls(...$queues);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
         $receiver->get();
     }
 
@@ -2306,12 +2335,11 @@ class ReceiverTest extends TestCase
         // AMQP_MULTIPLE ack(4) would ack tags 1,2,3,4 — losing queue_a's
         // in-flight messages. The fix acks only queue_b's own tags (2, 4).
         //
-        // max_unacked_messages=2: queue_b flushes at tag 4 (2nd message),
-        // but queue_a only has 2 buffered — still below any flush trigger
-        // because its own counter is 2, which equals the threshold. To keep
-        // queue_a unflushed we use max_unacked_messages=3 so queue_a (2 msgs)
-        // stays buffered while queue_b (3 msgs) flushes.
-        $options = ['queues' => ['queue_a' => [], 'queue_b' => []], 'max_unacked_messages' => 3];
+        // The per-queue flush threshold is max_unacked_messages divided across
+        // the queues (#239), so max_unacked_messages=6 gives a threshold of 3
+        // per queue: queue_a (2 msgs) stays buffered while queue_b (3 msgs)
+        // flushes.
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []], 'max_unacked_messages' => 6];
 
         $queueA = $this->createMock(\AMQPQueue::class);
         $queueB = $this->createMock(\AMQPQueue::class);
