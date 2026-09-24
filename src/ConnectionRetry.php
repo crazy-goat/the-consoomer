@@ -24,33 +24,75 @@ final class ConnectionRetry implements ConnectionRetryInterface
     /** Jitter variation factor - 25% of delay is used as max variation range */
     public const JITTER_VARIATION_FACTOR = 0.25;
 
-    /** AMQP error codes that indicate permanent failures - should not retry */
-    private const PERMANENT_FAILURE_CODES = [403, 404, 406];
+    /** AMQP reply codes that indicate permanent failures - should not retry */
+    private const PERMANENT_FAILURE_CODES = [403, 404, 405, 406];
+
+    /**
+     * Symbolic AMQP reply-code names, as they appear in broker error messages.
+     *
+     * ext-amqp does not reliably put the reply code in `getCode()` (it is often
+     * `0` or a librabbitmq errno), so a permanent `NOT_FOUND`/`PRECONDITION_FAILED`
+     * may only be visible in the message text (#285).
+     */
+    private const PERMANENT_FAILURE_KEYWORDS = [
+        'ACCESS_REFUSED' => 403,
+        'NOT_FOUND' => 404,
+        'RESOURCE_LOCKED' => 405,
+        'PRECONDITION_FAILED' => 406,
+    ];
 
     /**
      * Determines if an AMQP exception represents a permanent (non-retryable) failure.
      *
      * Connection-level exceptions (AMQPConnectionException, AMQPChannelException)
      * are considered transient — a reconnect may resolve them.
-     * Resource-level exceptions (AMQPQueueException, AMQPExchangeException)
-     * are considered permanent — the referenced queue/exchange will not appear
-     * on retry.
      *
-     * For generic AMQPException the getCode() is used as a fallback, but note
-     * that ext-amqp does NOT reliably surface AMQP reply codes there —
-     * getCode() is frequently 0 or a librabbitmq errno.
+     * Resource-level exceptions (AMQPQueueException, AMQPExchangeException) are
+     * **not** blanket-classified as permanent (#285): ext-amqp raises
+     * `AMQPQueueException("Consumer timeout exceed")` for a plain read timeout,
+     * which is transient, so a queue/exchange error is permanent only when an
+     * AMQP reply code proving it (403/404/405/406, from `getCode()` or the
+     * message text) is present. Everything else defaults to retryable.
+     *
+     * For generic AMQPException the reply code is resolved the same way.
      */
     private function isPermanentFailure(\AMQPException $exception): bool
     {
-        if ($exception instanceof \AMQPQueueException || $exception instanceof \AMQPExchangeException) {
-            return true;
-        }
-
         if ($exception instanceof \AMQPConnectionException || $exception instanceof \AMQPChannelException) {
             return false;
         }
 
-        return in_array($exception->getCode(), self::PERMANENT_FAILURE_CODES, true);
+        $replyCode = $this->extractReplyCode($exception);
+
+        return $replyCode !== null && in_array($replyCode, self::PERMANENT_FAILURE_CODES, true);
+    }
+
+    /**
+     * Extracts an AMQP reply code from an exception, if one can be determined.
+     *
+     * Prefers `getCode()` when it is a positive value, then falls back to the
+     * symbolic reply-code name or an `error: NNN`/`code NNN` fragment in the
+     * message. Returns null when no reply code can be established — the caller
+     * then treats the failure as transient (#285).
+     */
+    private function extractReplyCode(\AMQPException $exception): ?int
+    {
+        $code = $exception->getCode();
+        if ($code > 0) {
+            return $code;
+        }
+
+        $message = $exception->getMessage();
+
+        if (preg_match('/\b(ACCESS_REFUSED|NOT_FOUND|RESOURCE_LOCKED|PRECONDITION_FAILED)\b/', $message, $matches) === 1) {
+            return self::PERMANENT_FAILURE_KEYWORDS[$matches[1]];
+        }
+
+        if (preg_match('/(?:error|code)[:\s]+(\d{3})\b/i', $message, $matches) === 1) {
+            return (int) $matches[1];
+        }
+
+        return null;
     }
 
     private ?CircuitBreaker $circuitBreaker = null;
