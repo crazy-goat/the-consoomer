@@ -1021,7 +1021,7 @@ class SenderTest extends TestCase
         $queue = $this->createMock(\AMQPQueue::class);
         $queue->expects($this->once())->method('setName')->with('delay_5000_');
         $queue->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
-        $queue->expects($this->exactly(3))->method('setArgument')->willReturnCallback(function (string $key, mixed $value) use ($delayMs): void {
+        $queue->expects($this->exactly(2))->method('setArgument')->willReturnCallback(function (string $key, mixed $value) use ($delayMs): void {
             static $call = 0;
             ++$call;
             if ($call === 1) {
@@ -1030,13 +1030,13 @@ class SenderTest extends TestCase
             } elseif ($call === 2) {
                 $this->assertSame('x-dead-letter-exchange', $key);
                 $this->assertSame('test_exchange', $value);
-            } elseif ($call === 3) {
-                $this->assertSame('x-dead-letter-routing-key', $key);
-                $this->assertSame('', $value);
+            } else {
+                $this->fail('unexpected extra queue argument: ' . $key);
             }
         });
         $queue->expects($this->once())->method('declareQueue');
-        $queue->expects($this->once())->method('bind')->with('test_exchange_delay', 'delay_5000_');
+        // Bound with the message's own routing key (#276), not the queue name.
+        $queue->expects($this->once())->method('bind')->with('test_exchange_delay', '');
 
         $this->factory
             ->expects($this->once())
@@ -1049,7 +1049,7 @@ class SenderTest extends TestCase
             ->method('publish')
             ->with(
                 '{"message":"test"}',
-                'delay_5000_',
+                '',
                 \AMQP_NOPARAM,
                 [],
             );
@@ -1117,7 +1117,7 @@ class SenderTest extends TestCase
         $queue = $this->createMock(\AMQPQueue::class);
         $queue->expects($this->once())->method('setName')->with('delay_3000_my.routing.key');
         $queue->expects($this->once())->method('setFlags')->with(\AMQP_DURABLE);
-        $queue->expects($this->exactly(3))->method('setArgument')->willReturnCallback(function (string $key, mixed $value) use ($delayMs, $routingKey): void {
+        $queue->expects($this->exactly(2))->method('setArgument')->willReturnCallback(function (string $key, mixed $value) use ($delayMs): void {
             static $call = 0;
             ++$call;
             if ($call === 1) {
@@ -1126,13 +1126,13 @@ class SenderTest extends TestCase
             } elseif ($call === 2) {
                 $this->assertSame('x-dead-letter-exchange', $key);
                 $this->assertSame('test_exchange', $value);
-            } elseif ($call === 3) {
-                $this->assertSame('x-dead-letter-routing-key', $key);
-                $this->assertSame($routingKey, $value);
+            } else {
+                $this->fail('unexpected extra queue argument: ' . $key);
             }
         });
         $queue->expects($this->once())->method('declareQueue');
-        $queue->expects($this->once())->method('bind')->with('test_exchange_delay', 'delay_3000_my.routing.key');
+        // Bound with the message's own routing key (#276), not the queue name.
+        $queue->expects($this->once())->method('bind')->with('test_exchange_delay', $routingKey);
 
         $this->factory
             ->expects($this->once())
@@ -1145,7 +1145,7 @@ class SenderTest extends TestCase
             ->method('publish')
             ->with(
                 '{"message":"test"}',
-                'delay_3000_my.routing.key',
+                'my.routing.key',
                 \AMQP_NOPARAM,
                 [],
             );
@@ -1378,14 +1378,68 @@ class SenderTest extends TestCase
             ->method('encode')
             ->willReturn(['body' => 'test', 'headers' => []]);
 
+        // Published with the message's own routing key (#276).
         $delayExchange
             ->method('publish')
-            ->with('test', 'custom_2000_ms_my.routing.key', \AMQP_NOPARAM, []);
+            ->with('test', 'my.routing.key', \AMQP_NOPARAM, []);
 
         $this->setup->method('setupExchange');
 
         $sender = $this->createSender($options);
         $sender->send($envelope);
+    }
+
+    /**
+     * A custom pattern without {queue} maps several routing keys to one delay
+     * queue; each key must still be bound and published under its own routing
+     * key so the dead-lettered message is not rewritten to the first key
+     * (#276).
+     */
+    public function testCustomDelayPatternWithoutQueueKeepsEachRoutingKey(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'delay' => ['queue_name_pattern' => 'dl_{delay}']];
+        $envelope = fn(string $routingKey): Envelope => new Envelope(new \stdClass(), [
+            new AmqpStamp($routingKey),
+            new AmqpDelayStamp(500),
+        ]);
+
+        $delayExchange = $this->createMock(\AMQPExchange::class);
+        $channel = $this->createMock(\AMQPChannel::class);
+        $queue = $this->createMock(\AMQPQueue::class);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->factory->method('createExchange')->willReturn($delayExchange);
+        $delayExchange->method('declareExchange');
+        $queue->method('setName')->with('dl_500');
+        $this->factory->method('createQueue')->willReturn($queue);
+        $this->serializer->method('encode')->willReturn(['body' => 'test', 'headers' => []]);
+        $this->setup->method('setupExchange');
+
+        // Declared once, bound once per distinct routing key.
+        $queue->expects($this->once())->method('declareQueue');
+        $bindings = [];
+        $queue
+            ->expects($this->exactly(2))
+            ->method('bind')
+            ->willReturnCallback(function (string $exchange, string $routingKey) use (&$bindings): void {
+                $bindings[] = $routingKey;
+            });
+
+        $published = [];
+        $delayExchange
+            ->expects($this->exactly(2))
+            ->method('publish')
+            ->willReturnCallback(function (string $body, string $routingKey) use (&$published): void {
+                $published[] = $routingKey;
+            });
+
+        $sender = $this->createSender($options);
+        $sender->send($envelope('rk1'));
+        $sender->send($envelope('rk2'));
+
+        $this->assertSame(['rk1', 'rk2'], $bindings);
+        $this->assertSame(['rk1', 'rk2'], $published);
     }
 
     /**

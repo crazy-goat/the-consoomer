@@ -178,12 +178,16 @@ use Symfony\Component\Messenger\Envelope;
 $transport->send(new Envelope($message, [new AmqpDelayStamp(30_000)]));
 ```
 
-The sender declares a durable delay exchange (`delay.exchange_name`) and one
-queue per `(delay, routing key)` pair (`delay.queue_name_pattern`), with
-`x-message-ttl` set to the delay and `x-dead-letter-routing-key` set to the
-routing key so the message returns to the main exchange when it expires. The
-routing key used here is validated: only `A-Z a-z 0-9 . _ -` are allowed and it
-must fit the AMQP 255-byte name limit, otherwise `send()` throws
+The sender declares a durable delay exchange (`delay.exchange_name`) and, per
+distinct `(delay, routing key)` pair, a delay queue named by
+`delay.queue_name_pattern` (default `delay_{delay}_{queue}`) with
+`x-message-ttl` set to the delay. The delayed message is published with its own
+routing key and the queue is bound for that key, while the queue carries only
+`x-dead-letter-exchange` — so on expiry the message keeps its original routing
+key and returns to the main exchange correctly. This also holds for custom
+patterns without `{queue}`, where several routing keys share one delay queue
+(#276). The routing key used here is validated: only `A-Z a-z 0-9 . _ -` are
+allowed and it must fit the AMQP 255-byte name limit, otherwise `send()` throws
 `InvalidArgumentException` (#289).
 
 ### Message priorities
