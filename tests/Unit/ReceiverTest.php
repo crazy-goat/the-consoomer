@@ -2013,7 +2013,7 @@ class ReceiverTest extends TestCase
 
     public function testAckIsNoOpWhenReconnectHappensMidOperation(): void
     {
-        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1, 'redeclare_on_reconnect' => true];
 
         $receiver = $this->createReceiverWithQueue($options);
 
@@ -2036,7 +2036,7 @@ class ReceiverTest extends TestCase
 
     public function testRejectIsNoOpWhenReconnectHappensMidOperation(): void
     {
-        $options = ['queue' => 'test_queue'];
+        $options = ['queue' => 'test_queue', 'redeclare_on_reconnect' => true];
 
         $receiver = $this->createReceiverWithQueue($options);
 
@@ -2475,7 +2475,7 @@ class ReceiverTest extends TestCase
      */
     public function testReconnectInsideAckBumpsGeneration(): void
     {
-        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1, 'redeclare_on_reconnect' => true];
 
         $receiver = $this->createReceiverWithQueue($options);
 
@@ -2798,6 +2798,23 @@ class ReceiverTest extends TestCase
         // queue_a (first) keeps the configured timeout; queue_b is shrunk and
         // then restored to the original.
         $this->assertSame([0.01, 0.25], $appliedTimeouts);
+    }
+
+    /**
+     * By default a reconnect must not reset the setup flag: durable topology
+     * survives a disconnect, so re-declaring it is wasted work (#308).
+     */
+    public function testReconnectDoesNotResetSetupByDefault(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->connection->method('checkHeartbeat')->willReturn(true);
+        $this->connection->expects($this->once())->method('reconnect');
+        $this->setup->expects($this->never())->method('resetSetup');
+
+        $receiver->ack($this->makeEnvelope(1, 'test_queue'));
     }
 
     /**

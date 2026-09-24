@@ -78,6 +78,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *     batch_size?: int,
      *     max_body_bytes?: int,
      *     auto_setup?: bool,
+     *     redeclare_on_reconnect?: bool,
      *     routing_key?: string,
      * } $options
      */
@@ -150,7 +151,9 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
 
         $this->connection->reconnect();
-        $this->setup->resetSetup();
+        if ($this->options['redeclare_on_reconnect'] ?? false) {
+            $this->setup->resetSetup();
+        }
         $this->queues = [];
         $this->tagToQueue = [];
         $this->unacked = [];

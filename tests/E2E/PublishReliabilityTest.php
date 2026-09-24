@@ -9,16 +9,13 @@ use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\Serialization\PhpSerializer;
 
 /**
- * E2E tests for publish reliability after topology loss / reconnect (#273).
+ * E2E tests for publish reliability after topology loss / reconnect (#273),
+ * adapted to the producer/consumer topology split of #308.
  *
- * Covers the two failure scenarios from the issue:
- *  1. Exchange deleted by an operator/policy → send() with auto_setup=true
- *     must re-declare topology after a heartbeat-stale reconnect and deliver
- *     the message (previously: auto_setup was a false promise on the send
- *     path because Sender::ensureConnected() never called resetSetup()).
- *  2. Broker outage window → send() with retry=true must surface the outage
- *     as an exception (or deliver after recovery) instead of silently
- *     succeeding via fire-and-forget publish.
+ * A producer declares only its exchange; queues and bindings are consumer-side
+ * topology. So after an operator deletes the exchange, it is a receiver cycle
+ * with `redeclare_on_reconnect=true` that restores the exchange, queue and
+ * binding; the producer then publishes successfully again.
  */
 class PublishReliabilityTest extends TestCase
 {
@@ -34,59 +31,63 @@ class PublishReliabilityTest extends TestCase
     }
 
     /**
-     * After a heartbeat-stale reconnect, Sender must re-declare topology
-     * (resetSetup) so that a send() with auto_setup=true against an exchange
-     * that was deleted broker-side delivers the message instead of silently
-     * losing it.
-     *
-     * This reproduces the core defect from #273: Sender::ensureConnected()
-     * did not call resetSetup(), so auto_setup was inert after reconnect.
+     * After a heartbeat-stale reconnect, a receiver with
+     * `redeclare_on_reconnect=true` re-declares the exchange, queue and binding
+     * that an operator deleted, so a separate producer can publish again.
      */
-    public function testAutoSetupReDeclaresExchangeAfterReconnectAndExchangeDeleted(): void
+    public function testReceiverReDeclaresDeletedTopologyAfterReconnect(): void
     {
-        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+        $serializer = new PhpSerializer();
+
+        $consumer = AmqpTransportFactory::create($this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
             'auto_setup' => true,
+            'redeclare_on_reconnect' => true,
             'heartbeat' => 1,
             'max_unacked_messages' => 1,
-        ]);
+        ]), [], $serializer);
 
-        $serializer = new PhpSerializer();
-        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
+        // Separate producer connection, as a real producer process would have.
+        $producer = AmqpTransportFactory::create(
+            $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, ['auto_setup' => true, 'timeout' => 0.1]),
+            [],
+            $serializer,
+        );
 
-        // First send triggers auto_setup — exchange and queue are declared.
+        // Establish consumer-side topology (exchange, queue, binding).
+        iterator_to_array($consumer->get());
+
         $msg1 = new \stdClass();
         $msg1->content = 'before reconnect';
-        $transport->send(new Envelope($msg1));
+        $producer->send(new Envelope($msg1));
 
-        // Receive and ack to keep the queue clean.
-        $messages = iterator_to_array($transport->get());
+        $messages = iterator_to_array($consumer->get());
         $this->assertCount(1, $messages);
-        $transport->ack($messages[0]);
+        $consumer->ack($messages[0]);
 
-        // Wait for the heartbeat to go stale (heartbeat=1, threshold=2s).
+        // Wait for the consumer heartbeat to go stale.
         sleep(3);
 
-        // Delete the exchange broker-side, simulating operator deletion or
-        // non-durable topology loss after a broker restart.
+        // Delete the exchange broker-side, simulating operator deletion.
         $this->deleteExchange(self::EXCHANGE_NAME);
 
-        // The next send() must trigger a reconnect (heartbeat stale) and then
-        // re-declare the exchange (resetSetup + auto_setup) before publishing.
+        // A receiver cycle after the reconnect re-declares the topology
+        // (resetSetup + auto_setup).
+        iterator_to_array($consumer->get());
+
         $msg2 = new \stdClass();
         $msg2->content = 'after reconnect with exchange deleted';
-        $transport->send(new Envelope($msg2));
+        $producer->send(new Envelope($msg2));
 
-        // The message must be delivered — proving topology was re-declared.
         $received = [];
         $deadline = microtime(true) + 10;
-        while (count($received) < 1 && microtime(true) < $deadline) {
-            foreach ($transport->get() as $envelope) {
+        while ($received === [] && microtime(true) < $deadline) {
+            foreach ($consumer->get() as $envelope) {
                 $received[] = $envelope;
-                $transport->ack($envelope);
+                $consumer->ack($envelope);
             }
         }
 
-        $this->assertCount(1, $received, 'Message lost: auto_setup did not re-declare topology after reconnect');
+        $this->assertCount(1, $received, 'Message lost: the receiver did not re-declare topology after reconnect');
         $this->assertSame('after reconnect with exchange deleted', $received[0]->getMessage()->content);
     }
 
@@ -118,50 +119,54 @@ class PublishReliabilityTest extends TestCase
     }
 
     /**
-     * After a heartbeat-stale reconnect with auto_setup and retry enabled,
-     * a send() must deliver the message even when the exchange was deleted
-     * broker-side — combining both fixes (resetSetup + isConnected guard).
+     * A receiver reconnect with redeclare_on_reconnect=true combined with a
+     * retrying producer delivers the message after the topology was deleted.
      */
-    public function testRetryAndAutoSetupReDeclareTopologyAfterReconnect(): void
+    public function testRetryProducerDeliversAfterReceiverReDeclaresTopology(): void
     {
-        $dsn = $this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+        $serializer = new PhpSerializer();
+
+        $consumer = AmqpTransportFactory::create($this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
             'auto_setup' => true,
+            'redeclare_on_reconnect' => true,
             'heartbeat' => 1,
+            'max_unacked_messages' => 1,
+        ]), [], $serializer);
+
+        $producer = AmqpTransportFactory::create($this->buildDsn(self::EXCHANGE_NAME, self::QUEUE_NAME, [
+            'auto_setup' => true,
             'retry' => 'true',
             'retry_count' => '3',
             'retry_delay' => '100000',
-            'max_unacked_messages' => 1,
-        ]);
+            'timeout' => 0.1,
+        ]), [], $serializer);
 
-        $serializer = new PhpSerializer();
-        $transport = AmqpTransportFactory::create($dsn, [], $serializer);
+        iterator_to_array($consumer->get());
 
-        // Initial send declares topology.
         $msg1 = new \stdClass();
         $msg1->content = 'initial';
-        $transport->send(new Envelope($msg1));
+        $producer->send(new Envelope($msg1));
 
-        $messages = iterator_to_array($transport->get());
+        $messages = iterator_to_array($consumer->get());
         $this->assertCount(1, $messages);
-        $transport->ack($messages[0]);
+        $consumer->ack($messages[0]);
 
-        // Wait for heartbeat staleness.
         sleep(3);
-
-        // Delete exchange broker-side.
         $this->deleteExchange(self::EXCHANGE_NAME);
 
-        // Send after reconnect — must re-declare and deliver.
+        // Receiver reconnect restores topology.
+        iterator_to_array($consumer->get());
+
         $msg2 = new \stdClass();
         $msg2->content = 'after reconnect with retry';
-        $transport->send(new Envelope($msg2));
+        $producer->send(new Envelope($msg2));
 
         $received = [];
         $deadline = microtime(true) + 10;
-        while (count($received) < 1 && microtime(true) < $deadline) {
-            foreach ($transport->get() as $envelope) {
+        while ($received === [] && microtime(true) < $deadline) {
+            foreach ($consumer->get() as $envelope) {
                 $received[] = $envelope;
-                $transport->ack($envelope);
+                $consumer->ack($envelope);
             }
         }
 

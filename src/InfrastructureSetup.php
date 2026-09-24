@@ -17,7 +17,8 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     private const FORBIDDEN_FLAGS = \AMQP_EXCLUSIVE | \AMQP_AUTODELETE;
     private const ALLOWED_OPTION_KEYS = ['exchange_flags', 'queue_flags'];
 
-    private bool $setupPerformed = false;
+    private bool $exchangeSetupPerformed = false;
+    private bool $queuesSetupPerformed = false;
 
     /**
      * @param array{
@@ -83,33 +84,89 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      */
     public function setup(): void
     {
-        if ($this->setupPerformed) {
+        if ($this->exchangeSetupPerformed && $this->queuesSetupPerformed) {
             return;
         }
 
         $channel = $this->connection->getChannel();
+        $exchange = $this->exchangeSetupPerformed
+            ? $this->createExchange($channel)
+            : $this->declareExchange($channel);
+        $this->exchangeSetupPerformed = true;
 
-        $exchange = $this->factory->createExchange($channel);
-        $exchange->setName($this->options['exchange']);
-        $type = match (ExchangeType::tryFrom((string) ($this->options['exchange_type'] ?? 'direct'))) {
-            ExchangeType::FANOUT => \AMQP_EX_TYPE_FANOUT,
-            ExchangeType::TOPIC => \AMQP_EX_TYPE_TOPIC,
-            ExchangeType::HEADERS => \AMQP_EX_TYPE_HEADERS,
-            default => \AMQP_EX_TYPE_DIRECT,
-        };
-        $exchange->setType($type);
-        $exchange->setFlags($this->resolveFlags('exchange_flags'));
-        $exchange->declareExchange();
+        if (!$this->queuesSetupPerformed) {
+            $this->declareQueues($channel, $exchange);
+            $this->setupExchangeBindings($exchange);
+            $this->queuesSetupPerformed = true;
+        }
+    }
 
-        $this->setupQueues($channel, $exchange);
+    /**
+     * {@inheritdoc}
+     */
+    public function setupExchange(): void
+    {
+        if ($this->exchangeSetupPerformed) {
+            return;
+        }
+
+        $this->declareExchange($this->connection->getChannel());
+        $this->exchangeSetupPerformed = true;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function setupQueues(): void
+    {
+        if ($this->queuesSetupPerformed) {
+            return;
+        }
+
+        $channel = $this->connection->getChannel();
+        $exchange = $this->exchangeSetupPerformed
+            ? $this->createExchange($channel)
+            : $this->declareExchange($channel);
+        $this->exchangeSetupPerformed = true;
+
+        $this->declareQueues($channel, $exchange);
         $this->setupExchangeBindings($exchange);
-
-        $this->setupPerformed = true;
+        $this->queuesSetupPerformed = true;
     }
 
     public function resetSetup(): void
     {
-        $this->setupPerformed = false;
+        $this->exchangeSetupPerformed = false;
+        $this->queuesSetupPerformed = false;
+    }
+
+    /**
+     * Builds (but does not declare) the configured exchange.
+     */
+    private function createExchange(\AMQPChannel $channel): \AMQPExchange
+    {
+        $exchange = $this->factory->createExchange($channel);
+        $exchange->setName($this->options['exchange']);
+        $exchange->setType(match (ExchangeType::tryFrom((string) ($this->options['exchange_type'] ?? 'direct'))) {
+            ExchangeType::FANOUT => \AMQP_EX_TYPE_FANOUT,
+            ExchangeType::TOPIC => \AMQP_EX_TYPE_TOPIC,
+            ExchangeType::HEADERS => \AMQP_EX_TYPE_HEADERS,
+            default => \AMQP_EX_TYPE_DIRECT,
+        });
+        $exchange->setFlags($this->resolveFlags('exchange_flags'));
+
+        return $exchange;
+    }
+
+    /**
+     * Declares the configured exchange (and nothing else).
+     */
+    private function declareExchange(\AMQPChannel $channel): \AMQPExchange
+    {
+        $exchange = $this->createExchange($channel);
+        $exchange->declareExchange();
+
+        return $exchange;
     }
 
     /**
@@ -119,7 +176,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      * (via 'queues' option). When 'queues' is provided, each queue can have
      * its own binding_keys, binding_arguments, and arguments.
      */
-    private function setupQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    private function declareQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
     {
         if (isset($this->options['queues'])) {
             $this->setupMultipleQueues($channel, $exchange);

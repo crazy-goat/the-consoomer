@@ -79,6 +79,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     batch_size?: int,
      *     max_body_bytes?: int,
      *     auto_setup?: bool,
+     *     redeclare_on_reconnect?: bool,
      *     retry?: bool,
      *     retry_count?: int,
      *     retry_delay?: int,

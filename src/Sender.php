@@ -20,6 +20,15 @@ final class Sender implements SenderInterface
     private ?\AMQPExchange $delayExchange = null;
     private readonly float $confirmTimeout;
     /**
+     * Whether the durable topology is re-declared after a reconnect.
+     *
+     * Durable exchanges/queues survive client disconnects by definition, so
+     * re-declaring on every reconnect (including wall-clock idle reconnects,
+     * #235) is wasted work; it is only needed when an operator may have
+     * deleted the topology while the worker was connected. Default: false.
+     */
+    private readonly bool $redeclareOnReconnect;
+    /**
      * Channel already placed in confirm mode via confirmSelect().
      * confirm.select is a per-channel setting that persists for the channel
      * lifetime, so it must be sent only once per channel — not on every
@@ -36,6 +45,7 @@ final class Sender implements SenderInterface
      *     exchange?: string,
      *     default_publish_routing_key?: string,
      *     auto_setup?: bool,
+     *     redeclare_on_reconnect?: bool,
      *     retry?: bool,
      *     confirm_timeout?: float|int,
      *     delay?: array{
@@ -57,6 +67,7 @@ final class Sender implements SenderInterface
             throw new \InvalidArgumentException('confirm_timeout must be a non-negative value');
         }
         $this->confirmTimeout = (float) $confirmTimeout;
+        $this->redeclareOnReconnect = (bool) ($this->options['redeclare_on_reconnect'] ?? false);
 
         $this->delayExchangeName = $this->options['delay']['exchange_name']
             ?? ($this->options['exchange'] ?? '') . '_delay';
@@ -82,18 +93,19 @@ final class Sender implements SenderInterface
      * Checks connection heartbeat and reconnects if stale.
      *
      * On reconnect the channel is lost, so the exchange object, confirm-mode
-     * cache, and delay-queue cache are reset. The setup flag is also reset so
-     * that `auto_setup=true` re-declares the topology (exchange, queues,
-     * bindings) on the fresh connection — mirroring {@see Receiver::ensureConnected()}.
-     * Without this, topology lost after a broker restart or operator deletion
-     * is never re-declared, making `auto_setup` a false promise on the send
-     * path (#273).
+     * cache, and delay-queue cache are reset. The setup flag is only reset when
+     * the `redeclare_on_reconnect` option is enabled (default false): durable
+     * topology survives a disconnect, so re-declaring it on every reconnect is
+     * unnecessary work. Enable the option when an operator may delete the
+     * topology while the worker is connected (#308, #273).
      */
     private function ensureConnected(): void
     {
         if ($this->connection->checkHeartbeat()) {
             $this->connection->reconnect();
-            $this->setup->resetSetup();
+            if ($this->redeclareOnReconnect) {
+                $this->setup->resetSetup();
+            }
             $this->exchange = null;
             $this->delayExchange = null;
             $this->delayQueuesCreated = [];
@@ -188,7 +200,10 @@ final class Sender implements SenderInterface
     {
         $this->ensureConnected();
         if ($this->options['auto_setup'] ?? true) {
-            $this->setup->setup();
+            // A producer only needs its exchange to exist; queue/binding/retry
+            // topology is consumer-side and is not the sender's business
+            // (#308).
+            $this->setup->setupExchange();
         }
         $this->connect();
 
@@ -239,7 +254,9 @@ final class Sender implements SenderInterface
                 // would otherwise be swallowed before the confirm wait.
                 if (!$this->connection->isConnected()) {
                     $this->connection->reconnect();
-                    $this->setup->resetSetup();
+                    if ($this->redeclareOnReconnect) {
+                        $this->setup->resetSetup();
+                    }
                     $this->exchange = null;
                     $this->delayExchange = null;
                     $this->delayQueuesCreated = [];

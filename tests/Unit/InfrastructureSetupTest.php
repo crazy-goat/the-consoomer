@@ -1038,4 +1038,104 @@ class InfrastructureSetupTest extends TestCase
         $setup = new InfrastructureSetup($this->factory, $this->connection, $options);
         $setup->setup();
     }
+
+    public function testSetupExchangeDeclaresOnlyTheExchange(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->expects($this->once())->method('createExchange')->willReturn($this->exchange);
+
+        $this->exchange->expects($this->once())->method('declareExchange');
+        $this->factory->expects($this->never())->method('createQueue');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ]);
+
+        // Idempotent: the second call is a no-op.
+        $setup->setupExchange();
+        $setup->setupExchange();
+    }
+
+    public function testSetupQueuesDeclaresExchangeAndQueuesWhenExchangeNotYetSetUp(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->willReturn($this->exchange);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->once())->method('declareQueue');
+        $this->queue->expects($this->once())->method('bind')->with('test_exchange', '');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ]);
+
+        $setup->setupQueues();
+    }
+
+    public function testSetupQueuesDoesNotRedeclareAnAlreadySetUpExchange(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->willReturn($this->exchange);
+        $this->factory->expects($this->once())->method('createQueue')->willReturn($this->queue);
+
+        // The exchange was declared once by setupExchange(); setupQueues() only
+        // needs a handle to bind queues to.
+        $this->exchange->expects($this->once())->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->once())->method('declareQueue');
+        $this->queue->expects($this->once())->method('bind')->with('test_exchange', '');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ]);
+
+        $setup->setupExchange();
+        $setup->setupQueues();
+    }
+
+    public function testSetupExchangeAfterFullSetupIsNoOp(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->willReturn($this->exchange);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->once())->method('declareQueue');
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ]);
+
+        $setup->setup();
+        $setup->setupExchange();
+        $setup->setupQueues();
+    }
+
+    public function testSetupExchangeReExecutesAfterReset(): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->willReturn($this->exchange);
+
+        $this->exchange->expects($this->exactly(2))->method('declareExchange');
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $setup = new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+        ]);
+
+        $setup->setupExchange();
+        $setup->resetSetup();
+        $setup->setupExchange();
+    }
 }

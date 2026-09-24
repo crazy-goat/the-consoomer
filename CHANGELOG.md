@@ -3,8 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- `redeclare_on_reconnect` option (default `false`): when `true`, `Sender::ensureConnected()`/`Receiver::ensureConnected()` reset the setup flag after a reconnect so the durable topology is re-declared. Durable exchanges/queues survive client disconnects, so re-declaring them on every reconnect (including wall-clock idle reconnects, #235) is unnecessary by default; enable it when an operator may delete topology while the worker is connected (#308)
 - `E_USER_DEPRECATED` notice emitted when the legacy `amqps://` scheme is parsed and when `DsnParser::validateOptions()` is called, so consumers on the 1.0 removal path get a runtime signal instead of a silent comment-only deprecation (#342)
 - `max_body_bytes` receiver option (default `16777216`, 16 MiB; `0` disables): a raw AMQP body larger than the limit is rejected — dropped or dead-lettered per broker policy — without ever being handed to the serializer, so a single oversized publish cannot push the consumer into memory pressure from broker-controlled input. Invalid values (negative or non-integer) throw an `InvalidArgumentException` at construction instead of silently disabling the guard (#288)
+
+### Changed
+- **BC note**: a producer with `auto_setup=true` now declares only its exchange on `send()`; queues and bindings are consumer-side topology and are declared by the receiver. A send-only process no longer creates consumer queues, so messages it publishes before a consumer has declared (and bound) the queue on a direct exchange are unroutable. `InfrastructureSetupInterface` gained `setupExchange()` and `setupQueues()` (custom implementers must add them) (#308)
 
 ### Fixed
 - `Receiver::get()` no longer waits a full `read_timeout` on every idle queue in multi-queue mode: only the first (rotating) queue waits for work and the rest are probed with a short timeout, so an idle `get()` over N queues costs ~1 × `read_timeout` instead of N ×. Deliveries are now also attributed to the queue that actually owns the consumer (resolved from the envelope's consumer tag) instead of whichever queue's loop was current. The existing round-robin/per-queue batch budget that keeps one backlogged queue from starving the others is preserved (#309)

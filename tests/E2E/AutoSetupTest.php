@@ -37,6 +37,11 @@ class AutoSetupTest extends TestCase
         $serializer = new PhpSerializer();
         $transport = AmqpTransportFactory::create($dsn, [], $serializer);
 
+        // A producer (send) now declares only the exchange; the queue and its
+        // binding are consumer-side topology (#308). Establish them through the
+        // receiver before publishing.
+        iterator_to_array($transport->get());
+
         $testMessage = new \stdClass();
         $testMessage->content = 'Hello Auto Setup Test';
         $envelope = new Envelope($testMessage);
