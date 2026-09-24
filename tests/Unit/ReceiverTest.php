@@ -2818,6 +2818,47 @@ class ReceiverTest extends TestCase
     }
 
     /**
+     * A genuine channel failure during get() tears the channel down and the
+     * next get() reconnects lazily; when redeclare_on_reconnect is enabled the
+     * setup flag must be reset then too, not only on a heartbeat-stale
+     * reconnect (#308).
+     */
+    public function testGenuineFailureResetsSetupWhenRedeclareOnReconnectEnabled(): void
+    {
+        $options = ['queue' => 'test_queue', 'redeclare_on_reconnect' => true];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue->method('consume')->willThrowException(new \AMQPException('Connection lost'));
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('clearChannelCache');
+
+        $this->setup->expects($this->once())->method('resetSetup');
+
+        $receiver->get();
+    }
+
+    /**
+     * By default a genuine channel failure does not reset the setup flag (#308).
+     */
+    public function testGenuineFailureDoesNotResetSetupByDefault(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $this->queue->method('consume')->willThrowException(new \AMQPException('Connection lost'));
+        $this->queue->method('getConsumerTag')->willReturn('test_tag');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('clearChannelCache');
+
+        $this->setup->expects($this->never())->method('resetSetup');
+
+        $receiver->get();
+    }
+
+    /**
      * Helper: build an Envelope with an AmqpReceivedStamp carrying the given
      * delivery tag and queue name (and optional channel generation).
      */
