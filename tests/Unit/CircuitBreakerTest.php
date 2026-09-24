@@ -62,7 +62,7 @@ class CircuitBreakerTest extends TestCase
 
         usleep(1100000);
 
-        $this->assertTrue($cb->isAvailable());
+        $this->assertTrue($cb->acquire());
         $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
 
         $cb->recordSuccess();
@@ -83,7 +83,7 @@ class CircuitBreakerTest extends TestCase
         $cb->recordFailure();
         usleep(1100000);
 
-        $cb->isAvailable();
+        $cb->acquire();
         $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
 
         $cb->recordSuccess();
@@ -112,6 +112,9 @@ class CircuitBreakerTest extends TestCase
         $clock->advance(60);
 
         $this->assertTrue($cb->isAvailable());
+        $this->assertSame(CircuitState::OPEN, $cb->getState(), 'isAvailable() must not mutate state (#252)');
+
+        $this->assertTrue($cb->acquire());
         $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
     }
 
@@ -134,8 +137,74 @@ class CircuitBreakerTest extends TestCase
 
         $this->assertSame('2025-01-15 10:00:00', $clock->now()->format('Y-m-d H:i:s'));
 
+        $this->assertTrue($cb->acquire());
+        $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
+    }
+
+    /**
+     * Observability polling ({@see CircuitBreaker::isAvailable()}) must never
+     * flip an OPEN breaker to HALF_OPEN; only the explicit execution-path
+     * {@see CircuitBreaker::acquire()} may (#252).
+     */
+    public function testIsAvailableNeverTransitionsOpenToHalfOpen(): void
+    {
+        $clock = new FrozenClock();
+        $cb = new CircuitBreaker(threshold: 1, timeout: 60, clock: $clock);
+
+        $cb->recordFailure();
+        $clock->advance(120);
+
+        $this->assertTrue($cb->isAvailable());
+        $this->assertTrue($cb->isAvailable());
+        $this->assertSame(CircuitState::OPEN, $cb->getState());
+
+        $this->assertTrue($cb->acquire());
+        $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
+    }
+
+    /**
+     * A pure isAvailable() must not reset the half-open success counter, or a
+     * poll could indefinitely delay closing the circuit (#252).
+     */
+    public function testIsAvailableDoesNotResetHalfOpenSuccessCount(): void
+    {
+        $clock = new FrozenClock();
+        $cb = new CircuitBreaker(threshold: 1, timeout: 60, successThreshold: 2, clock: $clock);
+
+        $cb->recordFailure();
+        $clock->advance(61);
+        $this->assertTrue($cb->acquire());
+        $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
+
+        $cb->recordSuccess();
         $this->assertTrue($cb->isAvailable());
         $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
+
+        $cb->recordSuccess();
+        $this->assertSame(CircuitState::CLOSED, $cb->getState(), 'A poll must not swallow a half-open success');
+    }
+
+    public function testAcquireReturnsFalseWhileOpenBeforeTimeout(): void
+    {
+        $clock = new FrozenClock();
+        $cb = new CircuitBreaker(threshold: 1, timeout: 60, clock: $clock);
+
+        $cb->recordFailure();
+
+        $this->assertFalse($cb->acquire());
+        $this->assertSame(CircuitState::OPEN, $cb->getState());
+
+        $clock->advance(59);
+        $this->assertFalse($cb->acquire());
+        $this->assertSame(CircuitState::OPEN, $cb->getState());
+    }
+
+    public function testAcquireIsTrueWhenClosed(): void
+    {
+        $cb = new CircuitBreaker();
+
+        $this->assertTrue($cb->acquire());
+        $this->assertSame(CircuitState::CLOSED, $cb->getState());
     }
 
     public function testSporadicFailuresDoNotTripCircuit(): void

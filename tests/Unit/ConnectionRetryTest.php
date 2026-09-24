@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
+use CrazyGoat\TheConsoomer\CircuitBreaker;
 use CrazyGoat\TheConsoomer\CircuitState;
 use CrazyGoat\TheConsoomer\ConnectionRetry;
 use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
@@ -342,6 +343,40 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(CircuitState::OPEN, $retry->getState());
     }
 
+    /**
+     * `isCircuitOpen()` is a pure read (#252): polling it after the breaker
+     * timeout must not flip OPEN→HALF_OPEN (which would also reset the
+     * half-open success counter on the next acquisition).
+     */
+    public function testIsCircuitOpenDoesNotMutateState(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 1,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            clock: $clock,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $this->assertSame(CircuitState::OPEN, $retry->getState());
+
+        $clock->advance(3);
+
+        $this->assertFalse($retry->isCircuitOpen());
+        $this->assertFalse($retry->isCircuitOpen());
+        $this->assertSame(CircuitState::OPEN, $retry->getState(), 'isCircuitOpen() must not transition to HALF_OPEN');
+    }
+
     public function testCircuitBreakerAllowsRequestWhenHalfOpen(): void
     {
         $clock = new FrozenClock();
@@ -568,7 +603,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         $retry->withRetry(fn(): string => 'success');
@@ -601,7 +636,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         $retry->withRetry(fn(): string => 'success');
@@ -672,7 +707,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         try {
@@ -707,7 +742,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         $attempt = 0;
@@ -746,7 +781,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         $retry->withRetry(fn(): string => 'first success');
@@ -778,7 +813,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         $this->expectException(UnexpectedOperationException::class);
@@ -937,8 +972,8 @@ class ConnectionRetryTest extends TestCase
      * (probe). The half-open path always recorded it; this asserts the closed
      * path now matches after the first operation opened the circuit.
      * Half-open is reached the way existing tests in this file do: FrozenClock
-     * injection plus advance() past the breaker timeout, then an explicit
-     * availability check flips OPEN to HALF_OPEN.
+     * injection plus advance() past the breaker timeout, then the execution
+     * path acquires the circuit (see {@see flipCircuitToHalfOpen()}).
      */
     public function testMetricsHalfOpenPermanentFailureMatchesClosedPath(): void
     {
@@ -967,7 +1002,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(61);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         // Half-open probe hits a transient failure: 1 attempt, 1 failed retry.
@@ -1020,7 +1055,7 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(61);
 
-        $retry->isCircuitOpen();
+        $this->flipCircuitToHalfOpen($retry);
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         // Half-open probe hits a permanent failure.
@@ -1137,5 +1172,21 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(0, $metrics->getSuccessfulOperations());
         $this->assertSame(1, $metrics->getFailedOperations());
         $this->assertSame(0.0, $metrics->getOperationSuccessRate());
+    }
+
+    /**
+     * Drives the breaker OPEN→HALF_OPEN through the execution path.
+     *
+     * `isCircuitOpen()` is a pure read since #252 and can no longer be used to
+     * flip the state: the transition happens when `withRetry()` calls
+     * `CircuitBreaker::acquire()`. Tests that want to set up HALF_OPEN without
+     * running a probe therefore reach the internal breaker directly.
+     */
+    private function flipCircuitToHalfOpen(ConnectionRetry $retry): void
+    {
+        $breaker = (new \ReflectionProperty(ConnectionRetry::class, 'circuitBreaker'))->getValue($retry);
+        \assert($breaker instanceof CircuitBreaker);
+
+        $this->assertTrue($breaker->acquire());
     }
 }
