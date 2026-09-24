@@ -1707,7 +1707,6 @@ class ReceiverTest extends TestCase
         $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
         $amqpEnvelope->method('getBody')->willReturn('not-json');
         $amqpEnvelope->method('getDeliveryTag')->willReturn(5);
-        $amqpEnvelope->method('getConsumerTag')->willReturn('tag_a');
 
         $this->serializer
             ->expects($this->once())
@@ -1933,9 +1932,8 @@ class ReceiverTest extends TestCase
     }
 
     /**
-     * A single multi-queue delivery loop must survive a poison message whose
-     * reject succeeds: the batch flows on and messages for later consumers are
-     * still processed (#288 × #204 × #309).
+     * A multi-queue cycle must survive a poison message whose reject succeeds:
+     * the batch flows on and later queues are still consumed (#288 × #204).
      */
     public function testPoisonMessageInFirstQueueDoesNotStarveSecondQueue(): void
     {
@@ -1950,8 +1948,14 @@ class ReceiverTest extends TestCase
         $queuesProperty = $reflection->getProperty('queues');
         $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
 
-        $poison = $this->makeAmqpEnvelope('not-json', 'tag_a', 5);
-        $valid = $this->makeAmqpEnvelope('good', 'tag_b', 6);
+        $poison = $this->createMock(\AMQPEnvelope::class);
+        $poison->method('getBody')->willReturn('not-json');
+        $poison->method('getDeliveryTag')->willReturn(5);
+
+        $valid = $this->createMock(\AMQPEnvelope::class);
+        $valid->method('getBody')->willReturn('good');
+        $valid->method('getDeliveryTag')->willReturn(6);
+        $valid->method('getHeaders')->willReturn([]);
 
         $this->serializer
             ->method('decode')
@@ -1960,24 +1964,26 @@ class ReceiverTest extends TestCase
                 default => new Envelope(new \stdClass()),
             });
 
-        // One consume loop on queue_a receives deliveries for both consumers;
-        // the poison message for queue_a is rejected and the loop continues
-        // with queue_b's message (#309).
         $queueA
             ->expects($this->once())
             ->method('consume')
-            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($poison, $valid): void {
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($poison): void {
                 if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
                     $callback($poison);
-                    $callback($valid);
                 }
             });
         $queueA->expects($this->once())->method('reject')->with(5);
         $queueA->method('getConsumerTag')->willReturn('tag_a');
 
-        // queue_b is never driven directly — its consumer is served by the
-        // same loop, and its message is valid so it must not be rejected.
-        $queueB->expects($this->never())->method('consume');
+        // The poison message is rejected and the cycle continues into queue_b.
+        $queueB
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($valid): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($valid);
+                }
+            });
         $queueB->expects($this->never())->method('reject');
         $queueB->method('getConsumerTag')->willReturn('tag_b');
 
@@ -1987,41 +1993,6 @@ class ReceiverTest extends TestCase
 
         $this->assertCount(1, $messages);
         $this->assertSame('queue_b', $messages[0]->last(AmqpReceivedStamp::class)?->getQueueName());
-    }
-
-    /**
-     * A flood of poison messages must not be drained without bound in a single
-     * get() cycle: the number of deliveries handled per cycle is capped at
-     * batch_size × queue count, matching the old per-queue budget (#288/#309).
-     */
-    public function testPoisonMessageFloodIsBoundedPerCycle(): void
-    {
-        $options = ['queue' => 'test_queue', 'batch_size' => 2];
-
-        $receiver = $this->createReceiverWithQueue($options);
-
-        $this->serializer
-            ->method('decode')
-            ->willThrowException(new MessageDecodingFailedException('Cannot decode message'));
-
-        $this->queue
-            ->expects($this->once())
-            ->method('consume')
-            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag): void {
-                if ($flags !== AMQP_JUST_CONSUME || $callback === null) {
-                    return;
-                }
-                for ($i = 0; $i < 10; $i++) {
-                    if (!$callback($this->makeAmqpEnvelope('not-json', 'test_tag', $i + 1))) {
-                        break;
-                    }
-                }
-            });
-        $this->queue->expects($this->exactly(2))->method('reject');
-        $this->queue->method('getConsumerTag')->willReturn('test_tag');
-        $this->connection->method('checkHeartbeat')->willReturn(false);
-
-        $this->assertSame([], iterator_to_array($receiver->get()));
     }
 
     public function testConstructorThrowsOnNegativeMaxBodyBytes(): void
@@ -2224,7 +2195,7 @@ class ReceiverTest extends TestCase
         $receiver->get();
     }
 
-    public function testMultiQueueIdleLoopDoesNotFatalOnAckFlush(): void
+    public function testMultiQueueIdleSecondQueueDoesNotFatalOnAckFlush(): void
     {
         $options = ['queues' => ['queue_a' => [], 'queue_b' => []], 'batch_size' => 2];
 
@@ -2237,17 +2208,17 @@ class ReceiverTest extends TestCase
         $queuesProperty = $reflection->getProperty('queues');
         $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
 
-        $amqpEnvelope = $this->makeAmqpEnvelope('{"data":"test"}', 'tag_a', 5);
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope->method('getBody')->willReturn('{"data":"test"}');
+        $amqpEnvelope->method('getDeliveryTag')->willReturn(5);
 
         $this->serializer
             ->expects($this->once())
             ->method('decode')
             ->willReturn(new Envelope(new \stdClass()));
 
-        // One loop on queue_a yields a message, then hits an idle timeout —
-        // the expected outcome of polling the channel with nothing else ready
-        // (#271). queue_b is served by the same loop and must not be driven
-        // directly (#309).
+        // queue_a yields a message; queue_b throws an idle timeout — the
+        // expected outcome of polling a queue with no messages ready (#271).
         $queueA
             ->expects($this->once())
             ->method('consume')
@@ -2255,21 +2226,21 @@ class ReceiverTest extends TestCase
                 if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
                     $callback($amqpEnvelope);
                 }
-
-                throw new \AMQPQueueException('Consumer timeout exceeded');
             });
         $queueA->method('getConsumerTag')->willReturn('tag_a');
         // Multi-queue mode: ack must be individual (AMQP_NOPARAM), not
         // AMQP_MULTIPLE — a batched ack would cross queue boundaries (#202).
         $queueA->expects($this->once())->method('ack')->with(5, \AMQP_NOPARAM);
 
-        $queueB->expects($this->never())->method('consume');
+        $queueB
+            ->expects($this->once())
+            ->method('consume')
+            ->willThrowException(new \AMQPQueueException('Consumer timeout exceeded'));
         $queueB->method('getConsumerTag')->willReturn('tag_b');
 
         $this->connection->method('checkHeartbeat')->willReturn(false);
 
-        // An idle timeout must not discard the message delivered earlier in
-        // the same loop.
+        // get() returns queue_a's message and breaks early.
         $result = $receiver->get();
         $this->assertCount(1, $result);
 
@@ -2630,63 +2601,6 @@ class ReceiverTest extends TestCase
         $this->assertSame(3, $stamp->getChannelGeneration());
     }
 
-    /**
-     * The regression test for #309: with several consumers on one channel a
-     * single consume loop must serve all of them. Deliveries for queue_b and
-     * queue_c arrive through the loop started on queue_a; neither of their
-     * queue objects is consumed directly, so an idle get() costs one
-     * read_timeout instead of one per queue.
-     */
-    public function testSingleConsumeLoopServesAllQueues(): void
-    {
-        $options = ['queues' => ['queue_a' => [], 'queue_b' => [], 'queue_c' => []], 'batch_size' => 10];
-
-        $queueA = $this->createMock(\AMQPQueue::class);
-        $queueB = $this->createMock(\AMQPQueue::class);
-        $queueC = $this->createMock(\AMQPQueue::class);
-
-        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
-
-        $reflection = new \ReflectionClass(Receiver::class);
-        $queuesProperty = $reflection->getProperty('queues');
-        $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB, 'queue_c' => $queueC]);
-
-        $this->serializer->method('decode')->willReturn(new Envelope(new \stdClass()));
-
-        // Exactly one consume() call — on the first queue — receives deliveries
-        // for every consumer on the channel.
-        $queueA
-            ->expects($this->once())
-            ->method('consume')
-            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag): void {
-                if ($flags !== AMQP_JUST_CONSUME || $callback === null) {
-                    return;
-                }
-                $callback($this->makeAmqpEnvelope('a', 'tag_a', 1));
-                $callback($this->makeAmqpEnvelope('b', 'tag_b', 2));
-                $callback($this->makeAmqpEnvelope('c', 'tag_c', 3));
-            });
-        $queueA->method('getConsumerTag')->willReturn('tag_a');
-
-        $queueB->expects($this->never())->method('consume');
-        $queueB->method('getConsumerTag')->willReturn('tag_b');
-        $queueC->expects($this->never())->method('consume');
-        $queueC->method('getConsumerTag')->willReturn('tag_c');
-
-        $this->connection->method('checkHeartbeat')->willReturn(false);
-
-        $messages = iterator_to_array($receiver->get());
-
-        $this->assertCount(3, $messages);
-        $this->assertSame(
-            ['queue_a', 'queue_b', 'queue_c'],
-            array_map(
-                static fn(Envelope $envelope): ?string => $envelope->last(AmqpReceivedStamp::class)?->getQueueName(),
-                $messages,
-            ),
-        );
-    }
-
     public function testMultiQueueGetDistributesFairly(): void
     {
         $options = ['queues' => ['queue_a' => [], 'queue_b' => []], 'batch_size' => 4];
@@ -2700,31 +2614,35 @@ class ReceiverTest extends TestCase
         $queuesProperty = $reflection->getProperty('queues');
         $queuesProperty->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
 
-        // A single consume loop on queue_a receives interleaved deliveries for
-        // both consumers (the broker round-robins them); queue_b is never
-        // driven directly. The loop stops once the global budget is spent
-        // (#309). Serializer returns a fresh envelope regardless of body.
+        // Serializer returns a fresh envelope regardless of body.
         $this->serializer->method('decode')->willReturn(new Envelope(new \stdClass()));
 
-        $makeFeed = function (?callable $callback, int $flags, ?string $consumerTag): void {
+        // Simulate the broker delivering messages one at a time, stopping once
+        // the callback returns false for that queue.
+        $makeFeed = (fn(int $count): \Closure => function (?callable $callback, int $flags, ?string $consumerTag) use ($count): void {
             if ($flags !== AMQP_JUST_CONSUME || $callback === null) {
                 return;
             }
-            for ($i = 0; $i < 10; $i++) {
-                $tag = $i % 2 === 0 ? 'tag_a' : 'tag_b';
-                if (!$callback($this->makeAmqpEnvelope('{"n":' . $i . '}', $tag, $i + 1))) {
+            for ($i = 0; $i < $count; $i++) {
+                $amqpEnvelope = new \AMQPEnvelope();
+                $refl = new \ReflectionClass(\AMQPEnvelope::class);
+                $refl->getProperty('body')->setValue($amqpEnvelope, '{"n":' . $i . '}');
+                if (!$callback($amqpEnvelope)) {
                     break;
                 }
             }
-        };
+        });
 
         $queueA
             ->expects($this->once())
             ->method('consume')
-            ->willReturnCallback($makeFeed);
+            ->willReturnCallback($makeFeed(10));
         $queueA->method('getConsumerTag')->willReturn('tag_a');
 
-        $queueB->expects($this->never())->method('consume');
+        $queueB
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback($makeFeed(10));
         $queueB->method('getConsumerTag')->willReturn('tag_b');
 
         $this->connection->method('checkHeartbeat')->willReturn(false);
@@ -2734,7 +2652,7 @@ class ReceiverTest extends TestCase
         // Total batch never exceeds batch_size.
         $this->assertCount(4, $result);
 
-        // Interleaved deliveries are attributed to the right queues.
+        // Fair distribution across the two queues, not all from the first.
         $byQueue = [];
         foreach ($result as $envelope) {
             $stamp = $envelope->last(AmqpReceivedStamp::class);
@@ -2745,9 +2663,9 @@ class ReceiverTest extends TestCase
 
     public function testMultiQueueGetNeverExceedsBatchSizeWithManyQueues(): void
     {
-        // batch_size = 2 over 3 queues: the single loop must stop at the
-        // global budget (2) instead of overshooting, and the later queues'
-        // consumers must never be driven directly (#204/#309).
+        // batch_size = 2 over 3 queues: per-queue budget is 1 each, so the
+        // returned batch must stop at the global budget (2) and the first two
+        // queues alone must not overshoot to 2 + (N - 1) = 4 (#204).
         $options = ['queues' => ['queue_a' => [], 'queue_b' => [], 'queue_c' => []], 'batch_size' => 2];
 
         $queueA = $this->createMock(\AMQPQueue::class);
@@ -2762,26 +2680,27 @@ class ReceiverTest extends TestCase
 
         $this->serializer->method('decode')->willReturn(new Envelope(new \stdClass()));
 
-        // queue_a has more messages than the global budget.
-        $queueA
-            ->expects($this->once())
-            ->method('consume')
-            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag): void {
-                if ($flags !== AMQP_JUST_CONSUME || $callback === null) {
-                    return;
+        $makeFeed = (fn(int $count): \Closure => function (?callable $callback, int $flags, ?string $consumerTag) use ($count): void {
+            if ($flags !== AMQP_JUST_CONSUME || $callback === null) {
+                return;
+            }
+            for ($i = 0; $i < $count; $i++) {
+                $amqpEnvelope = new \AMQPEnvelope();
+                $refl = new \ReflectionClass(\AMQPEnvelope::class);
+                $refl->getProperty('body')->setValue($amqpEnvelope, '{"n":' . $i . '}');
+                if (!$callback($amqpEnvelope)) {
+                    break;
                 }
-                for ($i = 0; $i < 5; $i++) {
-                    if (!$callback($this->makeAmqpEnvelope('{"n":' . $i . '}', 'tag_a', $i + 1))) {
-                        break;
-                    }
-                }
-            });
-        $queueA->method('getConsumerTag')->willReturn('tag_a');
+            }
+        });
 
-        // Once the global budget (2) is spent the loop stops; queue_b and
-        // queue_c consumers are never entered directly.
-        $queueB->expects($this->never())->method('consume');
+        // Both leading queues have more messages than their per-queue share.
+        $queueA->expects($this->once())->method('consume')->willReturnCallback($makeFeed(5));
+        $queueA->method('getConsumerTag')->willReturn('tag_a');
+        $queueB->expects($this->once())->method('consume')->willReturnCallback($makeFeed(5));
         $queueB->method('getConsumerTag')->willReturn('tag_b');
+
+        // Once the global budget (2) is spent, queue_c must not be entered.
         $queueC->expects($this->never())->method('consume');
         $queueC->method('getConsumerTag')->willReturn('tag_c');
 
@@ -2793,23 +2712,92 @@ class ReceiverTest extends TestCase
     }
 
     /**
-     * Helper: build a real \AMQPEnvelope with the given body, consumer tag and
-     * delivery tag. The extension exposes only getters, so the private
-     * properties are set via reflection.
+     * A delivery received during one queue's consume loop but owned by another
+     * queue's consumer must be attributed to the owning queue, not the loop
+     * queue (#309).
      */
-    private function makeAmqpEnvelope(string $body, ?string $consumerTag = null, int $deliveryTag = 0): \AMQPEnvelope
+    public function testDeliveryIsAttributedToOwningQueueFromConsumerTag(): void
     {
-        $amqpEnvelope = new \AMQPEnvelope();
-        $reflection = new \ReflectionClass(\AMQPEnvelope::class);
-        $reflection->getProperty('body')->setValue($amqpEnvelope, $body);
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []]];
 
-        if ($consumerTag !== null) {
-            $reflection->getProperty('consumerTag')->setValue($amqpEnvelope, $consumerTag);
-        }
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
 
-        $reflection->getProperty('deliveryTag')->setValue($amqpEnvelope, $deliveryTag);
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
 
-        return $amqpEnvelope;
+        $reflection = new \ReflectionClass(Receiver::class);
+        $reflection->getProperty('queues')->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
+        $reflection->getProperty('tagToQueue')->setValue($receiver, ['tag_a' => 'queue_a', 'tag_b' => 'queue_b']);
+
+        $message = $this->createMock(\AMQPEnvelope::class);
+        $message->method('getBody')->willReturn('good');
+        $message->method('getHeaders')->willReturn([]);
+        $message->method('getConsumerTag')->willReturn('tag_b');
+        $message->method('getDeliveryTag')->willReturn(7);
+
+        $this->serializer->method('decode')->willReturn(new Envelope(new \stdClass()));
+
+        // queue_a's loop receives a delivery that belongs to queue_b's consumer.
+        $queueA
+            ->expects($this->once())
+            ->method('consume')
+            ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($message): void {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
+                    $callback($message);
+                }
+            });
+        $queueA->method('getConsumerTag')->willReturn('tag_a');
+        $queueB->method('getConsumerTag')->willReturn('tag_b');
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $messages = iterator_to_array($receiver->get());
+
+        $this->assertCount(1, $messages);
+        $this->assertSame('queue_b', $messages[0]->last(AmqpReceivedStamp::class)?->getQueueName());
+    }
+
+    /**
+     * Only the first queue waits the configured read_timeout; every later queue
+     * is probed with a short timeout and the original is restored (#309).
+     */
+    public function testNonFirstQueueIsProbedWithShortReadTimeout(): void
+    {
+        $options = ['queues' => ['queue_a' => [], 'queue_b' => []]];
+
+        $queueA = $this->createMock(\AMQPQueue::class);
+        $queueB = $this->createMock(\AMQPQueue::class);
+
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
+
+        $reflection = new \ReflectionClass(Receiver::class);
+        $reflection->getProperty('queues')->setValue($receiver, ['queue_a' => $queueA, 'queue_b' => $queueB]);
+        $reflection->getProperty('tagToQueue')->setValue($receiver, ['tag_a' => 'queue_a', 'tag_b' => 'queue_b']);
+
+        $queueA->method('consume')->willThrowException(new \AMQPQueueException('idle'));
+        $queueA->method('getConsumerTag')->willReturn('tag_a');
+        $queueB->method('consume')->willThrowException(new \AMQPQueueException('idle'));
+        $queueB->method('getConsumerTag')->willReturn('tag_b');
+
+        $amqpConnection = $this->createMock(\AMQPConnection::class);
+        $amqpConnection->method('getReadTimeout')->willReturn(0.25);
+
+        $appliedTimeouts = [];
+        $amqpConnection
+            ->expects($this->exactly(2))
+            ->method('setReadTimeout')
+            ->willReturnCallback(function (float $timeout) use (&$appliedTimeouts): void {
+                $appliedTimeouts[] = $timeout;
+            });
+
+        $this->connection->method('getConnection')->willReturn($amqpConnection);
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+
+        $receiver->get();
+
+        // queue_a (first) keeps the configured timeout; queue_b is shrunk and
+        // then restored to the original.
+        $this->assertSame([0.01, 0.25], $appliedTimeouts);
     }
 
     /**
