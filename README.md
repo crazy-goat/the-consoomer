@@ -80,7 +80,8 @@ The path has at most two segments, `<vhost>/<exchange>` (the trailing slash is o
 | `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded. Non-integer/negative values are rejected at construction | 16777216 (16 MiB) |
 | `timeout` | Consumer timeout in seconds | 0.1 |
 | `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
-| `confirm_timeout` | Publisher confirms timeout in seconds (0 = disabled). See [Publish Reliability](#publish-reliability) | 0 |
+| `publisher_confirms` | Explicitly enable/disable publisher confirms. When unset, defaults to `true` iff `confirm_timeout > 0` | unset |
+| `confirm_timeout` | Publisher confirms wait duration in seconds (**0 = wait indefinitely**). Only meaningful when `publisher_confirms` is on. See [Publish Reliability](#publish-reliability) | 0 |
 | `routing_key` | **Consumer-side**: binding key used when declaring/binding the queue | `''` |
 | `default_publish_routing_key` | **Sender-side**: default routing key used when publishing messages | `''` |
 
@@ -223,13 +224,19 @@ path (#288):
 
 ### Publish Reliability
 
-> **Warning: without `confirm_timeout`, publishes are fire-and-forget.**
+> **Warning: without publisher confirms, publishes are fire-and-forget.**
 > `AMQPExchange::publish()` writes to the socket buffer and returns immediately.
 > If the broker is down, the exchange is missing, or the topology was lost after
 > a restart, `send()` still reports success and the message is silently lost.
 > The retry mechanism is inert on the send path without an error signal.
 
-**Enable publisher confirms** (`confirm_timeout > 0`) for reliable publishing:
+Publisher confirms are controlled by `publisher_confirms`; `confirm_timeout` is
+only the wait duration. `publisher_confirms` defaults to `true` when a positive
+`confirm_timeout` is configured (backwards compatible) and `false` otherwise, so
+set it explicitly to be unambiguous. `confirm_timeout=0` now means **wait
+indefinitely**, matching ext-amqp's `waitForConfirm(0)`.
+
+**Enable publisher confirms** for reliable publishing (e.g. `publisher_confirms=1&confirm_timeout=5`):
 
 ```yaml
 framework:

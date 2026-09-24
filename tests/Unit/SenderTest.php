@@ -775,6 +775,50 @@ class SenderTest extends TestCase
         $sender->send($envelope);
     }
 
+    /**
+     * `confirm_timeout=0` is a duration, not a feature flag (#244): with
+     * confirms enabled it means "wait indefinitely", matching ext-amqp.
+     */
+    public function testPublisherConfirmsWithZeroTimeoutWaitsIndefinitely(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'publisher_confirms' => true, 'confirm_timeout' => 0];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $channel->expects($this->once())->method('confirmSelect');
+        $channel->expects($this->once())->method('waitForConfirm')->with(0.0);
+
+        $this->connection->method('getChannel')->willReturn($channel);
+
+        $this->serializer->method('encode')->willReturn(['body' => 'test', 'headers' => []]);
+        $this->exchange->expects($this->once())->method('publish');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->expects($this->once())->method('updateActivity');
+
+        $this->createSender($options)->send(new Envelope(new \stdClass()));
+    }
+
+    public function testPublisherConfirmsExplicitFalseDisablesEvenWithPositiveTimeout(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'publisher_confirms' => false, 'confirm_timeout' => 5];
+
+        $this->connection->expects($this->never())->method('getChannel');
+
+        $this->serializer->method('encode')->willReturn(['body' => 'test', 'headers' => []]);
+        $this->exchange->expects($this->once())->method('publish');
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->expects($this->once())->method('updateActivity');
+
+        $this->createSender($options)->send(new Envelope(new \stdClass()));
+    }
+
+    public function testInvalidPublisherConfirmsThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('publisher_confirms');
+
+        $this->createSender(['exchange' => 'test_exchange', 'publisher_confirms' => 'maybe']);
+    }
+
     public function testSendWithConfirmTimeoutAndRetryCallsConfirmSelectOnceButWaitsForEachPublish(): void
     {
         $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 5, 'retry' => true];
