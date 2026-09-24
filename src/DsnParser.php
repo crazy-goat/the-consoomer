@@ -15,6 +15,31 @@ final class DsnParser
      */
     private const RESERVED_KEYS = ['host', 'port', 'user', 'password', 'vhost', 'exchange'];
 
+    /**
+     * Declared option types (#212). `normalizeValue()` coerces numeric strings
+     * heuristically, so a non-numeric value for an int/float/bool option used to
+     * pass through as a string and fail later with an opaque error. These maps
+     * drive an early, precise validation.
+     *
+     * @var list<string>
+     */
+    private const INT_OPTIONS = [
+        'heartbeat', 'max_unacked_messages', 'batch_size', 'max_body_bytes',
+        'retry_count', 'retry_delay', 'retry_max_delay',
+        'retry_circuit_breaker_threshold', 'retry_circuit_breaker_timeout',
+        'retry_circuit_breaker_success_threshold', 'exchange_flags', 'queue_flags',
+    ];
+
+    /** @var list<string> */
+    private const FLOAT_OPTIONS = ['timeout', 'read_timeout', 'write_timeout', 'connect_timeout', 'confirm_timeout'];
+
+    /** @var list<string> */
+    private const BOOL_OPTIONS = [
+        'ssl', 'ssl_verify', 'allow_insecure_verify', 'persistent', 'durable',
+        'auto_setup', 'redeclare_on_reconnect', 'retry', 'retry_backoff',
+        'retry_jitter', 'retry_circuit_breaker', 'publisher_confirms',
+    ];
+
     /** @var list<string> */
     private static ?array $validExchangeTypes = null;
 
@@ -181,6 +206,8 @@ final class DsnParser
         if (isset($query['queue_arguments']) && is_array($query['queue_arguments'])) {
             $result['queue_arguments'] = $this->normalizeQueueArguments($query['queue_arguments']);
         }
+
+        $this->validateOptionTypes($result);
 
         return $this->validateParsedOptions($result);
     }
@@ -380,6 +407,60 @@ final class DsnParser
             $normalized[$key] = $this->normalizeValue($value);
         }
         return $normalized;
+    }
+
+    /**
+     * Validates known DSN options against their declared types (#212).
+     *
+     * @param array<string, mixed> $options Parsed options
+     *
+     * @throws \InvalidArgumentException When an option value has the wrong type
+     */
+    private function validateOptionTypes(array $options): void
+    {
+        foreach (self::INT_OPTIONS as $key) {
+            if (array_key_exists($key, $options) && !is_int($options[$key])) {
+                throw new \InvalidArgumentException(sprintf(
+                    'DSN option "%s" must be an integer, got "%s".',
+                    $key,
+                    $this->describeValue($options[$key]),
+                ));
+            }
+        }
+
+        foreach (self::FLOAT_OPTIONS as $key) {
+            if (array_key_exists($key, $options) && !is_int($options[$key]) && !is_float($options[$key])) {
+                throw new \InvalidArgumentException(sprintf(
+                    'DSN option "%s" must be a number, got "%s".',
+                    $key,
+                    $this->describeValue($options[$key]),
+                ));
+            }
+        }
+
+        foreach (self::BOOL_OPTIONS as $key) {
+            if (!array_key_exists($key, $options)) {
+                continue;
+            }
+
+            $value = $options[$key];
+            // DSN booleans may arrive as `1`/`0` alongside true/false; anything
+            // else is a misconfiguration that must fail at parse time.
+            if (is_bool($value) || $value === 0 || $value === 1) {
+                continue;
+            }
+
+            throw new \InvalidArgumentException(sprintf(
+                'DSN option "%s" must be a boolean, got "%s".',
+                $key,
+                $this->describeValue($value),
+            ));
+        }
+    }
+
+    private function describeValue(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : get_debug_type($value);
     }
 
     /**

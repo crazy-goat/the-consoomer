@@ -87,6 +87,37 @@ class DsnParserTest extends TestCase
         $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?queue_arguments[a][b]=1');
     }
 
+    public function testNonIntegerOptionThrows(): void
+    {
+        $parser = new DsnParser();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"heartbeat" must be an integer');
+
+        $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?heartbeat=abc');
+    }
+
+    public function testNonBooleanOptionThrows(): void
+    {
+        $parser = new DsnParser();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"retry" must be a boolean');
+
+        $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?retry=maybe');
+    }
+
+    public function testValidOptionTypesAreAccepted(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?heartbeat=60&timeout=5.5&retry=true&max_unacked_messages=10');
+
+        $this->assertSame(60, $result['heartbeat']);
+        $this->assertSame(5.5, $result['timeout']);
+        $this->assertTrue($result['retry']);
+        $this->assertSame(10, $result['max_unacked_messages']);
+    }
+
     public function testValidatesOptionsAutomaticallyForValidDsn(): void
     {
         $parser = new DsnParser();
