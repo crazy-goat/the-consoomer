@@ -133,7 +133,10 @@ final class ConnectionRetry implements ConnectionRetryInterface
     public function withRetry(callable $operation): mixed
     {
         if ($this->retryCircuitBreaker && $this->circuitBreaker instanceof \CrazyGoat\TheConsoomer\CircuitBreaker) {
-            if (!$this->circuitBreaker->isAvailable()) {
+            // acquire() (not isAvailable()) is the mutating execution-path call:
+            // it performs the OPEN→HALF_OPEN transition once the timeout
+            // elapsed, so observability polling cannot trigger it (#252).
+            if (!$this->circuitBreaker->acquire()) {
                 $this->logger?->error('Circuit breaker is open, rejecting operation');
                 $this->metrics->recordCircuitBreakerOpen();
                 $this->metrics->recordFailedOperation();

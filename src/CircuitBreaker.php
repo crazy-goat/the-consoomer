@@ -91,12 +91,19 @@ final class CircuitBreaker
     }
 
     /**
-     * Checks if circuit breaker allows requests.
+     * Checks whether a request would be allowed, **without mutating state**.
      *
-     * Uses monotonic clock for elapsed-time measurement so NTP corrections
+     * Pure by design (command-query separation, #252): observability callers
+     * such as {@see ConnectionRetry::isCircuitOpen()} may poll it freely and it
+     * will never flip an OPEN breaker to HALF_OPEN or reset the half-open
+     * success counter. The execution path must use {@see acquire()} instead,
+     * which performs the OPEN→HALF_OPEN transition once the timeout elapsed.
+     *
+     * Uses the monotonic clock for elapsed-time measurement so NTP corrections
      * never extend or shorten the OPEN period artificially.
      *
-     * @return bool True if requests are allowed (CLOSED or HALF_OPEN after timeout)
+     * @return bool True if a request would be allowed (CLOSED, HALF_OPEN, or
+     *              OPEN past the timeout)
      */
     public function isAvailable(): bool
     {
@@ -105,14 +112,39 @@ final class CircuitBreaker
         }
 
         if ($this->state === CircuitState::OPEN) {
-            $elapsed = $this->clock->monotonic() - $this->lastFailureMonotonic;
-            if ($elapsed >= $this->timeout) {
-                $this->transitionTo(CircuitState::HALF_OPEN);
-                $this->successCount = 0;
-                return true;
-            }
+            return $this->clock->monotonic() - $this->lastFailureMonotonic >= $this->timeout;
+        }
+
+        // HALF_OPEN: a probe is allowed.
+        return true;
+    }
+
+    /**
+     * Acquires permission to run an operation, transitioning OPEN→HALF_OPEN
+     * when the timeout has elapsed.
+     *
+     * This is the mutating counterpart of {@see isAvailable()} and the only
+     * state-changing method on the execution path of the retry loop (#252). It
+     * is called exactly when an operation is about to run, so the OPEN→HALF_OPEN
+     * transition (and the reset of the half-open success counter) can no longer
+     * be triggered by observability polling.
+     *
+     * @return bool True when the operation may run (CLOSED, HALF_OPEN, or a
+     *              timeout-elapsed OPEN that just became HALF_OPEN)
+     */
+    public function acquire(): bool
+    {
+        if ($this->state !== CircuitState::OPEN) {
+            return true;
+        }
+
+        $elapsed = $this->clock->monotonic() - $this->lastFailureMonotonic;
+        if ($elapsed < $this->timeout) {
             return false;
         }
+
+        $this->transitionTo(CircuitState::HALF_OPEN);
+        $this->successCount = 0;
 
         return true;
     }
