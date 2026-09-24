@@ -8,6 +8,7 @@
 - `max_body_bytes` receiver option (default `16777216`, 16 MiB; `0` disables): a raw AMQP body larger than the limit is rejected — dropped or dead-lettered per broker policy — without ever being handed to the serializer, so a single oversized publish cannot push the consumer into memory pressure from broker-controlled input. Invalid values (negative or non-integer) throw an `InvalidArgumentException` at construction instead of silently disabling the guard (#288)
 
 ### Changed
+- CI no longer enables Xdebug coverage on every matrix job (it was never turned into a report or gate, so it only slowed the suite). Coverage now runs once in a dedicated `coverage` job via `composer coverage`, generates a Clover report, and is gated at a 90% line floor by `scripts/coverage-gate.php`; `ci` fails when the floor is missed (#242)
 - **BC note**: a producer with `auto_setup=true` now declares only its exchange on `send()`; queues and bindings are consumer-side topology and are declared by the receiver. A send-only process no longer creates consumer queues, so messages it publishes before a consumer has declared (and bound) the queue on a direct exchange are unroutable. `InfrastructureSetupInterface` gained `setupExchange()` and `setupQueues()` (custom implementers must add them) (#308)
 
 ### Fixed
