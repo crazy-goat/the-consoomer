@@ -110,7 +110,7 @@ The factory does **not** connect at construction: the first operation that needs
 | `queues` | Multi-queue mode — see [Multi-queue mode](#multi-queue-mode) | (none) |
 | `routing_key` | **Consumer-side**: binding key used when declaring/binding the queue | `''` |
 | `max_unacked_messages` | Target total in-flight across all queues; divided evenly across the queues for the per-consumer prefetch and the per-queue ack-batch flush threshold | `100` |
-| `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | `1` |
+| `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput). Must not exceed `max_unacked_messages`, since the broker never delivers more than the prefetch | `1` |
 | `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded. Non-integer/negative values are rejected at construction | `16777216` (16 MiB) |
 
 #### Publishing

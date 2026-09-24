@@ -93,6 +93,19 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->maxUnackedMessages = max(1, intval($this->options['max_unacked_messages'] ?? self::DEFAULT_MAX_UNACKED_MESSAGES));
         $this->batchSize = max(1, intval($this->options['batch_size'] ?? self::DEFAULT_BATCH_SIZE));
 
+        // The broker never delivers more than the prefetch, so a batch larger
+        // than max_unacked_messages can never be filled: consume() blocks until
+        // read_timeout and the batch silently degrades to a partial one (#280).
+        // Prefetch is divided across queues (#239), which cannot make this any
+        // better, so the cross-check is on the channel-wide values.
+        if ($this->batchSize > $this->maxUnackedMessages) {
+            throw new \InvalidArgumentException(sprintf(
+                'batch_size (%d) must not exceed max_unacked_messages (%d): the broker will not deliver more than the prefetch, so such a batch could never be filled (#280).',
+                $this->batchSize,
+                $this->maxUnackedMessages,
+            ));
+        }
+
         $rawMaxBodyBytes = $this->options['max_body_bytes'] ?? self::DEFAULT_MAX_BODY_BYTES;
         // Fail closed (#288): a negative or non-integer value is a config error,
         // not "no guard" — 0 disables the guard entirely, so clamping invalid

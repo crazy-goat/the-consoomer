@@ -2041,6 +2041,29 @@ class ReceiverTest extends TestCase
         new Receiver($this->factory, $this->connection, $this->serializer, ['queue' => 'q', 'max_body_bytes' => 'none'], $this->setup);
     }
 
+    public function testConstructorThrowsWhenBatchSizeExceedsMaxUnackedMessages(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('must not exceed max_unacked_messages');
+
+        new Receiver($this->factory, $this->connection, $this->serializer, [
+            'queue' => 'q',
+            'batch_size' => 10,
+            'max_unacked_messages' => 5,
+        ], $this->setup);
+    }
+
+    public function testConstructorAllowsBatchSizeEqualToMaxUnackedMessages(): void
+    {
+        $receiver = new Receiver($this->factory, $this->connection, $this->serializer, [
+            'queue' => 'q',
+            'batch_size' => 5,
+            'max_unacked_messages' => 5,
+        ], $this->setup);
+
+        $this->assertInstanceOf(Receiver::class, $receiver);
+    }
+
     /**
      * A stale heartbeat after a slow-but-healthy handler must NOT reconnect
      * inside ack(): doing so would wipe in-flight delivery tags and redeliver
