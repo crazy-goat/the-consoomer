@@ -253,6 +253,15 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         $this->connection->getConnection()->setReadTimeout($original);
     }
 
+    /**
+     * Collects up to `batch_size` messages from the configured queue(s).
+     *
+     * Queues are polled in round-robin order; an idle call costs roughly one
+     * read timeout (not one per queue). Consumer topology is declared here when
+     * `auto_setup` is enabled.
+     *
+     * @return list<Envelope> The collected messages (possibly empty)
+     */
     public function get(): iterable
     {
         $this->messages = [];
@@ -410,6 +419,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
     /**
      * Acknowledges the given envelope on the AMQP queue it was received from.
      *
+     * The ack is **deferred**: the delivery tag is buffered and the broker is
+     * only told when a queue reaches `max_unacked_messages` (per-queue share),
+     * or when {@see ackPending()}/{@see close()} flushes. `ack()` returning
+     * therefore does not mean the broker has seen the acknowledgement.
+     *
      * Does NOT reconnect on heartbeat staleness (#235): ack() runs after the
      * (possibly slow) message handler, and a slow-but-healthy handler must not
      * force a reconnect here — that would wipe in-flight delivery tags and
@@ -521,6 +535,11 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         }
     }
 
+    /**
+     * Flushes buffered acknowledgements to the broker.
+     *
+     * @param string|null $queueName Flush only this queue, or all queues when null
+     */
     public function ackPending(?string $queueName = null): void
     {
         if ($queueName !== null) {
@@ -663,11 +682,21 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return $queueCount > 1 ? max(1, intdiv($this->batchSize, $queueCount)) : $this->batchSize;
     }
 
+    /**
+     * Flushes all buffered acknowledgements and marks the receiver closed.
+     */
     public function close(): void
     {
         $this->ackPending();
     }
 
+    /**
+     * Purges messages from a queue and returns the number removed.
+     *
+     * @param string|null $queueName Queue to purge. When null the single
+     *        `queue` option is used; in multi-queue mode only the **first**
+     *        configured queue is purged.
+     */
     public function purgeQueue(?string $queueName = null): int
     {
         $this->ensureConnected();
@@ -702,6 +731,12 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         return $result;
     }
 
+    /**
+     * Returns the number of ready messages summed across all configured queues.
+     *
+     * Uses a passive declare per queue, so it reflects the broker's ready
+     * count (messages delivered but not yet acked are not counted).
+     */
     public function getMessageCount(): int
     {
         $this->ensureConnected();
