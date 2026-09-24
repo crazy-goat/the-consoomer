@@ -75,6 +75,7 @@ The path has at most two segments, `<vhost>/<exchange>` (the trailing slash is o
 | Option | Description | Default |
 |--------|-------------|---------|
 | `queue` | Queue name to consume from | (required) |
+| `queue_arguments[...]` | Queue declaration arguments, one scalar per key (e.g. `queue_arguments[x-max-priority]=10`). Nested keys are rejected at parse time | (none) |
 | `max_unacked_messages` | Target total in-flight across all queues; divided evenly across the queues for the per-consumer prefetch and the per-queue ack-batch flush threshold | 100 |
 | `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | 1 |
 | `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded. Non-integer/negative values are rejected at construction | 16777216 (16 MiB) |

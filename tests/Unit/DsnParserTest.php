@@ -77,6 +77,16 @@ class DsnParserTest extends TestCase
         $this->assertSame(60000, $result['queue_arguments']['x-message-ttl']);
     }
 
+    public function testNestedQueueArgumentsThrow(): void
+    {
+        $parser = new DsnParser();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Nested queue arguments are not supported');
+
+        $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?queue_arguments[a][b]=1');
+    }
+
     public function testValidatesOptionsAutomaticallyForValidDsn(): void
     {
         $parser = new DsnParser();
