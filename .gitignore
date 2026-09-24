@@ -11,6 +11,8 @@
 
 .env.test.local
 .phpunit.cache/
+/build/
+/coverage/
 .aider.chat.history.md
 
 .tyci/
