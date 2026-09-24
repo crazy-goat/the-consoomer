@@ -120,16 +120,13 @@ final class DsnParser
         }
 
         foreach ($query as $key => $value) {
-            if (str_starts_with((string) $key, 'queue_arguments[')) {
-                continue;
-            }
             // Security (#207): the DSN authority (host, port, user, password) and
             // path (vhost, exchange) are authoritative. A query parameter whose key
             // collides with one of these used to silently overwrite the parsed value —
             // allowing e.g. "?host=evil&password=secret" to redirect the connection and
             // inject credentials. Refuse the collision explicitly so misconfiguration is
-            // surfaced instead of silently exploited. queue_arguments[...] keys are
-            // already skipped above and are not affected.
+            // surfaced instead of silently exploited. `queue_arguments` expands to an
+            // array under its own (non-reserved) key and is unaffected.
             if (in_array((string) $key, self::RESERVED_KEYS, true)) {
                 throw new \InvalidArgumentException(
                     sprintf(
@@ -176,18 +173,10 @@ final class DsnParser
             $result['queues'] = $this->normalizeQueuesFromDsn($result['queues']);
         }
 
+        // parse_str() already expands `queue_arguments[x]=v` into a nested array,
+        // so there is no separate bracketed-key fallback to handle here (#247).
         if (isset($query['queue_arguments']) && is_array($query['queue_arguments'])) {
             $result['queue_arguments'] = $this->normalizeQueueArguments($query['queue_arguments']);
-        } else {
-            $queueArgs = [];
-            foreach ($query as $key => $value) {
-                if (preg_match('/^queue_arguments\[(.+)\]$/', (string) $key, $matches)) {
-                    $queueArgs[$matches[1]] = $this->normalizeValue($value);
-                }
-            }
-            if ($queueArgs !== []) {
-                $result['queue_arguments'] = $queueArgs;
-            }
         }
 
         return $this->validateParsedOptions($result);
@@ -362,13 +351,29 @@ final class DsnParser
     /**
      * Normalizes queue arguments from query parameters.
      *
+     * AMQP queue arguments are scalar; a nested value (e.g.
+     * `queue_arguments[a][b]=1`) would be handed to `AMQPQueue::setArguments()`
+     * as an array and fail later with an opaque ext-amqp error, so it is
+     * rejected here with the offending key named (#247).
+     *
      * @param array<string, mixed> $arguments Queue arguments
      * @return array<string, mixed> Normalized arguments
+     *
+     * @throws \InvalidArgumentException When an argument value is not scalar
      */
     private function normalizeQueueArguments(array $arguments): array
     {
         $normalized = [];
         foreach ($arguments as $key => $value) {
+            if (!is_scalar($value)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'queue_arguments[%s] must have a scalar value, got "%s". Nested queue arguments are not supported; use one value per argument, e.g. queue_arguments[%s]=10.',
+                    (string) $key,
+                    get_debug_type($value),
+                    (string) $key,
+                ));
+            }
+
             $normalized[$key] = $this->normalizeValue($value);
         }
         return $normalized;
