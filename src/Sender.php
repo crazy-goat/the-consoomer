@@ -262,12 +262,6 @@ final class Sender implements SenderInterface
     public function send(Envelope $envelope): Envelope
     {
         $this->ensureConnected();
-        if ($this->options['auto_setup'] ?? true) {
-            // A producer only needs its exchange to exist; queue/binding/retry
-            // topology is consumer-side and is not the sender's business
-            // (#308).
-            $this->setup->setupExchange();
-        }
         $this->connect();
 
         $stamp = $envelope->last(AmqpStamp::class);
@@ -310,6 +304,14 @@ final class Sender implements SenderInterface
 
         if ($this->retry instanceof ConnectionRetryInterface) {
             $this->retry->withRetry(function () use ($publishCallback): void {
+                // auto_setup runs inside the retried operation so a transient
+                // declaration failure is retried instead of escaping send()
+                // before the retry wrapper (#281). A producer only needs its
+                // exchange (#308).
+                if ($this->options['auto_setup'] ?? true) {
+                    $this->setup->setupExchange();
+                }
+
                 // Without publisher confirms, AMQPExchange::publish() is
                 // fire-and-forget: it writes to the socket buffer and returns
                 // immediately, even when the broker is down or the exchange is
@@ -345,6 +347,9 @@ final class Sender implements SenderInterface
                 $this->connection->updateActivity();
             });
         } else {
+            if ($this->options['auto_setup'] ?? true) {
+                $this->setup->setupExchange();
+            }
             $publishCallback();
             $this->connection->updateActivity();
         }

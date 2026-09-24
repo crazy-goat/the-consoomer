@@ -1744,6 +1744,53 @@ class SenderTest extends TestCase
         $this->createSenderWithRetry(['exchange' => 'test_exchange', 'retry' => true], $retry)->send($envelope);
     }
 
+    /**
+     * auto_setup runs inside the retried operation, so a transient declaration
+     * failure is retried rather than escaping send() before the wrapper (#281).
+     */
+    public function testTransientSetupFailureIsRetriedWhenRetryEnabled(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'retry' => true, 'auto_setup' => true];
+
+        $channel = $this->createMock(\AMQPChannel::class);
+        $this->connection->method('getChannel')->willReturn($channel);
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        $this->connection->method('isConnected')->willReturn(true);
+        $this->factory->method('createExchange')->willReturn($this->exchange);
+        $this->serializer->method('encode')->willReturn(['body' => 'test', 'headers' => []]);
+        $this->exchange->method('publish');
+
+        $attempts = 0;
+        $this->setup
+            ->expects($this->exactly(2))
+            ->method('setupExchange')
+            ->willReturnCallback(function () use (&$attempts): void {
+                if (++$attempts === 1) {
+                    throw new \AMQPConnectionException('broker hiccup');
+                }
+            });
+
+        $retry = $this->createMock(\CrazyGoat\TheConsoomer\ConnectionRetryInterface::class);
+        $retry->method('withRetry')->willReturnCallback(function (\Closure $operation): mixed {
+            $tries = 0;
+            while (true) {
+                try {
+                    $operation();
+
+                    return null;
+                } catch (\AMQPException $exception) {
+                    if (++$tries >= 2) {
+                        throw $exception;
+                    }
+                }
+            }
+        });
+
+        $this->createSenderWithRetry($options, $retry)->send(new Envelope(new \stdClass()));
+
+        $this->assertSame(2, $attempts);
+    }
+
     private function createSender(array $options): Sender
     {
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
