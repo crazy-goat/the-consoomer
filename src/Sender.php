@@ -61,6 +61,16 @@ final class Sender implements SenderInterface
     private ?\AMQPChannel $confirmedChannel = null;
     /** @var array<string, true> */
     private array $delayQueuesCreated = [];
+    /**
+     * Delay-exchange bindings already created, keyed by queue name then routing
+     * key. The delay queue's dead-letter routing key is no longer fixed at
+     * creation (#276): the queue is bound for the message's own routing key and
+     * the delayed message keeps that key, so a custom `queue_name_pattern`
+     * without `{queue}` cannot rewrite the routing of later messages.
+     *
+     * @var array<string, array<string, true>>
+     */
+    private array $delayQueueBindings = [];
     private readonly string $delayExchangeName;
     private readonly string $delayQueueNamePattern;
 
@@ -161,6 +171,7 @@ final class Sender implements SenderInterface
             $this->exchange = null;
             $this->delayExchange = null;
             $this->delayQueuesCreated = [];
+            $this->delayQueueBindings = [];
             $this->confirmedChannel = null;
             $this->connect();
         }
@@ -317,6 +328,7 @@ final class Sender implements SenderInterface
                     $this->exchange = null;
                     $this->delayExchange = null;
                     $this->delayQueuesCreated = [];
+                    $this->delayQueueBindings = [];
                     $this->confirmedChannel = null;
                     $this->connect();
 
@@ -364,15 +376,21 @@ final class Sender implements SenderInterface
         $this->ensureDelayExchange();
 
         if (!isset($this->delayQueuesCreated[$delayQueueName])) {
-            $this->createDelayQueue($delayQueueName, $routingKey, $delayStamp->getDelay());
+            $this->createDelayQueue($delayQueueName, $delayStamp->getDelay(), $routingKey);
             $this->delayQueuesCreated[$delayQueueName] = true;
+            $this->delayQueueBindings[$delayQueueName][$routingKey] = true;
+        } else {
+            $this->ensureDelayBinding($delayQueueName, $routingKey);
         }
 
         $channel = $this->confirmChannel();
 
+        // Publish with the message's own routing key (#276). The delay queue has
+        // only `x-dead-letter-exchange` set, so on TTL expiry the broker
+        // dead-letters with this same key — no per-queue routing key to freeze.
         $this->delayExchange->publish(
             $data['body'],
-            $delayQueueName,
+            $routingKey,
             $flags,
             $attributes,
         );
@@ -441,15 +459,38 @@ final class Sender implements SenderInterface
         }
     }
 
-    private function createDelayQueue(string $queueName, string $routingKey, int $delay): void
+    private function createDelayQueue(string $queueName, int $delay, string $routingKey): void
     {
         $queue = $this->factory->createQueue($this->connection->getChannel());
         $queue->setName($queueName);
         $queue->setFlags(\AMQP_DURABLE);
         $queue->setArgument('x-message-ttl', $delay);
+        // No x-dead-letter-routing-key: the dead-lettered message keeps its own
+        // routing key, so the queue's properties do not depend on which routing
+        // key happened to create it (#276).
         $queue->setArgument('x-dead-letter-exchange', $this->options['exchange'] ?? '');
-        $queue->setArgument('x-dead-letter-routing-key', $routingKey);
         $queue->declareQueue();
-        $queue->bind($this->delayExchangeName, $queueName);
+        $queue->bind($this->delayExchangeName, $routingKey);
+    }
+
+    /**
+     * Binds the delay queue to the delay exchange for one routing key.
+     *
+     * A custom `queue_name_pattern` without `{queue}` maps several routing keys
+     * to one queue; each key needs its own binding, and the cached queue
+     * declaration alone would otherwise leave later keys unroutable (#276).
+     */
+    private function ensureDelayBinding(string $queueName, string $routingKey): void
+    {
+        if (isset($this->delayQueueBindings[$queueName][$routingKey])) {
+            return;
+        }
+
+        $queue = $this->factory->createQueue($this->connection->getChannel());
+        $queue->setName($queueName);
+        $queue->setFlags(\AMQP_DURABLE);
+        $queue->bind($this->delayExchangeName, $routingKey);
+
+        $this->delayQueueBindings[$queueName][$routingKey] = true;
     }
 }
