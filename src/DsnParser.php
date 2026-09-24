@@ -268,6 +268,10 @@ final class DsnParser
      *
      * @param string $path DSN path (e.g., /vhost/exchange)
      * @return array{vhost: string, exchange: string}
+     *
+     * @throws \InvalidArgumentException When the path has more than the two
+     *         expected segments (`vhost/exchange`); extra segments used to be
+     *         silently discarded, yielding a valid-looking but wrong config
      */
     private function parsePath(string $path): array
     {
@@ -282,6 +286,15 @@ final class DsnParser
         // Remove the leading empty segment from the '/' prefix
         if ($items[0] === '') {
             array_shift($items);
+        }
+
+        // #234: only vhost/exchange are meaningful; refuse anything longer
+        // instead of silently dropping the trailing segments.
+        if (count($items) > 2) {
+            throw new \InvalidArgumentException(sprintf(
+                'Invalid DSN path "%s": expected at most two segments in the form "vhost/exchange".',
+                $path,
+            ));
         }
 
         $vhost = $items[0];

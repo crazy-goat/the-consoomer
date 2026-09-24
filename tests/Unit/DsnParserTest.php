@@ -410,6 +410,35 @@ class DsnParserTest extends TestCase
         $this->assertSame('my_queue', $result['queue']);
     }
 
+    public function testPathWithTwoSegmentsParsesVhostAndExchange(): void
+    {
+        $parser = new DsnParser();
+        $result = $parser->parse('amqp-consoomer://guest:guest@localhost/my_vhost/my_exchange?queue=my_queue');
+
+        $this->assertSame('my_vhost', $result['vhost']);
+        $this->assertSame('my_exchange', $result['exchange']);
+    }
+
+    public function testPathWithMoreThanTwoSegmentsThrows(): void
+    {
+        $parser = new DsnParser();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('at most two segments');
+
+        $parser->parse('amqp-consoomer://guest:guest@localhost/a/b/c?queue=q');
+    }
+
+    public function testSingleSegmentPathIsVhostOnlyAndStillRequiresExchange(): void
+    {
+        $parser = new DsnParser();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('missing required exchange name');
+
+        $parser->parse('amqp-consoomer://guest:guest@localhost/my_vhost');
+    }
+
     public function testAmqpsConsoomerSchemeRejectsSslFalseInQuery(): void
     {
         $parser = new DsnParser();
