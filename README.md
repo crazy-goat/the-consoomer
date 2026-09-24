@@ -72,19 +72,53 @@ The path has at most two segments, `<vhost>/<exchange>` (the trailing slash is o
 
 ### Options
 
+Every key below is accepted both in the DSN query string and programmatically (the `$options` argument of `AmqpTransportFactory::create()`); `allow_insecure_verify` is programmatic-only by design. Options are grouped by area; the `retry*` keys have their own table in [Retry Configuration](#retry-configuration) and the `ssl*` keys in [SSL/TLS](#ssltls).
+
+#### Connection
+
 | Option | Description | Default |
 |--------|-------------|---------|
-| `queue` | Queue name to consume from | (required) |
-| `queue_arguments[...]` | Queue declaration arguments, one scalar per key (e.g. `queue_arguments[x-max-priority]=10`). Nested keys are rejected at parse time | (none) |
-| `max_unacked_messages` | Target total in-flight across all queues; divided evenly across the queues for the per-consumer prefetch and the per-queue ack-batch flush threshold | 100 |
-| `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | 1 |
-| `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded. Non-integer/negative values are rejected at construction | 16777216 (16 MiB) |
-| `timeout` | Consumer timeout in seconds | 0.1 |
-| `heartbeat` | Connection heartbeat interval in seconds (0 = disabled) | 0 |
-| `publisher_confirms` | Explicitly enable/disable publisher confirms. When unset, defaults to `true` iff `confirm_timeout > 0` | unset |
-| `confirm_timeout` | Publisher confirms wait duration in seconds (**0 = wait indefinitely**). Only meaningful when `publisher_confirms` is on. See [Publish Reliability](#publish-reliability) | 0 |
+| `timeout` | Socket read timeout in seconds | `0.1` |
+| `heartbeat` | AMQP heartbeat interval in seconds (0 = disabled); also drives the client-side staleness reconnect — see [Heartbeat](#heartbeat) | `0` |
+| `persistent` | Use a persistent connection (`pconnect`) | `false` |
+
+The factory does **not** connect at construction: the first operation that needs the broker establishes the connection lazily, wrapped in the configured retry, so a briefly-unavailable broker does not fail app boot (#230).
+
+#### Topology
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `exchange_type` | `direct`, `fanout`, `topic` or `headers` | `direct` |
+| `durable` | Declare the exchange and queues durable (survive broker restart) | `true` |
+| `exchange_flags` | Extra numeric AMQP exchange flags, OR-ed in (e.g. `AMQP_AUTODELETE`) | `0` |
+| `queue_flags` | Extra numeric AMQP queue flags, OR-ed in | `0` |
+| `queue_arguments[...]` | Queue declaration arguments, one scalar per key (e.g. `queue_arguments[x-max-priority]=10`); nested keys are rejected at parse time | (none) |
+| `binding_keys` | Binding keys used to bind the single `queue` to the exchange | `[routing_key]` |
+| `binding_arguments` | Arguments for the queue→exchange binding | (none) |
+| `exchange_bindings` | Bind this exchange to others, e.g. `exchange_bindings[0][target]=upstream&exchange_bindings[0][routing_keys][0]=key` | (none) |
+| `auto_setup` | Declare topology automatically. A receiver declares queues and bindings; a producer declares only its exchange (see [Publish Reliability](#publish-reliability)) | `true` |
+| `redeclare_on_reconnect` | Re-declare topology after a reconnect or a genuine channel failure | `false` |
+
+#### Consuming
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `queue` | Single queue to consume from | (required unless `queues`) |
+| `queues` | Multi-queue mode — see [Multi-queue mode](#multi-queue-mode) | (none) |
 | `routing_key` | **Consumer-side**: binding key used when declaring/binding the queue | `''` |
+| `max_unacked_messages` | Target total in-flight across all queues; divided evenly across the queues for the per-consumer prefetch and the per-queue ack-batch flush threshold | `100` |
+| `batch_size` | Max messages collected per `get()` call (lower = lower latency, higher = higher throughput) | `1` |
+| `max_body_bytes` | Max raw message body size accepted per message (0 = disabled). Oversized bodies are rejected without being decoded. Non-integer/negative values are rejected at construction | `16777216` (16 MiB) |
+
+#### Publishing
+
+| Option | Description | Default |
+|--------|-------------|---------|
 | `default_publish_routing_key` | **Sender-side**: default routing key used when publishing messages | `''` |
+| `publisher_confirms` | Explicitly enable/disable publisher confirms. When unset, defaults to `true` iff `confirm_timeout > 0` | unset |
+| `confirm_timeout` | Publisher confirms wait duration in seconds (**0 = wait indefinitely**). Only meaningful when `publisher_confirms` is on. See [Publish Reliability](#publish-reliability) | `0` |
+| `delay.exchange_name` | Name of the delay (dead-letter) exchange | `<exchange>_delay` |
+| `delay.queue_name_pattern` | Delay queue name template supporting `{delay}` and `{queue}` | `delay_{delay}_{queue}` |
 
 ### Routing Key Resolution
 
@@ -101,6 +135,89 @@ When sending a message, the routing key precedence is:
 This separation prevents unintended coupling: setting `routing_key` for consumer binding does not affect how messages are published.
 
 > **Pitfall — consumer binding vs sender stamp:** because the consumer and sender keys are resolved independently, stamping a message with `AmqpStamp::getRoutingKey()` (or setting `default_publish_routing_key`) that differs from the queue's `routing_key` binding causes the broker to drop every unroutable message on a direct exchange — publish still reports success. When you publish with a per-message `AmqpStamp`, make sure your `routing_key` DSN option binds the queue with that same key (e.g. publish with `new AmqpStamp('test')` and configure `...?queue=test&routing_key=test`).
+
+### Multi-queue mode
+
+A single transport can consume several queues on one shared channel. Because
+the channel is shared, `max_unacked_messages` is a **total** budget (divided
+across the queues) and an idle `get()` over N queues costs about one
+`read_timeout`, not N (#239, #309).
+
+Programmatic configuration:
+
+```php
+$options = [
+    'queues' => [
+        'orders' => ['binding_keys' => ['order.created', 'order.updated']],
+        'payments' => ['binding_keys' => ['payment.*']],
+        'dead_letters' => ['arguments' => ['x-message-ttl' => 60000]],
+    ],
+    'batch_size' => 10,
+];
+```
+
+The same via the DSN query string:
+
+```
+amqp-consoomer://guest:guest@localhost:5672/%2f/events?queues[orders][binding_keys][0]=order.created&queues[payments][binding_keys][0]=payment.*&batch_size=10
+```
+
+Each entry under `queues` supports `binding_keys` (list), `binding_arguments`
+(map) and `arguments` (map) for that queue. With `queues`, the single `queue`
+option is not used.
+
+### Delayed messages
+
+Attach `AmqpDelayStamp` (delay in milliseconds) and the sender publishes to a
+per-delay queue whose message TTL expires it back onto the main exchange:
+
+```php
+use CrazyGoat\TheConsoomer\AmqpDelayStamp;
+use Symfony\Component\Messenger\Envelope;
+
+$transport->send(new Envelope($message, [new AmqpDelayStamp(30_000)]));
+```
+
+The sender declares a durable delay exchange (`delay.exchange_name`) and one
+queue per `(delay, routing key)` pair (`delay.queue_name_pattern`), with
+`x-message-ttl` set to the delay and `x-dead-letter-routing-key` set to the
+routing key so the message returns to the main exchange when it expires. The
+routing key used here is validated: only `A-Z a-z 0-9 . _ -` are allowed and it
+must fit the AMQP 255-byte name limit, otherwise `send()` throws
+`InvalidArgumentException` (#289).
+
+### Message priorities
+
+Attach `AmqpPriorityStamp` to publish with a priority. The target queue must be
+declared with `x-max-priority`, e.g. `queue_arguments[x-max-priority]=10`:
+
+```php
+use CrazyGoat\TheConsoomer\AmqpPriorityStamp;
+
+$transport->send(new Envelope($message, [new AmqpPriorityStamp(9)]));
+```
+
+### Stamps
+
+| Stamp | Direction | Purpose |
+|-------|-----------|---------|
+| `AmqpStamp` | send | Per-message routing key (`getRoutingKey()`), AMQP flags (`getFlags()`) and attributes (`getAttributes()`) |
+| `AmqpDelayStamp` | send | Delay the delivery by N milliseconds |
+| `AmqpPriorityStamp` | send | Publish with the given priority |
+| `AmqpReceivedStamp` | receive | Added to received envelopes; exposes the delivery tag, the owning queue name and the channel generation used for ack/reject safety |
+
+Send-side stamps are `NonSendableStampInterface`, so a received envelope never
+carries them back into a retry/redelivery.
+
+### Reconnect and redelivery
+
+AMQP delivery tags are scoped to a channel. When a channel is lost (broker
+restart, dropped socket, heartbeat-stale reconnect), the broker redelivers its
+in-flight messages on the next channel. The receiver tracks a channel
+generation on every received envelope, so `ack()`/`reject()` of an envelope
+from a lost channel is a **no-op** (the broker redelivers it) rather than a
+protocol error that would close the channel (#220). `ack()`/`reject()` never
+trigger a reconnect themselves (#235) — see [Heartbeat](#heartbeat).
 
 ### Heartbeat
 
