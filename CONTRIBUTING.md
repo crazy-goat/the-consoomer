@@ -160,10 +160,19 @@ git branch -d feature/issue-<NUMBER>-<slug>
 |---------|-------------|
 | `composer test` | Run all tests |
 | `composer test-unit` | Run unit tests only |
-| `composer test-e2e-full` | Run E2E tests with RabbitMQ |
-| `composer lint` | Run phpstan, rector, php-cs-fixer |
+| `composer test-e2e` | Run E2E tests (assumes RabbitMQ is already running) |
+| `composer test-e2e-full` | Start RabbitMQ, run E2E tests, stop RabbitMQ |
+| `composer test-coverage` | Generate an HTML coverage report into `coverage/` |
+| `composer coverage` | Generate a Clover report and enforce the 90% line floor (CI) |
+| `composer lint` | Check everything: phpstan, rector (dry-run) and php-cs-fixer (dry-run) |
+| `composer lint:fix` | Apply fixes: rector then php-cs-fixer |
 | `composer phpstan` | Run static analysis |
-| `composer rector` | Run automatic code fixes |
+| `composer rector` | Check rector rules (dry-run; use `composer lint:fix` to apply) |
+| `composer phpcsfixer` | Check coding style (dry-run; use `composer lint:fix` to apply) |
+| `composer run-rabbitmq` | Run a throwaway RabbitMQ container in the foreground |
+| `composer rabbitmq-start` | Start the docker-compose RabbitMQ test stack |
+| `composer rabbitmq-stop` | Stop the docker-compose RabbitMQ test stack |
+| `composer rabbitmq-wait` | Wait until RabbitMQ is ready |
 ## Subagent Workflow
 
 **Prefer implementing and reviewing changes with subagents.** Each subagent

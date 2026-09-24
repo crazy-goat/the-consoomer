@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace CrazyGoat\TheConsoomer;
 
+use CrazyGoat\TheConsoomer\Exception\MissingStampException;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Transport\CloseableTransportInterface;
 use Symfony\Component\Messenger\Transport\Receiver\MessageCountAwareInterface;
@@ -46,6 +47,11 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
 
     /**
      * {@inheritdoc}
+     *
+     * The ack is deferred (see {@see Receiver::ack()}), so returning does not
+     * mean the broker has acknowledged the message yet.
+     *
+     * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
      */
     public function ack(Envelope $envelope): void
     {
@@ -54,6 +60,8 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
 
     /**
      * {@inheritdoc}
+     *
+     * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
      */
     public function reject(Envelope $envelope): void
     {

@@ -277,7 +277,7 @@ The transport supports configurable retry logic with exponential backoff, jitter
 | Option | Description | Default |
 |--------|-------------|---------|
 | `retry` | Enable retry mechanism | `false` |
-| `retry_count` | Maximum number of execution attempts including the first (`maxAttempts`) | `3` |
+| `retry_count` | Maximum number of execution attempts including the first (`maxAttempts`); values below `1` throw `InvalidArgumentException` at construction | `3` |
 | `retry_delay` | Base delay between retries in microseconds | `100000` |
 | `retry_backoff` | Enable exponential backoff (delay doubles each retry) | `false` |
 | `retry_max_delay` | Maximum delay cap in microseconds | `30000000` |
@@ -285,7 +285,7 @@ The transport supports configurable retry logic with exponential backoff, jitter
 | `retry_circuit_breaker` | Enable circuit breaker pattern | `false` |
 | `retry_circuit_breaker_threshold` | Consecutive failures before circuit opens | `10` |
 | `retry_circuit_breaker_timeout` | Seconds circuit stays open before half-open probe | `60` |
-| `retry_circuit_breaker_success_threshold` | Successful attempts needed to close circuit | `2` |
+| `retry_circuit_breaker_success_threshold` | Successful attempts needed to close circuit; values below `2` throw `InvalidArgumentException` at construction | `2` |
 
 ```yaml
 framework:
