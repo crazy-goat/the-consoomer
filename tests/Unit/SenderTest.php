@@ -1513,8 +1513,10 @@ class SenderTest extends TestCase
             ->expects($this->once())
             ->method('resetSetup');
 
+        // One pre-retry call, plus one after the mid-retry reconnect so the
+        // exchange is declared for this attempt (#308).
         $this->setup
-            ->expects($this->once())
+            ->expects($this->exactly(2))
             ->method('setupExchange');
 
         $this->connection

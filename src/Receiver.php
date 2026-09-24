@@ -348,6 +348,13 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
                 } catch (\Throwable) {
                     // Channel is dead — acks cannot be sent; broker will redeliver.
                 }
+                // The channel is gone and the next get() reconnects lazily when
+                // it asks for a channel; that path is not heartbeat-staleness,
+                // so reset the setup flag here to honour redeclare_on_reconnect
+                // (#308).
+                if ($this->options['redeclare_on_reconnect'] ?? false) {
+                    $this->setup->resetSetup();
+                }
                 $this->connection->clearChannelCache();
                 $this->queues = [];
                 $this->tagToQueue = [];

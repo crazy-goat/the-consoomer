@@ -246,7 +246,8 @@ With `retry=1` enabled (regardless of confirms):
 
 With `auto_setup=true` (default):
 - A producer declares only its exchange on send; queues and bindings are consumer-side topology and are declared by the receiver
-- Topology is **not** re-declared on every reconnect by default — durable exchanges/queues survive disconnects. Set `redeclare_on_reconnect=true` to re-declare after a reconnect (useful when an operator may delete the topology while the worker is connected); `Sender::ensureConnected()`/`Receiver::ensureConnected()` then reset the setup flag
+- Topology is **not** re-declared on every reconnect by default — durable exchanges/queues survive disconnects. Set `redeclare_on_reconnect=true` to re-declare after a reconnect (useful when an operator may delete the topology while the worker is connected); `Sender::ensureConnected()`/`Receiver::ensureConnected()` then reset the setup flag — including after a genuine channel failure detected during `get()`
+- If you declare non-durable topology (`durable=false`), a broker restart deletes it and it will **not** be recreated unless `redeclare_on_reconnect=true`: durable is the default precisely because it survives disconnects
 
 ## Testing
 

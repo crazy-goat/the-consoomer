@@ -275,6 +275,14 @@ final class Sender implements SenderInterface
                     $this->delayQueuesCreated = [];
                     $this->confirmedChannel = null;
                     $this->connect();
+
+                    // The pre-retry setupExchange() ran before this reconnect,
+                    // and the reconnect may have cleared the setup flag, so the
+                    // exchange must be (re-)declared for this attempt — not only
+                    // on the next send() (#308).
+                    if ($this->options['auto_setup'] ?? true) {
+                        $this->setup->setupExchange();
+                    }
                 }
 
                 $publishCallback();
