@@ -614,4 +614,52 @@ class AmqpFactoryTest extends TestCase
             @unlink($caFile);
         }
     }
+
+    /**
+     * Debug logs must not disclose certificate/key file paths (deployment
+     * layout) — presence is logged, the path is not (#290).
+     */
+    public function testConfigureSslDoesNotLogCertificateFilePaths(): void
+    {
+        $factory = new AmqpFactory();
+
+        $connection = $this->createMock(\AMQPConnection::class);
+        $connection->method('setCert');
+        $connection->method('setKey');
+        $connection->method('setCaCert');
+        $connection->method('setVerify');
+
+        $certFile = tempnam(sys_get_temp_dir(), 'cert');
+        $keyFile = tempnam(sys_get_temp_dir(), 'key');
+        $caFile = tempnam(sys_get_temp_dir(), 'ca');
+
+        $logged = [];
+        $logger = $this->createMock(\Psr\Log\LoggerInterface::class);
+        $logger->method('info');
+        $logger->method('debug')->willReturnCallback(
+            function (string $message, array $context = []) use (&$logged): void {
+                $logged[] = $message . ' ' . json_encode($context);
+            },
+        );
+
+        try {
+            $factory->configureSsl($connection, [
+                'ssl' => true,
+                'ssl_cert' => $certFile,
+                'ssl_key' => $keyFile,
+                'ssl_cacert' => $caFile,
+                'ssl_verify' => true,
+            ], $logger);
+        } finally {
+            unlink($certFile);
+            unlink($keyFile);
+            unlink($caFile);
+        }
+
+        $this->assertNotSame([], $logged, 'expected at least one debug log');
+        $all = implode("\n", $logged);
+        $this->assertStringNotContainsString($certFile, $all);
+        $this->assertStringNotContainsString($keyFile, $all);
+        $this->assertStringNotContainsString($caFile, $all);
+    }
 }
