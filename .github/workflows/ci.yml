@@ -7,7 +7,15 @@ on:
     branches: [main]
 
 jobs:
+  changes:
+    uses: crazy-goat/.github/.github/workflows/changes.yml@main
+
+  docs:
+    uses: crazy-goat/.github/.github/workflows/docs-check.yml@main
+
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -26,7 +34,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [changes, lint]
+    if: needs.changes.outputs.code == 'true'
 
     strategy:
       fail-fast: false
@@ -96,7 +105,8 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [changes, lint]
+    if: needs.changes.outputs.code == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -120,17 +130,27 @@ jobs:
 
   ci-ok:
     runs-on: ubuntu-latest
-    needs: [lint, test, coverage]
+    needs: [changes, docs, lint, test, coverage]
     if: always()
 
     steps:
       - name: Check all jobs passed
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          RESULTS: ${{ toJSON(needs) }}
         run: |
-          if [[ "${{ needs.lint.result }}" != "success" || "${{ needs.test.result }}" != "success" || "${{ needs.coverage.result }}" != "success" ]]; then
-            echo "Some jobs failed"
-            exit 1
-          fi
-          echo "All jobs passed"
+          # Documentation-only changes skip lint/test/coverage; everything else must pass.
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          required="changes docs"
+          [ "$CODE" = "true" ] && required="$required lint test coverage"
+          for job in $required; do
+            result="$(echo "$RESULTS" | jq -r --arg j "$job" '.[$j].result')"
+            if [ "$result" != "success" ]; then
+              echo "::error::Job '$job' finished with '$result'"
+              exit 1
+            fi
+          done
+          echo "All required jobs passed (full CI: $CODE)"
 
   # Temporary alias for the old required check name. Remove once the
   # `default-branch` ruleset (which requires `ci-ok`) replaces branch protection.
