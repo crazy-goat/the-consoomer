@@ -151,12 +151,3 @@ jobs:
             fi
           done
           echo "All required jobs passed (full CI: $CODE)"
-
-  # Temporary alias for the old required check name. Remove once the
-  # `default-branch` ruleset (which requires `ci-ok`) replaces branch protection.
-  ci:
-    runs-on: ubuntu-latest
-    needs: [ci-ok]
-    if: always()
-    steps:
-      - run: test "${{ needs.ci-ok.result }}" = "success"
