@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-09-29
+
 ### Added
 - `redeclare_on_reconnect` option (default `false`): when `true`, `Sender::ensureConnected()`/`Receiver::ensureConnected()` reset the setup flag after a reconnect so the durable topology is re-declared; the sender also re-declares its exchange on the retry reconnect path, and the receiver resets the flag after a genuine channel failure detected during `get()` (which reconnects lazily, not via the heartbeat). Durable exchanges/queues survive client disconnects, so re-declaring them on every reconnect (including wall-clock idle reconnects, #235) is unnecessary by default; enable it when an operator may delete topology while the worker is connected, or when topology is declared with `durable=false` (#308)
 - `E_USER_DEPRECATED` notice emitted when the legacy `amqps://` scheme is parsed and when `DsnParser::validateOptions()` is called, so consumers on the 1.0 removal path get a runtime signal instead of a silent comment-only deprecation (#342)
