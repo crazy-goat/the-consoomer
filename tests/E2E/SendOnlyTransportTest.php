@@ -41,8 +41,13 @@ final class SendOnlyTransportTest extends TestCase
         $serializer = new PhpSerializer();
 
         // No queue/queues in the DSN and no auto_setup: pure producer.
+        $params = $this->getDsnParams();
         $dsn = sprintf(
-            'amqp-consoomer://guest:guest@localhost:5672/%%2f/%s?auto_setup=false',
+            'amqp-consoomer://%s:%s@%s:%d/%%2f/%s?auto_setup=false',
+            $params['user'],
+            $params['password'],
+            $params['host'],
+            $params['port'],
             self::EXCHANGE_NAME,
         );
         $producer = AmqpTransportFactory::create($dsn, [], $serializer);

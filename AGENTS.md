@@ -44,7 +44,10 @@ of them and is the only required check.
 - Fix review comments in new commits (never amend a pushed commit).
 - Use subagents for implementation and review where possible. A reviewer reports
   only defects that change behaviour, not style.
-- Report findings: the coder and the reviewer append every problem they notice (also outside
-  the task) to the findings file, and every finding gets an answer. After the merge, run step 8
-  of [docs/workflow.md](docs/workflow.md): a read-only review verifies the candidates (real,
-  not yet tracked), then ask the user before creating issues.
+- Work in a worktree from `bin/worktree.sh <issue>`; the coder commits but does not push until
+  the review accepts. The coder and the reviewer write `findings.md` and `review.md` in the
+  worktree root (gitignored) and every point gets an answer. After the merge, run step 7 of
+  [docs/workflow.md](docs/workflow.md): a read-only subagent comments on a similar issue or
+  creates a new one without a milestone. Finish with `bin/worktree-done.sh <issue>`.
+- Compose ports use `${NAME_PORT:-N}` and there is no `container_name`, so worktrees can run
+  their own RabbitMQ side by side. Load `.env.worktree` before running E2E tests.
