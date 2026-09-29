@@ -444,7 +444,9 @@ composer lint:fix
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome! Start with the [contributing guide](https://github.com/crazy-goat/.github/blob/main/CONTRIBUTING.md)
+and look for issues labelled [`good first issue`](https://github.com/crazy-goat/the-consoomer/labels/good%20first%20issue).
+The development process is described in [docs/workflow.md](docs/workflow.md); project commands are in [AGENTS.md](AGENTS.md).
 
 ## License
 
