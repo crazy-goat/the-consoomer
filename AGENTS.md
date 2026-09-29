@@ -44,6 +44,7 @@ of them and is the only required check.
 - Fix review comments in new commits (never amend a pushed commit).
 - Use subagents for implementation and review where possible. A reviewer reports
   only defects that change behaviour, not style.
-- After a squash merge, review the merged change for follow-up findings. Check for an
-  existing issue first (`gh issue list --search "<keywords>"`), and open a new one only
-  when nothing covers it. This is step 8 of [docs/workflow.md](docs/workflow.md).
+- Report findings: the coder and the reviewer append every problem they notice (also outside
+  the task) to the findings file, and every finding gets an answer. After the merge, run step 8
+  of [docs/workflow.md](docs/workflow.md): a read-only review verifies the candidates (real,
+  not yet tracked), then ask the user before creating issues.
