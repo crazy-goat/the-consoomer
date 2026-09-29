@@ -1,10 +1,9 @@
 services:
     rabbitmq:
         image: rabbitmq:4.1-management-alpine
-        container_name: the-consoomer-rabbitmq
         ports:
-            - "5672:5672"
-            - "15672:15672"
+            - "${RABBITMQ_PORT:-5672}:5672"
+            - "${RABBITMQ_MGMT_PORT:-15672}:15672"
         environment:
             RABBITMQ_DEFAULT_USER: guest
             RABBITMQ_DEFAULT_PASS: guest
@@ -18,11 +17,10 @@ services:
 
     rabbitmq-ssl:
         image: rabbitmq:4.1-management-alpine
-        container_name: the-consoomer-rabbitmq-ssl
         ports:
-            - "5673:5672"
-            - "5671:5671"
-            - "15673:15672"
+            - "${RABBITMQ_SSL_AMQP_PORT:-5673}:5672"
+            - "${RABBITMQ_SSL_PORT:-5671}:5671"
+            - "${RABBITMQ_SSL_MGMT_PORT:-15673}:15672"
         environment:
             RABBITMQ_DEFAULT_USER: guest
             RABBITMQ_DEFAULT_PASS: guest

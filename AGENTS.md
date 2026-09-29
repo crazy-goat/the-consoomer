@@ -44,6 +44,10 @@ of them and is the only required check.
 - Fix review comments in new commits (never amend a pushed commit).
 - Use subagents for implementation and review where possible. A reviewer reports
   only defects that change behaviour, not style.
-- After a squash merge, review the merged change for follow-up findings. Check for an
-  existing issue first (`gh issue list --search "<keywords>"`), and open a new one only
-  when nothing covers it. Follow the findings rules in [docs/workflow.md](docs/workflow.md).
+- Work in a worktree from `bin/worktree.sh <issue>`; the coder commits but does not push until
+  the review accepts. The coder and the reviewer write `findings.md` and `review.md` in the
+  worktree root (gitignored) and every point gets an answer. After the merge, run step 7 of
+  [docs/workflow.md](docs/workflow.md): a read-only subagent comments on a similar issue or
+  creates a new one without a milestone. Finish with `bin/worktree-done.sh <issue>`.
+- Compose ports use `${NAME_PORT:-N}` and there is no `container_name`, so worktrees can run
+  their own RabbitMQ side by side. Load `.env.worktree` before running E2E tests.

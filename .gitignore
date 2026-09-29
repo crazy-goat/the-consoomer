@@ -17,3 +17,7 @@
 
 .tyci/
 .DS_Store
+
+/findings.md
+/review.md
+/.env.worktree
