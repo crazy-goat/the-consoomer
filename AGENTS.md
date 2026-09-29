@@ -46,4 +46,4 @@ of them and is the only required check.
   only defects that change behaviour, not style.
 - After a squash merge, review the merged change for follow-up findings. Check for an
   existing issue first (`gh issue list --search "<keywords>"`), and open a new one only
-  when nothing covers it. Follow the findings rules in [docs/workflow.md](docs/workflow.md).
+  when nothing covers it. This is step 8 of [docs/workflow.md](docs/workflow.md).
