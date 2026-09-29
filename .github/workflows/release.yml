@@ -1,0 +1,11 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: crazy-goat/.github/.github/workflows/release.yml@main
