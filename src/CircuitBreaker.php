@@ -14,7 +14,8 @@ use Psr\Log\LoggerInterface;
  * States:
  * - CLOSED: Normal operation, requests flow through
  * - OPEN: Circuit tripped, requests blocked until timeout
- * - HALF_OPEN: Testing if service recovered, limited requests allowed
+ * - HALF_OPEN: Testing if service recovered, limited requests allowed (paused for
+ *   `timeout` seconds after a permanent-type probe failure)
  *
  * Elapsed time is measured using a monotonic clock (hrtime) to avoid
  * issues with wall-clock corrections (NTP backward steps, etc.).
@@ -24,6 +25,7 @@ final class CircuitBreaker
     private int $failureCount = 0;
     private int $successCount = 0;
     private float $lastFailureMonotonic = 0.0;
+    private ?float $probeCooldownStartMonotonic = null;
     private CircuitState $state = CircuitState::CLOSED;
 
     /**
@@ -56,6 +58,7 @@ final class CircuitBreaker
     public function recordSuccess(): void
     {
         if ($this->state === CircuitState::HALF_OPEN) {
+            $this->probeCooldownStartMonotonic = null;
             $this->successCount++;
             if ($this->successCount >= $this->successThreshold) {
                 $this->transitionTo(CircuitState::CLOSED);
@@ -83,10 +86,26 @@ final class CircuitBreaker
         $this->lastFailureMonotonic = $this->clock->monotonic();
 
         if ($this->state === CircuitState::HALF_OPEN) {
+            $this->probeCooldownStartMonotonic = null;
             $this->transitionTo(CircuitState::OPEN);
             $this->successCount = 0;
         } elseif ($this->failureCount >= $this->threshold) {
             $this->transitionTo(CircuitState::OPEN);
+        }
+    }
+
+    /**
+     * Records a permanent-type failure of a HALF_OPEN probe (#357).
+     *
+     * The state stays HALF_OPEN (permanent failures are application-level errors,
+     * not broker unhealthiness, #355), but further probes are rejected for
+     * `timeout` seconds. Without this, every call would run a real broker
+     * operation guaranteed to fail with the same deterministic error.
+     */
+    public function recordPermanentProbeFailure(): void
+    {
+        if ($this->state === CircuitState::HALF_OPEN) {
+            $this->probeCooldownStartMonotonic = $this->clock->monotonic();
         }
     }
 
@@ -115,8 +134,8 @@ final class CircuitBreaker
             return $this->clock->monotonic() - $this->lastFailureMonotonic >= $this->timeout;
         }
 
-        // HALF_OPEN: a probe is allowed.
-        return true;
+        // HALF_OPEN: a probe is allowed unless a permanent probe failure is cooling down.
+        return !$this->isProbeCoolingDown();
     }
 
     /**
@@ -134,6 +153,10 @@ final class CircuitBreaker
      */
     public function acquire(): bool
     {
+        if ($this->state === CircuitState::HALF_OPEN) {
+            return !$this->isProbeCoolingDown();
+        }
+
         if ($this->state !== CircuitState::OPEN) {
             return true;
         }
@@ -145,8 +168,15 @@ final class CircuitBreaker
 
         $this->transitionTo(CircuitState::HALF_OPEN);
         $this->successCount = 0;
+        $this->probeCooldownStartMonotonic = null;
 
         return true;
+    }
+
+    private function isProbeCoolingDown(): bool
+    {
+        return $this->probeCooldownStartMonotonic !== null
+            && $this->clock->monotonic() - $this->probeCooldownStartMonotonic < $this->timeout;
     }
 
     /**
@@ -166,6 +196,7 @@ final class CircuitBreaker
         $this->successCount = 0;
         $this->state = CircuitState::CLOSED;
         $this->lastFailureMonotonic = 0.0;
+        $this->probeCooldownStartMonotonic = null;
     }
 
     /**

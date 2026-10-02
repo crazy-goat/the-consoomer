@@ -315,7 +315,7 @@ final class ConnectionRetry implements ConnectionRetryInterface
      * @param callable(): T $operation Operation to execute
      * @return T
      * @throws \AMQPException When a transient AMQP operation fails (breaker is re-opened)
-     * @throws \AMQPException When a permanent AMQP failure occurs (circuit state unchanged)
+     * @throws \AMQPException When a permanent AMQP failure occurs (circuit stays HALF_OPEN, probing paused for the circuit timeout)
      * @throws UnexpectedOperationException When non-AMQP exception occurs
      */
     private function executeHalfOpenProbe(callable $operation): mixed
@@ -336,10 +336,13 @@ final class ConnectionRetry implements ConnectionRetryInterface
             // circuit nor count toward it. The state stays HALF_OPEN; the
             // next operation probes again.
             if ($this->isPermanentFailure($exception)) {
+                // #357: stay HALF_OPEN but pause probing for `timeout` seconds,
+                // so a deterministic failure does not hit the broker on every call.
+                $this->circuitBreaker?->recordPermanentProbeFailure();
                 $this->metrics->recordFailure();
                 $this->metrics->recordFailedOperation();
 
-                $this->logger?->warning('Permanent AMQP failure during half-open probe, circuit state unchanged', [
+                $this->logger?->warning('Permanent AMQP failure during half-open probe, probing paused', [
                     'code' => $exception->getCode(),
                     'type' => $exception::class,
                     'error' => $exception->getMessage(),
