@@ -7,6 +7,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 use CrazyGoat\TheConsoomer\CircuitBreaker;
 use CrazyGoat\TheConsoomer\CircuitState;
 use CrazyGoat\TheConsoomer\ConnectionRetry;
+use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
 use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
 use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use CrazyGoat\TheConsoomer\Tests\Unit\Clock\FrozenClock;
@@ -816,6 +817,62 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'Permanent failure must not re-open the circuit (#355)');
     }
 
+    public function testHalfOpenPermanentProbeFailurePausesProbingForTimeout(): void
+    {
+        $clock = new FrozenClock();
+
+        $retry = new ConnectionRetry(
+            maxAttempts: 3,
+            retryDelay: 1000,
+            retryCircuitBreaker: true,
+            retryCircuitBreakerThreshold: 1,
+            retryCircuitBreakerTimeout: 2,
+            clock: $clock,
+        );
+
+        try {
+            $retry->withRetry(function (): void {
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException) {
+        }
+
+        $clock->advance(3);
+
+        $attempt = 0;
+        $permanent = function () use (&$attempt): void {
+            $attempt++;
+            throw new \AMQPQueueException('Queue not found', 404);
+        };
+
+        try {
+            $retry->withRetry($permanent);
+            $this->fail('Expected AMQPQueueException');
+        } catch (\AMQPQueueException) {
+        }
+        $this->assertSame(1, $attempt);
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+
+        // Within the timeout the next call is rejected without touching the broker.
+        $clock->advance(1);
+        try {
+            $retry->withRetry($permanent);
+            $this->fail('Expected CircuitBreakerOpenException');
+        } catch (CircuitBreakerOpenException) {
+        }
+        $this->assertSame(1, $attempt, 'No probe may run during the cool-down (#357)');
+
+        // After the timeout a new probe is allowed.
+        $clock->advance(2);
+        try {
+            $retry->withRetry($permanent);
+            $this->fail('Expected AMQPQueueException');
+        } catch (\AMQPQueueException) {
+        }
+        $this->assertSame(2, $attempt);
+        $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
+    }
+
     public function testHalfOpenProbeSuccessAdvancesToClosedAfterThreshold(): void
     {
         $clock = new FrozenClock();
@@ -1133,7 +1190,9 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(3, $metrics->getTotalAttempts(), '2 attempts on exhaustion + 1 half-open probe attempt');
         $this->assertSame(2, $metrics->getFailedRetries(), 'One failure from exhaustion + one from the permanent probe failure');
 
-        // The next operation probes again; success closes it after threshold.
+        // After the probe cool-down (#357) the next operation probes again;
+        // success closes it after threshold.
+        $clock->advance(60);
         $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'One success below successThreshold keeps HALF_OPEN');
 
