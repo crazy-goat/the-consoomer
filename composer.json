@@ -45,15 +45,8 @@
         "phpstan": "vendor/bin/phpstan analyze",
         "rector": "vendor/bin/rector process --dry-run",
         "phpcsfixer": "vendor/bin/php-cs-fixer fix --dry-run --diff",
-        "lint:fix": [
-            "vendor/bin/rector process",
-            "vendor/bin/php-cs-fixer fix"
-        ],
-        "lint": [
-            "@phpstan",
-            "@rector",
-            "@phpcsfixer"
-        ],
+        "lint:fix": "bin/lint.sh --fix",
+        "lint": "bin/lint.sh",
         "run-rabbitmq": "docker run --rm -p 15672:15672 -p 5672:5672 --hostname my-rabbit --name some-rabbit rabbitmq:4.1-management-alpine",
         "test": "phpunit",
         "test-unit": "phpunit --testsuite unit",
