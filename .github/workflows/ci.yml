@@ -29,8 +29,11 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-progress
 
+      - name: Check shellcheck
+        run: shellcheck --version
+
       - name: Run lint
-        run: composer lint
+        run: bin/lint.sh
 
   test:
     runs-on: ubuntu-latest

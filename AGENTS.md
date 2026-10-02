@@ -18,15 +18,15 @@ rules (branches, commits, PRs) are in the
 | `composer test-e2e-full` | Start RabbitMQ, run E2E tests, stop RabbitMQ |
 | `composer test-coverage` | Generate an HTML coverage report into `coverage/` |
 | `composer coverage` | Generate a Clover report and enforce the 90% line floor (CI) |
-| `composer lint` | Check everything: phpstan, rector (dry-run), php-cs-fixer (dry-run) |
-| `composer lint:fix` | Apply fixes: rector, then php-cs-fixer |
+| `bin/lint.sh` | Check everything: phpstan, rector (dry-run), php-cs-fixer (dry-run), shellcheck (same as `composer lint`) |
+| `bin/lint.sh --fix` | Apply fixes (rector, then php-cs-fixer) and check again (same as `composer lint:fix`) |
 | `composer phpstan` | Static analysis |
 | `composer rector` | Rector rules (dry-run) |
 | `composer phpcsfixer` | Coding style (dry-run) |
 | `composer run-rabbitmq` | Throwaway RabbitMQ container in the foreground |
 | `composer rabbitmq-start` / `rabbitmq-stop` / `rabbitmq-wait` | Manage the docker-compose RabbitMQ test stack |
 
-Before opening a PR, `composer lint` and `composer test` must pass.
+Before opening a PR, `bin/lint.sh` and `composer test` must pass.
 
 ## CI
 
