@@ -14,8 +14,8 @@ step() {
 }
 
 if [ "$FIX" = 1 ]; then
-    step "rector (fix)" vendor/bin/rector process
-    step "php-cs-fixer (fix)" vendor/bin/php-cs-fixer fix
+    vendor/bin/rector process
+    vendor/bin/php-cs-fixer fix
 fi
 
 step "phpstan" vendor/bin/phpstan analyze --no-progress
