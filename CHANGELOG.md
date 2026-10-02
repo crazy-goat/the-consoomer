@@ -4,6 +4,7 @@
 
 ### Added
 - `bin/lint.sh` is the single lint entry point (phpstan, rector, php-cs-fixer, shellcheck; `--fix` applies rector and php-cs-fixer first). `composer lint`, `composer lint:fix` and the CI `lint` job call it (#412)
+- `.github/dependabot.yml`: weekly version updates for Composer and GitHub Actions (#414)
 
 ## [v0.7.0] - 2026-09-29
 
