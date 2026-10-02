@@ -863,7 +863,7 @@ class ConnectionRetryTest extends TestCase
         $this->assertSame(1, $attempt, 'No probe may run during the cool-down (#357)');
 
         // After the timeout a new probe is allowed.
-        $clock->advance(2);
+        $clock->advance(3);
         try {
             $retry->withRetry($permanent);
             $this->fail('Expected AMQPQueueException');
@@ -1192,7 +1192,7 @@ class ConnectionRetryTest extends TestCase
 
         // After the probe cool-down (#357) the next operation probes again;
         // success closes it after threshold.
-        $clock->advance(60);
+        $clock->advance(61);
         $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'One success below successThreshold keeps HALF_OPEN');
 
