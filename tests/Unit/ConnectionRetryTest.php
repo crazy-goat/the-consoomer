@@ -11,6 +11,7 @@ use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
 use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
 use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use CrazyGoat\TheConsoomer\Tests\Unit\Clock\FrozenClock;
+use CrazyGoat\TheConsoomer\Tests\Unit\AttemptCounter;
 use PHPUnit\Framework\TestCase;
 
 class ConnectionRetryTest extends TestCase
@@ -915,9 +916,9 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $attempt = 0;
-        $permanent = function () use (&$attempt): void {
-            $attempt++;
+        $attempts = new AttemptCounter();
+        $permanent = function () use ($attempts): void {
+            $attempts->bump();
             throw new \AMQPQueueException('Queue not found', 404);
         };
 
@@ -929,7 +930,7 @@ class ConnectionRetryTest extends TestCase
         }
 
         $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException');
-        $this->assertSame(1, $attempt);
+        $this->assertSame(1, $attempts->count());
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         // Within the timeout the next call is rejected without touching the broker.
@@ -942,7 +943,7 @@ class ConnectionRetryTest extends TestCase
         }
 
         $this->assertCaught($caught, CircuitBreakerOpenException::class, 'Expected CircuitBreakerOpenException');
-        $this->assertSame(1, $attempt, 'No probe may run during the cool-down (#357)');
+        $this->assertSame(1, $attempts->count(), 'No probe may run during the cool-down (#357)');
 
         // After the timeout a new probe is allowed.
         $clock->advance(3);
@@ -954,7 +955,7 @@ class ConnectionRetryTest extends TestCase
         }
 
         $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException');
-        $this->assertSame(2, $attempt);
+        $this->assertSame(2, $attempts->count());
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
     }
 

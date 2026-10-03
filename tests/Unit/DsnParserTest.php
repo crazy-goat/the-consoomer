@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\DsnParser;
+use CrazyGoat\TheConsoomer\Enum\ExchangeType;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class DsnParserTest extends TestCase
@@ -72,9 +74,12 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queue_arguments[x-max-priority]=10&queue_arguments[x-message-ttl]=60000');
 
-        $this->assertIsArray($result['queue_arguments']);
-        $this->assertSame(10, $result['queue_arguments']['x-max-priority']);
-        $this->assertSame(60000, $result['queue_arguments']['x-message-ttl']);
+        // One structural assertion instead of an is_array() plus a check per key: it
+        // pins the exact key set, so a stray extra argument now fails too.
+        $this->assertSame(
+            ['x-max-priority' => 10, 'x-message-ttl' => 60000],
+            $result['queue_arguments'],
+        );
     }
 
     public function testNestedQueueArgumentsThrow(): void
@@ -157,9 +162,13 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queues[queue1][binding_keys][0]=key1&queues[queue2][binding_keys][0]=key2');
 
-        $this->assertIsArray($result['queues']);
-        $this->assertArrayHasKey('queue1', $result['queues']);
-        $this->assertArrayHasKey('queue2', $result['queues']);
+        $this->assertSame(
+            [
+                'queue1' => ['binding_keys' => ['key1']],
+                'queue2' => ['binding_keys' => ['key2']],
+            ],
+            $result['queues'],
+        );
     }
 
     public function testThrowsExceptionForMalformedDsn(): void
@@ -224,12 +233,37 @@ class DsnParserTest extends TestCase
         $this->assertTrue(enum_exists(\CrazyGoat\TheConsoomer\Enum\ExchangeType::class));
     }
 
-    public function testExchangeTypeEnumHasCorrectValues(): void
+    /**
+     * The exchange_type values are part of the public DSN contract, so they are
+     * checked through the parser rather than against the enum literals: an
+     * inline `assertSame('direct', ExchangeType::DIRECT->value)` is a tautology
+     * for the analyser, which knows every backing value already.
+     */
+    #[DataProvider('exchangeTypeProvider')]
+    public function testExchangeTypeEnumHasCorrectValues(string $dsnValue, ExchangeType $expected): void
     {
-        $this->assertSame('direct', \CrazyGoat\TheConsoomer\Enum\ExchangeType::DIRECT->value);
-        $this->assertSame('fanout', \CrazyGoat\TheConsoomer\Enum\ExchangeType::FANOUT->value);
-        $this->assertSame('topic', \CrazyGoat\TheConsoomer\Enum\ExchangeType::TOPIC->value);
-        $this->assertSame('headers', \CrazyGoat\TheConsoomer\Enum\ExchangeType::HEADERS->value);
+        $parser = new DsnParser();
+        // %%2f escapes the literal vhost separator: a bare %2f is read as a
+        // width-2 float conversion by sprintf, and PHP 8.5 turns the resulting
+        // "too few arguments" into an ArgumentCountError.
+        $result = $parser->parse(sprintf(
+            'amqp-consoomer://guest:guest@localhost/%%2f/my_exchange?exchange_type=%s',
+            $dsnValue,
+        ));
+
+        $this->assertSame($dsnValue, $result['exchange_type']);
+        $this->assertSame($expected, ExchangeType::from($result['exchange_type']));
+    }
+
+    /**
+     * @return iterable<string, array{string, ExchangeType}>
+     */
+    public static function exchangeTypeProvider(): iterable
+    {
+        yield 'direct' => ['direct', ExchangeType::DIRECT];
+        yield 'fanout' => ['fanout', ExchangeType::FANOUT];
+        yield 'topic' => ['topic', ExchangeType::TOPIC];
+        yield 'headers' => ['headers', ExchangeType::HEADERS];
     }
 
     public function testParsesAmqpsConsoomerScheme(): void
@@ -384,8 +418,9 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?heartbeat=60');
 
+        // assertSame(60, ...) already proves the value is the int 60 and not the
+        // string '60', which is the whole point of this normalization test.
         $this->assertSame(60, $result['heartbeat']);
-        $this->assertIsInt($result['heartbeat']);
     }
 
     public function testNormalizeValueDoesNotAffectPlainFloats(): void
@@ -393,8 +428,8 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?timeout=5.5');
 
+        // assertSame(5.5, ...) already proves a float, not the string '5.5'.
         $this->assertSame(5.5, $result['timeout']);
-        $this->assertIsFloat($result['timeout']);
     }
 
     public function testNormalizeValueDoesNotAffectNonNumericStrings(): void
@@ -402,8 +437,8 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?queue=my_queue');
 
+        // assertSame('my_queue', ...) already proves a string was left alone.
         $this->assertSame('my_queue', $result['queue']);
-        $this->assertIsString($result['queue']);
     }
 
     public function testDoubleSlashMeansDefaultVhostWithExchange(): void
