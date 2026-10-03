@@ -537,6 +537,15 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $queue = $this->queues[$queueName];
         $deliveryTag = $stamp->getAmqpEnvelope()->getDeliveryTag();
+        if ($deliveryTag === null) {
+            // ext-amqp reports no delivery tag for an envelope that was never
+            // delivered. Rejecting it is impossible, and passing null on would
+            // surface as an opaque TypeError from AMQPQueue::reject().
+            throw new \InvalidArgumentException(sprintf(
+                'Cannot reject the message received from queue "%s": it carries no AMQP delivery tag',
+                $queueName,
+            ));
+        }
 
         $operation = function () use ($queue, $deliveryTag): void {
             $queue->reject($deliveryTag);

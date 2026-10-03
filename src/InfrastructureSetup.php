@@ -135,7 +135,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $this->exchangeSetupPerformed = true;
 
         if (!$this->queuesSetupPerformed) {
-            $this->declareQueues($channel, $exchange);
+            $this->declareQueues($channel);
             $this->setupExchangeBindings($exchange);
             $this->queuesSetupPerformed = true;
         }
@@ -169,7 +169,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             : $this->declareExchange($channel);
         $this->exchangeSetupPerformed = true;
 
-        $this->declareQueues($channel, $exchange);
+        $this->declareQueues($channel);
         $this->setupExchangeBindings($exchange);
         $this->queuesSetupPerformed = true;
     }
@@ -216,13 +216,13 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      * (via 'queues' option). When 'queues' is provided, each queue can have
      * its own binding_keys, binding_arguments, and arguments.
      */
-    private function declareQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    private function declareQueues(\AMQPChannel $channel): void
     {
         // The queue name is resolved here and handed to setupSingleQueue(),
         // rather than re-read from the raw options there: the guarantee that it
         // exists is established right here, so it should travel with the value.
         if ($this->queues !== []) {
-            $this->setupMultipleQueues($channel, $exchange);
+            $this->setupMultipleQueues($channel);
 
             return;
         }
@@ -232,10 +232,10 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             throw new \InvalidArgumentException('either queue or queues option is required to declare consumer topology');
         }
 
-        $this->setupSingleQueue($channel, $exchange, $queueName);
+        $this->setupSingleQueue($channel, $queueName);
     }
 
-    private function setupSingleQueue(\AMQPChannel $channel, \AMQPExchange $exchange, string $queueName): void
+    private function setupSingleQueue(\AMQPChannel $channel, string $queueName): void
     {
         $queue = $this->factory->createQueue($channel);
         $queue->setName($queueName);
@@ -248,11 +248,11 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $bindingKeys = $this->options['binding_keys'] ?? [$this->options['routing_key'] ?? ''];
         $bindingArguments = $this->bindingArguments;
         foreach ($bindingKeys as $bindingKey) {
-            $queue->bind($exchange->getName(), $bindingKey, $bindingArguments);
+            $queue->bind($this->exchange, $bindingKey, $bindingArguments);
         }
     }
 
-    private function setupMultipleQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    private function setupMultipleQueues(\AMQPChannel $channel): void
     {
         foreach ($this->queues as $queueName => $queueConfig) {
             $queue = $this->factory->createQueue($channel);
@@ -268,7 +268,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             $bindingKeys = $queueConfig['binding_keys'] ?? [''];
             $bindingArguments = $queueConfig['binding_arguments'] ?? [];
             foreach ($bindingKeys as $bindingKey) {
-                $queue->bind($exchange->getName(), $bindingKey, $bindingArguments);
+                $queue->bind($this->exchange, $bindingKey, $bindingArguments);
             }
         }
     }

@@ -29,11 +29,18 @@ final class CircuitBreaker
     private CircuitState $state = CircuitState::CLOSED;
 
     /**
+     * Every elapsed-time check needs a clock, so the resolved one is held as
+     * non-nullable: a null argument falls back to the system clock rather than
+     * leaving a landmine that fails on the first recordFailure().
+     */
+    private readonly ClockInterface $clock;
+
+    /**
      * @param int                  $threshold       Failures before opening circuit
      * @param int                  $timeout         Seconds circuit stays open before half-open
      * @param int                  $successThreshold Successes in half-open to close circuit
      * @param LoggerInterface|null $logger          Logger instance
-     * @param ClockInterface|null  $clock           Clock for time tracking
+     * @param ClockInterface|null  $clock           Clock for time tracking; the system clock when null
      * @throws \InvalidArgumentException When successThreshold < 2
      */
     public function __construct(
@@ -41,8 +48,10 @@ final class CircuitBreaker
         private readonly int $timeout = 60,
         private readonly int $successThreshold = 2,
         private readonly ?LoggerInterface $logger = null,
-        private readonly ?ClockInterface $clock = new SystemClock(),
+        ?ClockInterface $clock = new SystemClock(),
     ) {
+        $this->clock = $clock ?? new SystemClock();
+
         if ($this->successThreshold < 2) {
             throw new \InvalidArgumentException('successThreshold must be at least 2');
         }

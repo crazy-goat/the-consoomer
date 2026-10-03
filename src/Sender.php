@@ -165,15 +165,20 @@ final class Sender implements SenderInterface
     /**
      * Initializes AMQP exchange connection.
      * Idempotent - safe to call multiple times.
+     *
+     * Returns the exchange so callers publish through a value that is known to
+     * be non-null instead of re-reading the nullable property.
      */
-    private function connect(): void
+    private function connect(): \AMQPExchange
     {
         if ($this->exchange instanceof \AMQPExchange) {
-            return;
+            return $this->exchange;
         }
 
         $this->exchange = $this->factory->createExchange($this->connection->getChannel());
         $this->exchange->setName($this->options['exchange'] ?? '');
+
+        return $this->exchange;
     }
 
     /**
@@ -290,7 +295,10 @@ final class Sender implements SenderInterface
     public function send(Envelope $envelope): Envelope
     {
         $this->ensureConnected();
-        $this->connect();
+        // Publish through the exchange connect() hands back, so the retry
+        // closure below captures a known exchange instead of re-reading the
+        // nullable property on every attempt.
+        $exchange = $this->connect();
 
         $stamp = $envelope->last(AmqpStamp::class);
 
@@ -316,10 +324,10 @@ final class Sender implements SenderInterface
                 $this->sendWithDelay($data, $routingKey, $flags, $attributes, $delayStamp, $delayQueueName);
             };
         } else {
-            $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
+            $publishCallback = function () use ($exchange, $data, $routingKey, $flags, $attributes): void {
                 $channel = $this->confirmChannel();
 
-                $this->exchange->publish(
+                $exchange->publish(
                     $data['body'],
                     $routingKey,
                     $flags,
@@ -385,10 +393,14 @@ final class Sender implements SenderInterface
         return $envelope;
     }
 
-    private function ensureDelayExchange(): void
+    /**
+     * Declares the delay exchange once and returns it, so the caller publishes
+     * through a value known to be non-null.
+     */
+    private function ensureDelayExchange(): \AMQPExchange
     {
         if ($this->delayExchange instanceof \AMQPExchange) {
-            return;
+            return $this->delayExchange;
         }
 
         $this->delayExchange = $this->factory->createExchange($this->connection->getChannel());
@@ -396,6 +408,8 @@ final class Sender implements SenderInterface
         $this->delayExchange->setType(\AMQP_EX_TYPE_DIRECT);
         $this->delayExchange->setFlags(\AMQP_DURABLE);
         $this->delayExchange->declareExchange();
+
+        return $this->delayExchange;
     }
 
     /**
@@ -410,7 +424,7 @@ final class Sender implements SenderInterface
         AmqpDelayStamp $delayStamp,
         string $delayQueueName,
     ): void {
-        $this->ensureDelayExchange();
+        $delayExchange = $this->ensureDelayExchange();
 
         if (!isset($this->delayQueuesCreated[$delayQueueName])) {
             $this->createDelayQueue($delayQueueName, $delayStamp->getDelay(), $routingKey);
@@ -424,7 +438,7 @@ final class Sender implements SenderInterface
         // Publish with the message's own routing key (#276). The delay queue has
         // only `x-dead-letter-exchange` set, so on TTL expiry the broker
         // dead-letters with this same key — no per-queue routing key to freeze.
-        $this->delayExchange->publish(
+        $delayExchange->publish(
             $data['body'],
             $routingKey,
             $flags,
