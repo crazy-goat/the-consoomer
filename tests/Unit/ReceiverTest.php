@@ -152,7 +152,11 @@ class ReceiverTest extends TestCase
         $result = $receiver->get();
 
         $this->assertCount(1, $result);
-        $this->assertInstanceOf(Envelope::class, $result[0]);
+        // The receiver re-wraps the envelope to attach the received stamp, so
+        // identity is not preserved; what must survive is the decoded payload.
+        // An instanceof check against the declared list<Envelope> return type
+        // would be a tautology for the analyser and prove nothing here.
+        $this->assertSame($messageEnvelope->getMessage(), $result[0]->getMessage());
         $this->assertInstanceOf(AmqpReceivedStamp::class, $result[0]->last(AmqpReceivedStamp::class));
     }
 
@@ -2072,13 +2076,21 @@ class ReceiverTest extends TestCase
 
     public function testConstructorAllowsBatchSizeEqualToMaxUnackedMessages(): void
     {
+        // The boundary is only interesting if neither value is clamped, so assert
+        // the resolved properties - the same idiom the neighbouring
+        // max_unacked_messages / batch_size tests use.
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, [
             'queue' => 'q',
             'batch_size' => 5,
             'max_unacked_messages' => 5,
         ], $this->setup);
 
-        $this->assertInstanceOf(Receiver::class, $receiver);
+        $reflection = new \ReflectionClass(Receiver::class);
+        $batchSizeProperty = $reflection->getProperty('batchSize');
+        $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
+
+        $this->assertSame(5, $batchSizeProperty->getValue($receiver));
+        $this->assertSame(5, $maxUnackedProperty->getValue($receiver));
     }
 
     /**

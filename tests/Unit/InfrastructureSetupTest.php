@@ -827,19 +827,52 @@ class InfrastructureSetupTest extends TestCase
         ]);
     }
 
+    /**
+     * Wires the mocks for a full setup() run and returns the expected flags
+     * that must reach AMQPExchange::setFlags()/AMQPQueue::setFlags().
+     *
+     * Asserting the object identity after the constructor proves nothing: the
+     * constructor's real job for these options is to accept them and to keep
+     * them out of the FORBIDDEN_FLAGS guard, which only shows up in the flags
+     * the broker is asked for.
+     */
+    private function expectSetupFlags(int $expectedFlags): void
+    {
+        $this->connection->method('getChannel')->willReturn($this->channel);
+        $this->factory->method('createExchange')->willReturn($this->exchange);
+        $this->factory->method('createQueue')->willReturn($this->queue);
+
+        $this->exchange->expects($this->once())->method('setFlags')->with($expectedFlags);
+        $this->exchange->method('setName');
+        $this->exchange->method('setType');
+        $this->exchange->method('declareExchange');
+        $this->exchange->method('getName')->willReturn('test_exchange');
+
+        $this->queue->expects($this->once())->method('setFlags')->with($expectedFlags);
+        $this->queue->method('setName');
+        $this->queue->method('declareQueue');
+        $this->queue->method('bind');
+    }
+
     public function testConstructorAcceptsDurableOnlyFlag(): void
     {
+        $this->expectSetupFlags(\AMQP_DURABLE);
+
         $setup = new InfrastructureSetup($this->factory, $this->connection, [
             'exchange' => 'test_exchange',
             'queue' => 'test_queue',
             'exchange_flags' => \AMQP_DURABLE,
         ]);
 
-        $this->assertInstanceOf(InfrastructureSetup::class, $setup);
+        $setup->setup();
     }
 
     public function testConstructorAcceptsZeroFlags(): void
     {
+        // durable defaults to true, so an explicit 0 still resolves to
+        // AMQP_DURABLE and must not be mistaken for "no flags at all".
+        $this->expectSetupFlags(\AMQP_DURABLE);
+
         $setup = new InfrastructureSetup($this->factory, $this->connection, [
             'exchange' => 'test_exchange',
             'queue' => 'test_queue',
@@ -847,17 +880,19 @@ class InfrastructureSetupTest extends TestCase
             'queue_flags' => 0,
         ]);
 
-        $this->assertInstanceOf(InfrastructureSetup::class, $setup);
+        $setup->setup();
     }
 
     public function testConstructorAcceptsNoFlags(): void
     {
+        $this->expectSetupFlags(\AMQP_DURABLE);
+
         $setup = new InfrastructureSetup($this->factory, $this->connection, [
             'exchange' => 'test_exchange',
             'queue' => 'test_queue',
         ]);
 
-        $this->assertInstanceOf(InfrastructureSetup::class, $setup);
+        $setup->setup();
     }
 
     public function testSetupAppliesDurableByDefault(): void

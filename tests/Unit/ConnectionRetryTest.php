@@ -11,7 +11,6 @@ use CrazyGoat\TheConsoomer\Exception\CircuitBreakerOpenException;
 use CrazyGoat\TheConsoomer\Exception\RetryExhaustedException;
 use CrazyGoat\TheConsoomer\Exception\UnexpectedOperationException;
 use CrazyGoat\TheConsoomer\Tests\Unit\Clock\FrozenClock;
-use CrazyGoat\TheConsoomer\Tests\Unit\AttemptCounter;
 use PHPUnit\Framework\TestCase;
 
 class ConnectionRetryTest extends TestCase
@@ -26,23 +25,36 @@ class ConnectionRetryTest extends TestCase
      * threw instead of restating what the analyser can already infer from the
      * closure that always throws.
      */
-    private static function assertCaught(mixed $caught, string $expectedClass, string $message): void
+    private function assertCaught(mixed $caught, string $expectedClass, string $message): void
     {
         self::assertInstanceOf($expectedClass, $caught, $message);
     }
 
     public function testJitterVariationFactorConstant(): void
     {
-        $this->assertSame(0.25, ConnectionRetry::JITTER_VARIATION_FACTOR);
+        // Read through reflection on purpose: the analyser knows every constant
+        // value already, so an inline comparison is a tautology for it. The
+        // run-time check is the point - it catches a retuned constant.
+        $factor = (new \ReflectionClass(ConnectionRetry::class))->getConstant('JITTER_VARIATION_FACTOR');
+
+        $this->assertIsFloat($factor);
+        $this->assertSame(0.25, $factor);
+        // It scales the base delay, so it has to stay a usable fraction.
+        $this->assertGreaterThan(0.0, $factor);
+        $this->assertLessThanOrEqual(1.0, $factor);
     }
 
     public function testSuccessfulOperationNoRetry(): void
     {
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $result = $retry->withRetry(fn(): string => 'success');
+        $payload = new \stdClass();
+        $result = $retry->withRetry(fn(): \stdClass => $payload);
 
-        $this->assertSame('success', $result);
+        // Identity rather than a string: withRetry() has to hand back the very
+        // object the operation returned, which also proves nothing was retried
+        // or wrapped on the way through.
+        $this->assertSame($payload, $result);
     }
 
     public function testMaxAttemptsZeroThrowsInvalidArgumentException(): void
@@ -77,15 +89,16 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $result = $retry->withRetry(function () use (&$attempt): string {
+        $payload = new \stdClass();
+        $result = $retry->withRetry(function () use (&$attempt, $payload): \stdClass {
             $attempt++;
             if ($attempt < 2) {
                 throw new \AMQPConnectionException('Connection failed');
             }
-            return 'success';
+            return $payload;
         });
 
-        $this->assertSame('success', $result);
+        $this->assertSame($payload, $result);
         $this->assertSame(2, $attempt);
     }
 
@@ -364,15 +377,16 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $result = $retry->withRetry(function () use (&$attempt): string {
+        $payload = new \stdClass();
+        $result = $retry->withRetry(function () use (&$attempt, $payload): \stdClass {
             $attempt++;
             if ($attempt < 2) {
                 throw new \AMQPChannelException('Channel closed');
             }
-            return 'success';
+            return $payload;
         });
 
-        $this->assertSame('success', $result);
+        $this->assertSame($payload, $result);
         $this->assertSame(2, $attempt);
     }
 
@@ -537,9 +551,10 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $result = $retry->withRetry(fn(): string => 'success');
+        $payload = new \stdClass();
+        $result = $retry->withRetry(fn(): \stdClass => $payload);
 
-        $this->assertSame('success', $result);
+        $this->assertSame($payload, $result);
     }
 
     public function testJitterNeverExceedsMaxDelay(): void
@@ -647,6 +662,8 @@ class ConnectionRetryTest extends TestCase
 
     public function testJitterAddsRandomVariation(): void
     {
+        $elapsed = [];
+
         for ($i = 0; $i < 10; $i++) {
             $retry = new ConnectionRetry(
                 maxAttempts: 2,
@@ -655,17 +672,36 @@ class ConnectionRetryTest extends TestCase
                 retryJitter: true,
             );
 
-            $attempt = 0;
+            $attempts = new AttemptCounter();
+            $caught = null;
+            $start = microtime(true);
             try {
-                $retry->withRetry(function () use (&$attempt): void {
-                    $attempt++;
+                $retry->withRetry(function () use ($attempts): void {
+                    $attempts->bump();
                     throw new \AMQPConnectionException('Connection failed');
                 });
-            } catch (RetryExhaustedException) {
+            } catch (RetryExhaustedException $e) {
+                $caught = $e;
             }
+            $elapsed[] = microtime(true) - $start;
+
+            $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
+            $this->assertSame(2, $attempts->count());
         }
 
-        $this->assertTrue(true);
+        // A retry sleeps for the base delay scaled by a random factor, so ten
+        // runs cannot all take the same time. This assertion used to be
+        // assertTrue(true), which verified nothing about jitter at all.
+        $distinct = array_unique(array_map(
+            static fn(float $seconds): int => (int) ($seconds * 1_000_000),
+            $elapsed,
+        ));
+
+        $this->assertGreaterThan(
+            1,
+            count($distinct),
+            'Jitter must produce different sleep times across runs, got: ' . implode(', ', $distinct),
+        );
     }
 
     public function testResetsCircuitBreaker(): void
@@ -1282,10 +1318,11 @@ class ConnectionRetryTest extends TestCase
         // After the probe cool-down (#357) the next operation probes again;
         // success closes it after threshold.
         $clock->advance(61);
-        $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
+        $payload = new \stdClass();
+        $this->assertSame($payload, $retry->withRetry(fn(): \stdClass => $payload));
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'One success below successThreshold keeps HALF_OPEN');
 
-        $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
+        $this->assertSame($payload, $retry->withRetry(fn(): \stdClass => $payload));
         $this->assertSame(CircuitState::CLOSED, $retry->getState(), 'Reaching successThreshold closes the circuit');
     }
 
