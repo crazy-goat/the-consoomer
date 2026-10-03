@@ -691,7 +691,6 @@ class ConnectionRetryTest extends TestCase
             $this->assertSame(2, $attempts->count());
         }
 
-        // A retry sleeps for the base delay scaled by a random factor, so ten
         // The sleep is the base delay scaled by a random factor, so the ten
         // durations must actually spread. Measured over ten runs on this
         // machine: with jitter the spread is ~46ms, without it ~4ms (plain
