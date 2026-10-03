@@ -105,6 +105,7 @@ class ReadmeDsnRegressionTest extends TestCase
             'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&heartbeat=60',
         );
 
+        $this->assertArrayHasKey('heartbeat', $result);
         $this->assertSame(60, $result['heartbeat']);
     }
 
@@ -119,11 +120,17 @@ class ReadmeDsnRegressionTest extends TestCase
 
         // DSN uses retry=1 / retry_backoff=1 etc.; normalizeValue() converts
         // numeric strings to int, so these arrive as 1 rather than true.
+        $this->assertArrayHasKey('retry', $result);
         $this->assertSame(1, $result['retry']);
+        $this->assertArrayHasKey('retry_count', $result);
         $this->assertSame(3, $result['retry_count']);
+        $this->assertArrayHasKey('retry_delay', $result);
         $this->assertSame(500000, $result['retry_delay']);
+        $this->assertArrayHasKey('retry_backoff', $result);
         $this->assertSame(1, $result['retry_backoff']);
+        $this->assertArrayHasKey('retry_jitter', $result);
         $this->assertSame(1, $result['retry_jitter']);
+        $this->assertArrayHasKey('retry_circuit_breaker', $result);
         $this->assertSame(1, $result['retry_circuit_breaker']);
     }
 
@@ -136,7 +143,9 @@ class ReadmeDsnRegressionTest extends TestCase
             'amqp-consoomer://guest:guest@localhost:5672/%2f/messages?queue=my_queue&confirm_timeout=5&retry=1',
         );
 
+        $this->assertArrayHasKey('confirm_timeout', $result);
         $this->assertSame(5, $result['confirm_timeout']);
+        $this->assertArrayHasKey('retry', $result);
         $this->assertSame(1, $result['retry']);
     }
 }

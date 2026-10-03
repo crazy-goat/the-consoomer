@@ -478,19 +478,7 @@ final class DsnParser
     }
 
     /**
-     * @param array{
-     *     host: string,
-     *     port: int,
-     *     user: string,
-     *     password: string,
-     *     vhost: string,
-     *     exchange: string,
-     *     ssl?: bool|int,
-     *     exchange_type?: string,
-     *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool|int,
-     *     confirm_timeout?: float|int,
-     * } $options
+     * @param array<string, mixed> $options Parsed options, as produced by parse()
      * @deprecated This method is deprecated and will be removed in 1.0.
      *             Validation now happens automatically in parse().
      *             Returns true when the options are valid, false when

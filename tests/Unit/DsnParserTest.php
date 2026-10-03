@@ -38,7 +38,9 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?heartbeat=60&retry_count=3');
 
+        $this->assertArrayHasKey('heartbeat', $result);
         $this->assertSame(60, $result['heartbeat']);
+        $this->assertArrayHasKey('retry_count', $result);
         $this->assertSame(3, $result['retry_count']);
     }
 
@@ -47,8 +49,11 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?ssl_cert=/path/to/cert.pem&ssl_key=/path/to/key.pem&ssl_cacert=/path/to/ca.pem');
 
+        $this->assertArrayHasKey('ssl_cert', $result);
         $this->assertSame('/path/to/cert.pem', $result['ssl_cert']);
+        $this->assertArrayHasKey('ssl_key', $result);
         $this->assertSame('/path/to/key.pem', $result['ssl_key']);
+        $this->assertArrayHasKey('ssl_cacert', $result);
         $this->assertSame('/path/to/ca.pem', $result['ssl_cacert']);
     }
 
@@ -57,7 +62,9 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queue=my_queue&routing_key=my.key');
 
+        $this->assertArrayHasKey('queue', $result);
         $this->assertSame('my_queue', $result['queue']);
+        $this->assertArrayHasKey('routing_key', $result);
         $this->assertSame('my.key', $result['routing_key']);
     }
 
@@ -66,6 +73,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?default_publish_routing_key=my.default.key');
 
+        $this->assertArrayHasKey('default_publish_routing_key', $result);
         $this->assertSame('my.default.key', $result['default_publish_routing_key']);
     }
 
@@ -76,6 +84,7 @@ class DsnParserTest extends TestCase
 
         // One structural assertion instead of an is_array() plus a check per key: it
         // pins the exact key set, so a stray extra argument now fails too.
+        $this->assertArrayHasKey('queue_arguments', $result);
         $this->assertSame(
             ['x-max-priority' => 10, 'x-message-ttl' => 60000],
             $result['queue_arguments'],
@@ -117,9 +126,13 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?heartbeat=60&timeout=5.5&retry=true&max_unacked_messages=10');
 
+        $this->assertArrayHasKey('heartbeat', $result);
         $this->assertSame(60, $result['heartbeat']);
+        $this->assertArrayHasKey('timeout', $result);
         $this->assertSame(5.5, $result['timeout']);
+        $this->assertArrayHasKey('retry', $result);
         $this->assertTrue($result['retry']);
+        $this->assertArrayHasKey('max_unacked_messages', $result);
         $this->assertSame(10, $result['max_unacked_messages']);
     }
 
@@ -154,6 +167,7 @@ class DsnParserTest extends TestCase
         // Should not throw - valid exchange_type
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?exchange_type=fanout');
 
+        $this->assertArrayHasKey('exchange_type', $result);
         $this->assertSame('fanout', $result['exchange_type']);
     }
 
@@ -162,6 +176,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost:5672/%2f/my_exchange?queues[queue1][binding_keys][0]=key1&queues[queue2][binding_keys][0]=key2');
 
+        $this->assertArrayHasKey('queues', $result);
         $this->assertSame(
             [
                 'queue1' => ['binding_keys' => ['key1']],
@@ -251,6 +266,7 @@ class DsnParserTest extends TestCase
             $dsnValue,
         ));
 
+        $this->assertArrayHasKey('exchange_type', $result);
         $this->assertSame($dsnValue, $result['exchange_type']);
         $this->assertSame($expected, ExchangeType::from($result['exchange_type']));
     }
@@ -273,6 +289,7 @@ class DsnParserTest extends TestCase
 
         $this->assertSame('localhost', $result['host']);
         $this->assertSame(5671, $result['port']);
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertTrue($result['ssl']);
         $this->assertSame('/', $result['vhost']);
         $this->assertSame('my_exchange', $result['exchange']);
@@ -284,6 +301,7 @@ class DsnParserTest extends TestCase
         $result = $parser->parse('amqps-consoomer://guest:guest@localhost:5673/%2f/my_exchange');
 
         $this->assertSame(5673, $result['port']);
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertTrue($result['ssl']);
     }
 
@@ -312,6 +330,7 @@ class DsnParserTest extends TestCase
         $this->assertSame(5671, $result['port']);
         $this->assertSame('guest', $result['user']);
         $this->assertSame('guest', $result['password']);
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertTrue($result['ssl']);
         $this->assertSame('/', $result['vhost']);
         $this->assertSame('my_exchange', $result['exchange']);
@@ -386,6 +405,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?timeout=1E5');
 
+        $this->assertArrayHasKey('timeout', $result);
         $this->assertSame(100000.0, $result['timeout']);
     }
 
@@ -394,6 +414,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?timeout=1e5');
 
+        $this->assertArrayHasKey('timeout', $result);
         $this->assertSame(100000.0, $result['timeout']);
     }
 
@@ -402,6 +423,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?timeout=2.5e3');
 
+        $this->assertArrayHasKey('timeout', $result);
         $this->assertSame(2500.0, $result['timeout']);
     }
 
@@ -410,6 +432,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?timeout=1e-2');
 
+        $this->assertArrayHasKey('timeout', $result);
         $this->assertSame(0.01, $result['timeout']);
     }
 
@@ -420,6 +443,7 @@ class DsnParserTest extends TestCase
 
         // assertSame(60, ...) already proves the value is the int 60 and not the
         // string '60', which is the whole point of this normalization test.
+        $this->assertArrayHasKey('heartbeat', $result);
         $this->assertSame(60, $result['heartbeat']);
     }
 
@@ -429,6 +453,7 @@ class DsnParserTest extends TestCase
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?timeout=5.5');
 
         // assertSame(5.5, ...) already proves a float, not the string '5.5'.
+        $this->assertArrayHasKey('timeout', $result);
         $this->assertSame(5.5, $result['timeout']);
     }
 
@@ -438,6 +463,7 @@ class DsnParserTest extends TestCase
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?queue=my_queue');
 
         // assertSame('my_queue', ...) already proves a string was left alone.
+        $this->assertArrayHasKey('queue', $result);
         $this->assertSame('my_queue', $result['queue']);
     }
 
@@ -459,6 +485,7 @@ class DsnParserTest extends TestCase
 
         $this->assertSame('localhost', $result['host']);
         $this->assertSame(5671, $result['port']);
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertTrue($result['ssl']);
         $this->assertSame('/', $result['vhost']);
         $this->assertSame('my_exchange', $result['exchange']);
@@ -482,7 +509,9 @@ class DsnParserTest extends TestCase
         $this->assertSame('localhost', $result['host']);
         $this->assertSame('/', $result['vhost']);
         $this->assertSame('my_exchange', $result['exchange']);
+        $this->assertArrayHasKey('heartbeat', $result);
         $this->assertSame(30, $result['heartbeat']);
+        $this->assertArrayHasKey('queue', $result);
         $this->assertSame('my_queue', $result['queue']);
     }
 
@@ -536,6 +565,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
 
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertTrue($result['ssl']);
         $this->assertSame(5671, $result['port']);
     }
@@ -545,7 +575,9 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqps-consoomer://guest:guest@localhost/%2f/my_exchange?ssl_verify=false');
 
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertTrue($result['ssl']);
+        $this->assertArrayHasKey('ssl_verify', $result);
         $this->assertFalse($result['ssl_verify']);
     }
 
@@ -570,6 +602,7 @@ class DsnParserTest extends TestCase
         $parser = new DsnParser();
         $result = $parser->parse('amqp-consoomer://guest:guest@localhost/%2f/my_exchange?ssl=true');
 
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertTrue($result['ssl']);
     }
 
@@ -580,6 +613,7 @@ class DsnParserTest extends TestCase
 
         // On a plaintext scheme ?ssl=false is a redundant no-op (configureSsl early-returns
         // on empty($options['ssl'])), but it must not be refused — only the TLS scheme is locked.
+        $this->assertArrayHasKey('ssl', $result);
         $this->assertFalse($result['ssl']);
     }
 
@@ -739,6 +773,7 @@ class DsnParserTest extends TestCase
         $result = $parser->parse('amqp-consoomer://guest:guest@realhost/%2f/my_exchange?heartbeat=60');
 
         $this->assertSame('realhost', $result['host']);
+        $this->assertArrayHasKey('heartbeat', $result);
         $this->assertSame(60, $result['heartbeat']);
     }
 
