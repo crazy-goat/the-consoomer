@@ -21,20 +21,33 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     private bool $queuesSetupPerformed = false;
 
     /**
+     * The validated values, kept as properties so the rest of the class does
+     * not have to re-check the raw option array.
+     */
+    private readonly string $exchange;
+    private readonly array $bindingArguments;
+
+    /**
+     * The option array comes straight from the transport factory, i.e. from
+     * DSN query parameters merged with programmatic options. Those are untyped
+     * input, so `exchange`, `binding_arguments` and the flag options are
+     * declared as the union of what can actually arrive and are validated here.
+     *
      * @param array{
-     *     exchange: string,
+     *     exchange?: mixed,
      *     queue?: string,
      *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
      *     exchange_type?: string,
      *     routing_key?: string,
      *     binding_keys?: list<string>,
-     *     binding_arguments?: array<string, mixed>,
+     *     binding_arguments?: mixed,
      *     queue_arguments?: array<string, mixed>,
-     *     exchange_flags?: int,
-     *     queue_flags?: int,
+     *     exchange_flags?: mixed,
+     *     queue_flags?: mixed,
      *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
      *     durable?: bool,
      * } $options
+     * @throws \InvalidArgumentException When exchange is missing or the option types are wrong
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
@@ -44,6 +57,20 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         if (!isset($options['exchange'])) {
             throw new \InvalidArgumentException('exchange option is required');
         }
+        // Both properties are readonly and assigned exactly once, so the
+        // is_array()/is_string() refinements below are what the rest of the
+        // class relies on.
+        $exchange = $options['exchange'];
+        if (!is_string($exchange)) {
+            throw new \InvalidArgumentException('exchange must be a string');
+        }
+        $this->exchange = $exchange;
+
+        $bindingArguments = $options['binding_arguments'] ?? [];
+        if (!is_array($bindingArguments)) {
+            throw new \InvalidArgumentException('binding_arguments must be an array');
+        }
+        $this->bindingArguments = $bindingArguments;
 
         // A queue is only needed to declare consumer topology, so it is required
         // by declareQueues()/setup() rather than the constructor. A send-only
@@ -62,16 +89,16 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             $this->validateBindingKeys($options['binding_keys']);
         }
 
-        if (isset($options['binding_arguments']) && !is_array($options['binding_arguments'])) {
-            throw new \InvalidArgumentException('binding_arguments must be an array');
-        }
-
         foreach (self::ALLOWED_OPTION_KEYS as $key) {
-            if (isset($options[$key]) && is_int($options[$key]) && ($options[$key] & self::FORBIDDEN_FLAGS) !== 0) {
+            // Read the flag once: the guard below has to look at the same value
+            // three times, and re-reading the offset after is_int() makes the
+            // narrowing impossible to follow.
+            $flags = $options[$key] ?? null;
+            if (is_int($flags) && ($flags & self::FORBIDDEN_FLAGS) !== 0) {
                 throw new \InvalidArgumentException(sprintf(
                     '%s must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags (got %d)',
                     $key,
-                    $options[$key],
+                    $flags,
                 ));
             }
         }
@@ -147,7 +174,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     private function createExchange(\AMQPChannel $channel): \AMQPExchange
     {
         $exchange = $this->factory->createExchange($channel);
-        $exchange->setName($this->options['exchange']);
+        $exchange->setName($this->exchange);
         $exchange->setType(match (ExchangeType::tryFrom((string) ($this->options['exchange_type'] ?? 'direct'))) {
             ExchangeType::FANOUT => \AMQP_EX_TYPE_FANOUT,
             ExchangeType::TOPIC => \AMQP_EX_TYPE_TOPIC,
@@ -201,7 +228,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $queue->declareQueue();
 
         $bindingKeys = $this->options['binding_keys'] ?? [$this->options['routing_key'] ?? ''];
-        $bindingArguments = $this->options['binding_arguments'] ?? [];
+        $bindingArguments = $this->bindingArguments;
         foreach ($bindingKeys as $bindingKey) {
             $queue->bind($exchange->getName(), $bindingKey, $bindingArguments);
         }

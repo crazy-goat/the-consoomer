@@ -64,7 +64,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
      *     routing_key?: string,
      *     default_publish_routing_key?: string,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|string|int,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,
@@ -100,7 +100,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
-     *     ssl_verify?: bool,
+     *     ssl_verify?: bool|string|int,
      *     allow_insecure_verify?: bool,
      *     exchange_flags?: int,
      *     queue_flags?: int,

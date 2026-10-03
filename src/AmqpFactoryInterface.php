@@ -48,7 +48,7 @@ interface AmqpFactoryInterface
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
-     *     ssl_verify?: bool,
+     *     ssl_verify?: bool|string|int,
      *     allow_insecure_verify?: bool,
      * } $options SSL configuration options
      * @param LoggerInterface|null $logger Logger instance

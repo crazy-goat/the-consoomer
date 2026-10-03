@@ -101,7 +101,7 @@ final class Sender implements SenderInterface
      *     auto_setup?: bool,
      *     redeclare_on_reconnect?: bool,
      *     retry?: bool,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|string|int,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,
@@ -152,7 +152,7 @@ final class Sender implements SenderInterface
         }
 
         $resolved = filter_var($explicit, \FILTER_VALIDATE_BOOLEAN, \FILTER_NULL_ON_FAILURE);
-        if ($resolved === null) {
+        if (!is_bool($resolved)) {
             throw new \InvalidArgumentException(sprintf(
                 'Option "publisher_confirms" must be a boolean, got "%s".',
                 get_debug_type($explicit),
@@ -539,10 +539,10 @@ final class Sender implements SenderInterface
         $this->delayQueuesCreated[$queueName] = true;
 
         if (count($this->delayQueuesCreated) > $this->maxTrackedDelayQueues) {
+            // The map is non-empty (its count exceeds maxTrackedDelayQueues >= 1),
+            // so array_key_first() cannot return null here.
             $oldest = array_key_first($this->delayQueuesCreated);
-            if ($oldest !== null) {
-                unset($this->delayQueuesCreated[$oldest], $this->delayQueueBindings[$oldest]);
-            }
+            unset($this->delayQueuesCreated[$oldest], $this->delayQueueBindings[$oldest]);
         }
 
         $this->trackDelayBinding($queueName, $routingKey);
@@ -560,10 +560,9 @@ final class Sender implements SenderInterface
         $this->delayQueueBindings[$queueName][$routingKey] = true;
 
         while (count($this->delayQueueBindings[$queueName]) > $this->maxTrackedDelayQueues) {
+            // The assignment above always creates the key, so the map is
+            // non-empty while its count exceeds maxTrackedDelayQueues >= 1.
             $oldest = array_key_first($this->delayQueueBindings[$queueName]);
-            if ($oldest === null) {
-                break;
-            }
             unset($this->delayQueueBindings[$queueName][$oldest]);
         }
     }

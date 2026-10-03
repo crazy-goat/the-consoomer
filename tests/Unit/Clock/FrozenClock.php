@@ -29,11 +29,9 @@ final class FrozenClock implements ClockInterface
 
     public function advance(int $seconds): void
     {
-        $newTime = $this->time->modify("+{$seconds} seconds");
-        if ($newTime === false) {
-            throw new \RuntimeException("Failed to advance time by {$seconds} seconds");
-        }
-        $this->time = $newTime;
+        // modify() only returns false for an unparsable string; an integer
+        // offset always parses, so there is no failure branch to handle.
+        $this->time = $this->time->modify("+{$seconds} seconds");
 
         if ($seconds > 0) {
             $this->monotonicTime += $seconds;

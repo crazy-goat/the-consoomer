@@ -74,9 +74,15 @@ class AmqpFactory implements AmqpFactoryInterface
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
-     *     ssl_verify?: bool,
+     *     ssl_verify?: bool|string|int,
      *     allow_insecure_verify?: bool,
      * } $options SSL configuration options
+     *
+     * `ssl_verify` is accepted as bool|string|int on purpose: options reach this
+     * method from a Symfony DI config or an environment variable, where a DSN
+     * query `?ssl_verify=false` arrives as a string, and a hand-written config
+     * may carry 0/1. It is normalized to a real bool below and anything
+     * FILTER_VALIDATE_BOOL rejects is rejected loudly.
      * @param LoggerInterface|null $logger    Logger instance
      * @throws \InvalidArgumentException When SSL certificate files are not found, not readable,
      *                                  ssl_verify is not a valid boolean value, or ssl_verify=false
@@ -134,7 +140,7 @@ class AmqpFactory implements AmqpFactoryInterface
         }
         if (!is_bool($sslVerify)) {
             $normalized = filter_var($sslVerify, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
-            if ($normalized === null) {
+            if (!is_bool($normalized)) {
                 throw new \InvalidArgumentException(sprintf(
                     'ssl_verify must be a boolean value, got "%s"',
                     get_debug_type($sslVerify),

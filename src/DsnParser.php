@@ -45,6 +45,12 @@ final class DsnParser
 
     /**
      * @param string $dsn DSN in format: amqp-consoomer://host/vhost/exchange?query=params
+     *
+     * Every flag is typed `bool|int`, not `bool`: query values go through
+     * {@see normalizeValue()}, so `?retry=1` yields `int(1)` and only
+     * `?retry=true` / `?retry=false` yield a real bool. Callers must therefore
+     * keep treating these options as truthy values, not compare them to `true`.
+     *
      * @return array{
      *     host: string,
      *     port: int,
@@ -52,7 +58,7 @@ final class DsnParser
      *     password: string,
      *     vhost: string,
      *     exchange: string,
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     timeout?: float|int,
      *     read_timeout?: float|int,
      *     write_timeout?: float|int,
@@ -69,20 +75,20 @@ final class DsnParser
      *     max_unacked_messages?: int,
      *     batch_size?: int,
      *     max_body_bytes?: int,
-     *     auto_setup?: bool,
-     *     redeclare_on_reconnect?: bool,
-     *     retry?: bool,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
+     *     retry?: bool|int,
      *     retry_count?: int,
      *     retry_delay?: int,
-     *     retry_backoff?: bool,
+     *     retry_backoff?: bool|int,
      *     retry_max_delay?: int,
-     *     retry_jitter?: bool,
-     *     retry_circuit_breaker?: bool,
+     *     retry_jitter?: bool|int,
+     *     retry_circuit_breaker?: bool|int,
      *     retry_circuit_breaker_threshold?: int,
      *     retry_circuit_breaker_timeout?: int,
      *     retry_circuit_breaker_success_threshold?: int,
      *     heartbeat?: int,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|int,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,
@@ -92,11 +98,11 @@ final class DsnParser
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
-     *     ssl_verify?: bool,
+     *     ssl_verify?: bool|int,
      *     exchange_flags?: int,
      *     queue_flags?: int,
-     *     persistent?: bool,
-     *     durable?: bool,
+     *     persistent?: bool|int,
+     *     durable?: bool|int,
      * }
      */
     public function parse(string $dsn): array
@@ -237,10 +243,10 @@ final class DsnParser
      *     password: string,
      *     vhost: string,
      *     exchange: string,
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|int,
      *     confirm_timeout?: float|int,
      * } $options
      * @return array{
@@ -250,10 +256,10 @@ final class DsnParser
      *     password: string,
      *     vhost: string,
      *     exchange: string,
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|int,
      *     confirm_timeout?: float|int,
      * }
      * @throws \InvalidArgumentException When exchange is missing or exchange_type is invalid
@@ -472,10 +478,10 @@ final class DsnParser
      *     password: string,
      *     vhost: string,
      *     exchange: string,
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     exchange_type?: string,
      *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|int,
      *     confirm_timeout?: float|int,
      * } $options
      * @deprecated This method is deprecated and will be removed in 1.0.
