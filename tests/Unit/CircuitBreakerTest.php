@@ -304,6 +304,12 @@ class CircuitBreakerTest extends TestCase
     {
         $reflection = new \ReflectionClass($cb);
         $prop = $reflection->getProperty('successThreshold');
-        return $prop->getValue($cb);
+        $threshold = $prop->getValue($cb);
+
+        // A reflected value is mixed; asserting the type is also the assertion
+        // that the property really holds the int the rest of the class reads.
+        self::assertIsInt($threshold);
+
+        return $threshold;
     }
 }

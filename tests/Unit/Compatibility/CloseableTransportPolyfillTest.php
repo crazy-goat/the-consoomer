@@ -86,7 +86,17 @@ class CloseableTransportPolyfillTest extends TestCase
             flags: \JSON_THROW_ON_ERROR,
         );
 
-        $excluded = $composer['autoload']['exclude-from-classmap'] ?? [];
+        // json_decode() returns mixed and `?? []` would turn a missing or
+        // renamed key into "not contained in an empty array" - the assertion
+        // that belongs to the exclusion is then never reached. Narrow each
+        // level instead, so a missing key fails naming the key it is missing.
+        self::assertIsArray($composer, 'composer.json must decode to an object');
+
+        $autoload = $composer['autoload'] ?? null;
+        self::assertIsArray($autoload, 'composer.json must declare "autoload"');
+
+        $excluded = $autoload['exclude-from-classmap'] ?? null;
+        self::assertIsArray($excluded, 'composer.json "autoload" must declare "exclude-from-classmap"');
 
         $this->assertContains('src/Compatibility/stub/', $excluded);
     }

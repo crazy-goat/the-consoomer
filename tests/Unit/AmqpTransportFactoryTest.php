@@ -8,6 +8,8 @@ use CrazyGoat\TheConsoomer\AmqpFactoryInterface;
 use CrazyGoat\TheConsoomer\AmqpTransport;
 use CrazyGoat\TheConsoomer\AmqpTransportFactory;
 use CrazyGoat\TheConsoomer\InfrastructureSetup;
+use CrazyGoat\TheConsoomer\Receiver;
+use CrazyGoat\TheConsoomer\Sender;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 
@@ -395,6 +397,12 @@ class AmqpTransportFactoryTest extends TestCase
 
         $receiver = $receiverProperty->getValue($transport);
         $sender = $senderProperty->getValue($transport);
+
+        // The properties are reflected, so nothing about them is typed until it
+        // is checked. Both were reflected over without ever being confirmed to
+        // be the collaborators the transport is supposed to hold.
+        self::assertInstanceOf(Receiver::class, $receiver);
+        self::assertInstanceOf(Sender::class, $sender);
 
         $receiverReflection = new \ReflectionClass($receiver);
         $senderReflection = new \ReflectionClass($sender);
