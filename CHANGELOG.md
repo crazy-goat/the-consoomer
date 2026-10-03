@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- PHPStan raised from level 3 to level 8 with no baseline and no suppressed findings; every error it reported was fixed in code (#411)
+
 ### Fixed
 - A permanent-type failure of a half-open probe (#355) no longer removes all backpressure: the circuit stays HALF_OPEN but rejects further calls with `CircuitBreakerOpenException` for `retry_circuit_breaker_timeout` seconds before probing again, instead of running a guaranteed-to-fail broker operation on every call (#357)
 
