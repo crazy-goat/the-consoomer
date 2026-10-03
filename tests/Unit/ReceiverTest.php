@@ -33,7 +33,23 @@ class ReceiverTest extends TestCase
         $this->setup = $this->createMock(InfrastructureSetupInterface::class);
     }
 
-    /** @param array<string, mixed> $options */
+    /**
+     * The options are typed with the shape Receiver documents, so every one of
+     * the ~120 call sites is checked against it rather than against
+     * array<string, mixed>.
+     *
+     * @param array{
+     *     queue?: string,
+     *     queues?: array<string, array{binding_keys?: list<string>}>,
+     *     exchange?: string,
+     *     max_unacked_messages?: int,
+     *     batch_size?: int,
+     *     max_body_bytes?: int|string,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
+     *     routing_key?: string,
+     * } $options
+     */
     private function createReceiverWithQueue(array $options): Receiver
     {
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
@@ -43,12 +59,27 @@ class ReceiverTest extends TestCase
         $queueName = isset($options['queues'])
             ? array_key_first($options['queues'])
             : ($options['queue'] ?? 'test_queue');
+        // array_key_first() answers null for an empty `queues`, and a null key
+        // would silently become '' — name the queue rather than guess it.
+        self::assertIsString($queueName, 'the queue name injected into the receiver must be a string');
         $queuesProperty->setValue($receiver, [$queueName => $this->queue]);
 
         return $receiver;
     }
 
-    /** @param array<string, mixed> $options */
+    /**
+     * @param array{
+     *     queue?: string,
+     *     queues?: array<string, array{binding_keys?: list<string>}>,
+     *     exchange?: string,
+     *     max_unacked_messages?: int,
+     *     batch_size?: int,
+     *     max_body_bytes?: int|string,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
+     *     routing_key?: string,
+     * } $options
+     */
     private function createReceiverWithQueueAndRetry(array $options, \CrazyGoat\TheConsoomer\ConnectionRetryInterface $retry): Receiver
     {
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
@@ -58,6 +89,7 @@ class ReceiverTest extends TestCase
         $queueName = isset($options['queues'])
             ? array_key_first($options['queues'])
             : ($options['queue'] ?? 'test_queue');
+        self::assertIsString($queueName, 'the queue name injected into the receiver must be a string');
         $queuesProperty->setValue($receiver, [$queueName => $this->queue]);
 
         return $receiver;
@@ -2280,8 +2312,15 @@ class ReceiverTest extends TestCase
         $unackedProperty = $reflection->getProperty('unacked');
         $pendingAcksProperty = $reflection->getProperty('pendingAcks');
 
-        $this->assertSame(['test_queue' => 1], $unackedProperty->getValue($receiver));
-        $this->assertSame([7], $pendingAcksProperty->getValue($receiver)['test_queue']);
+        $unacked = $unackedProperty->getValue($receiver);
+        $pendingAcks = $pendingAcksProperty->getValue($receiver);
+        // Both are reflected, so both are mixed until they are checked. The
+        // per-queue read below is only meaningful if the map really is one.
+        self::assertIsArray($unacked);
+        self::assertIsArray($pendingAcks);
+
+        $this->assertSame(['test_queue' => 1], $unacked);
+        $this->assertSame([7], $pendingAcks['test_queue']);
     }
 
     public function testGenuineFailureFlushesBufferedAcksBeforeTeardown(): void
@@ -2660,8 +2699,18 @@ class ReceiverTest extends TestCase
         $receiver->ack($this->makeEnvelope(42, 'test_queue'));
 
         // The tag was buffered exactly once and the buffer is empty afterwards.
-        $this->assertSame(0, $reflection->getProperty('unacked')->getValue($receiver)['test_queue'] ?? 0);
-        $this->assertSame([], $reflection->getProperty('pendingAcks')->getValue($receiver)['test_queue'] ?? []);
+        // The reflected maps are mixed, and `?? 0` / `?? []` made each assertion
+        // compare against its own fallback: had the receiver kept no entry for this
+        // queue at all, both would still have passed. Assert the entries exist.
+        $unacked = $reflection->getProperty('unacked')->getValue($receiver);
+        $pendingAcks = $reflection->getProperty('pendingAcks')->getValue($receiver);
+        self::assertIsArray($unacked);
+        self::assertIsArray($pendingAcks);
+        self::assertArrayHasKey('test_queue', $unacked, 'the flushed queue must keep an unacked entry');
+        self::assertArrayHasKey('test_queue', $pendingAcks, 'the flushed queue must keep a pending-acks entry');
+
+        $this->assertSame(0, $unacked['test_queue']);
+        $this->assertSame([], $pendingAcks['test_queue']);
 
         // Every attempt used the same single tag — no duplication/inflation.
         $this->assertSame([42, 42, 42], $ackedTags);

@@ -18,9 +18,12 @@ class ComposerJsonTest extends TestCase
         $composer = $this->loadComposerJson();
 
         self::assertArrayHasKey('require', $composer, 'composer.json must declare "require"');
-        self::assertArrayHasKey('ext-amqp', $composer['require'], 'composer.json must require ext-amqp');
+        $require = $composer['require'];
+        self::assertIsArray($require, 'composer.json "require" must be an object');
+        self::assertArrayHasKey('ext-amqp', $require, 'composer.json must require ext-amqp');
 
-        $constraint = $composer['require']['ext-amqp'];
+        $constraint = $require['ext-amqp'];
+        self::assertIsString($constraint, 'composer.json "require"."ext-amqp" must be a version constraint');
 
         // An unconstrained "*" lets an ancient, unsupported extension install cleanly
         // and then fatal at runtime instead of failing at install time (#240).
@@ -31,7 +34,8 @@ class ComposerJsonTest extends TestCase
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<array-key, mixed> What json_decode() produces: the key type
+     *         depends on the JSON, so the reads narrow it rather than assuming it.
      */
     private function loadComposerJson(): array
     {
