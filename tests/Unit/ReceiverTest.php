@@ -33,6 +33,7 @@ class ReceiverTest extends TestCase
         $this->setup = $this->createMock(InfrastructureSetupInterface::class);
     }
 
+    /** @param array<string, mixed> $options */
     private function createReceiverWithQueue(array $options): Receiver
     {
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
@@ -47,6 +48,7 @@ class ReceiverTest extends TestCase
         return $receiver;
     }
 
+    /** @param array<string, mixed> $options */
     private function createReceiverWithQueueAndRetry(array $options, \CrazyGoat\TheConsoomer\ConnectionRetryInterface $retry): Receiver
     {
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
@@ -130,7 +132,7 @@ class ReceiverTest extends TestCase
             ->expects($this->once())
             ->method('consume')
             ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag): void {
-                if ($flags === AMQP_JUST_CONSUME) {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
                     // Invoke the inline callback with a message
                     $amqpEnvelope = new \AMQPEnvelope();
                     $refl = new \ReflectionClass(\AMQPEnvelope::class);
@@ -152,7 +154,11 @@ class ReceiverTest extends TestCase
         $result = $receiver->get();
 
         $this->assertCount(1, $result);
-        $this->assertInstanceOf(Envelope::class, $result[0]);
+        // The receiver re-wraps the envelope to attach the received stamp, so
+        // identity is not preserved; what must survive is the decoded payload.
+        // An instanceof check against the declared list<Envelope> return type
+        // would be a tautology for the analyser and prove nothing here.
+        $this->assertSame($messageEnvelope->getMessage(), $result[0]->getMessage());
         $this->assertInstanceOf(AmqpReceivedStamp::class, $result[0]->last(AmqpReceivedStamp::class));
     }
 
@@ -196,7 +202,7 @@ class ReceiverTest extends TestCase
             ->expects($this->once())
             ->method('consume')
             ->willReturnCallback(function (?callable $callback, int $flags, ?string $consumerTag) use ($amqpEnvelope): void {
-                if ($flags === AMQP_JUST_CONSUME) {
+                if ($flags === AMQP_JUST_CONSUME && $callback !== null) {
                     $callback($amqpEnvelope);
                 }
             });
@@ -319,6 +325,34 @@ class ReceiverTest extends TestCase
             ->expects($this->once())
             ->method('reject')
             ->with(456);
+
+        $receiver->reject($envelope);
+    }
+
+    /**
+     * ext-amqp reports no delivery tag for an envelope that was never
+     * delivered. Rejecting it is impossible; the guard must say so instead of
+     * handing null to AMQPQueue::reject(int) and surfacing a bare TypeError.
+     */
+    public function testRejectThrowsWhenTheEnvelopeCarriesNoDeliveryTag(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope
+            ->method('getDeliveryTag')
+            ->willReturn(null);
+
+        $envelope = new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, 'test_queue')]);
+
+        $this->queue
+            ->expects($this->never())
+            ->method('reject');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('carries no AMQP delivery tag');
 
         $receiver->reject($envelope);
     }
@@ -519,7 +553,9 @@ class ReceiverTest extends TestCase
                 $refl = new \ReflectionClass(\AMQPEnvelope::class);
                 $bodyProp = $refl->getProperty('body');
                 $bodyProp->setValue($amqpEnvelope, '{"data":"test"}');
-                $callback($amqpEnvelope);
+                if ($callback !== null) {
+                    $callback($amqpEnvelope);
+                }
                 throw new \AMQPException('Consumer cancelled server-side');
             });
 
@@ -2072,13 +2108,21 @@ class ReceiverTest extends TestCase
 
     public function testConstructorAllowsBatchSizeEqualToMaxUnackedMessages(): void
     {
+        // The boundary is only interesting if neither value is clamped, so assert
+        // the resolved properties - the same idiom the neighbouring
+        // max_unacked_messages / batch_size tests use.
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, [
             'queue' => 'q',
             'batch_size' => 5,
             'max_unacked_messages' => 5,
         ], $this->setup);
 
-        $this->assertInstanceOf(Receiver::class, $receiver);
+        $reflection = new \ReflectionClass(Receiver::class);
+        $batchSizeProperty = $reflection->getProperty('batchSize');
+        $maxUnackedProperty = $reflection->getProperty('maxUnackedMessages');
+
+        $this->assertSame(5, $batchSizeProperty->getValue($receiver));
+        $this->assertSame(5, $maxUnackedProperty->getValue($receiver));
     }
 
     /**
@@ -2321,6 +2365,9 @@ class ReceiverTest extends TestCase
         $this->assertCount(1, $result);
 
         $stamp = $result[0]->last(AmqpReceivedStamp::class);
+        // last() returns null when the envelope carries no such stamp; that the stamp is
+        // really there is part of what this test checks.
+        $this->assertInstanceOf(AmqpReceivedStamp::class, $stamp);
         $this->assertSame('queue_a', $stamp->getQueueName());
 
         // The worker acknowledges the returned envelope — must not fatal.
@@ -2681,6 +2728,9 @@ class ReceiverTest extends TestCase
         $this->assertSame(1, $reflection->getProperty('channelGeneration')->getValue($receiver));
 
         $stamp = $result[0]->last(AmqpReceivedStamp::class);
+        // last() returns null when the envelope carries no such stamp; that the stamp is
+        // really there is part of what this test checks.
+        $this->assertInstanceOf(AmqpReceivedStamp::class, $stamp);
         $this->assertSame(0, $stamp->getChannelGeneration());
 
         // Rebuild the queue map (as a later get() would) and confirm the stale
@@ -2747,6 +2797,9 @@ class ReceiverTest extends TestCase
 
         $this->assertCount(1, $result);
         $stamp = $result[0]->last(AmqpReceivedStamp::class);
+        // last() returns null when the envelope carries no such stamp; that the stamp is
+        // really there is part of what this test checks.
+        $this->assertInstanceOf(AmqpReceivedStamp::class, $stamp);
         $this->assertSame(3, $stamp->getChannelGeneration());
     }
 
@@ -2805,6 +2858,7 @@ class ReceiverTest extends TestCase
         $byQueue = [];
         foreach ($result as $envelope) {
             $stamp = $envelope->last(AmqpReceivedStamp::class);
+            $this->assertInstanceOf(AmqpReceivedStamp::class, $stamp);
             $byQueue[$stamp->getQueueName()] = ($byQueue[$stamp->getQueueName()] ?? 0) + 1;
         }
         $this->assertSame(['queue_a' => 2, 'queue_b' => 2], $byQueue);

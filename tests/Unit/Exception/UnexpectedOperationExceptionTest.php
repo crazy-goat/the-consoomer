@@ -23,6 +23,6 @@ class UnexpectedOperationExceptionTest extends TestCase
         $this->assertSame('serializer exploded', $exception->getMessage());
         $this->assertSame(0, $exception->getCode());
         $this->assertSame($previous, $exception->getPrevious());
-        $this->assertSame(4242, $exception->getPrevious()?->getCode());
+        $this->assertSame(4242, $exception->getPrevious()->getCode());
     }
 }

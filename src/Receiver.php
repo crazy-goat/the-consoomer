@@ -77,9 +77,9 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *     exchange?: string,
      *     max_unacked_messages?: int,
      *     batch_size?: int,
-     *     max_body_bytes?: int,
-     *     auto_setup?: bool,
-     *     redeclare_on_reconnect?: bool,
+     *     max_body_bytes?: int|string,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
      *     routing_key?: string,
      * } $options
      */
@@ -262,6 +262,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * `auto_setup` is enabled.
      *
      * @return list<Envelope> The collected messages (possibly empty)
+     * @throws \AMQPException When the channel or queue rejects a declare, consume or basic-get
      * @throws RetryExhaustedException When a poison-message reject exhausts retries (retry enabled)
      * @throws UnexpectedOperationException When a poison-message reject wraps a non-AMQP failure (retry enabled)
      */
@@ -536,6 +537,15 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
 
         $queue = $this->queues[$queueName];
         $deliveryTag = $stamp->getAmqpEnvelope()->getDeliveryTag();
+        if ($deliveryTag === null) {
+            // ext-amqp reports no delivery tag for an envelope that was never
+            // delivered. Rejecting it is impossible, and passing null on would
+            // surface as an opaque TypeError from AMQPQueue::reject().
+            throw new \InvalidArgumentException(sprintf(
+                'Cannot reject the message received from queue "%s": it carries no AMQP delivery tag',
+                $queueName,
+            ));
+        }
 
         $operation = function () use ($queue, $deliveryTag): void {
             $queue->reject($deliveryTag);
@@ -644,7 +654,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
         // queue: flushing at the (larger) channel-wide value would stall the
         // consumer — the broker stops at the prefetch, unacked reaches the
         // threshold and the buffered acks are never sent (#239).
-        if (($this->unacked[$queueName] ?? 0) >= $this->prefetchPerConsumer()) {
+        if ($this->unacked[$queueName] >= $this->prefetchPerConsumer()) {
             $this->ackPending($queueName);
         }
     }
@@ -758,6 +768,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * Uses a passive declare per queue, so it reflects the broker's ready
      * count (messages delivered but not yet acked are not counted).
      *
+     * @throws \AMQPException When the passive declare of a queue fails (declareQueue)
      * @throws RetryExhaustedException When the passive declare exhausts retries (retry enabled)
      * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
      * @throws UnexpectedOperationException When the declare wraps a non-AMQP failure (retry enabled)

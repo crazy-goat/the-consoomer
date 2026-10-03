@@ -21,20 +21,45 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     private bool $queuesSetupPerformed = false;
 
     /**
+     * The validated values, kept as properties so the rest of the class does
+     * not have to re-check the raw option array.
+     */
+    private readonly string $exchange;
+
+    /** @var array<string, mixed> */
+    private readonly array $bindingArguments;
+
+    /** @var array<string, array<string, mixed>> Validated by validateQueues() */
+    private readonly array $queues;
+
+    /**
+     * The option array comes straight from the transport factory, i.e. from
+     * DSN query parameters merged with programmatic options. Those are untyped
+     * input, and validating them is this constructor's job: every option listed
+     * as `mixed` below is checked here (or by validateQueues() /
+     * validateExchangeBindings() / validateBindingKeys()) and is stored in a
+     * typed property once it passes. Declaring them any narrower would only
+     * describe the happy path and hide the guards that produce the readable
+     * InvalidArgumentException instead of a TypeError further down.
+     *
+     * `exchange_type` is not validated here, so it stays typed; `null` is
+     * accepted and falls back to `direct`.
+     *
      * @param array{
-     *     exchange: string,
+     *     exchange?: mixed,
      *     queue?: string,
-     *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
-     *     exchange_type?: string,
+     *     queues?: mixed,
+     *     exchange_type?: string|null,
      *     routing_key?: string,
-     *     binding_keys?: list<string>,
-     *     binding_arguments?: array<string, mixed>,
+     *     binding_keys?: mixed,
+     *     binding_arguments?: mixed,
      *     queue_arguments?: array<string, mixed>,
-     *     exchange_flags?: int,
-     *     queue_flags?: int,
-     *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
-     *     durable?: bool,
+     *     exchange_flags?: mixed,
+     *     queue_flags?: mixed,
+     *     exchange_bindings?: mixed,
+     *     durable?: bool|int,
      * } $options
+     * @throws \InvalidArgumentException When exchange is missing or an option has the wrong type
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
@@ -44,15 +69,29 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         if (!isset($options['exchange'])) {
             throw new \InvalidArgumentException('exchange option is required');
         }
+        // Both properties are readonly and assigned exactly once, so the
+        // is_array()/is_string() refinements below are what the rest of the
+        // class relies on.
+        $exchange = $options['exchange'];
+        if (!is_string($exchange)) {
+            throw new \InvalidArgumentException('exchange must be a string');
+        }
+        $this->exchange = $exchange;
+
+        $bindingArguments = $options['binding_arguments'] ?? [];
+        if (!is_array($bindingArguments)) {
+            throw new \InvalidArgumentException('binding_arguments must be an array');
+        }
+        $this->bindingArguments = $bindingArguments;
 
         // A queue is only needed to declare consumer topology, so it is required
         // by declareQueues()/setup() rather than the constructor. A send-only
         // transport (auto_setup=false, never consumes) can be created without a
         // dummy queue (#279).
 
-        if (isset($options['queues'])) {
-            $this->validateQueues($options['queues']);
-        }
+        $this->queues = isset($options['queues'])
+            ? $this->validateQueues($options['queues'])
+            : [];
 
         if (isset($options['exchange_bindings'])) {
             $this->validateExchangeBindings($options['exchange_bindings']);
@@ -62,16 +101,16 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             $this->validateBindingKeys($options['binding_keys']);
         }
 
-        if (isset($options['binding_arguments']) && !is_array($options['binding_arguments'])) {
-            throw new \InvalidArgumentException('binding_arguments must be an array');
-        }
-
         foreach (self::ALLOWED_OPTION_KEYS as $key) {
-            if (isset($options[$key]) && is_int($options[$key]) && ($options[$key] & self::FORBIDDEN_FLAGS) !== 0) {
+            // Read the flag once: the guard below has to look at the same value
+            // three times, and re-reading the offset after is_int() makes the
+            // narrowing impossible to follow.
+            $flags = $options[$key] ?? null;
+            if (is_int($flags) && ($flags & self::FORBIDDEN_FLAGS) !== 0) {
                 throw new \InvalidArgumentException(sprintf(
                     '%s must not contain AMQP_EXCLUSIVE or AMQP_AUTODELETE flags (got %d)',
                     $key,
-                    $options[$key],
+                    $flags,
                 ));
             }
         }
@@ -96,7 +135,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $this->exchangeSetupPerformed = true;
 
         if (!$this->queuesSetupPerformed) {
-            $this->declareQueues($channel, $exchange);
+            $this->declareQueues($channel);
             $this->setupExchangeBindings($exchange);
             $this->queuesSetupPerformed = true;
         }
@@ -130,7 +169,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             : $this->declareExchange($channel);
         $this->exchangeSetupPerformed = true;
 
-        $this->declareQueues($channel, $exchange);
+        $this->declareQueues($channel);
         $this->setupExchangeBindings($exchange);
         $this->queuesSetupPerformed = true;
     }
@@ -147,7 +186,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     private function createExchange(\AMQPChannel $channel): \AMQPExchange
     {
         $exchange = $this->factory->createExchange($channel);
-        $exchange->setName($this->options['exchange']);
+        $exchange->setName($this->exchange);
         $exchange->setType(match (ExchangeType::tryFrom((string) ($this->options['exchange_type'] ?? 'direct'))) {
             ExchangeType::FANOUT => \AMQP_EX_TYPE_FANOUT,
             ExchangeType::TOPIC => \AMQP_EX_TYPE_TOPIC,
@@ -177,23 +216,29 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      * (via 'queues' option). When 'queues' is provided, each queue can have
      * its own binding_keys, binding_arguments, and arguments.
      */
-    private function declareQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    private function declareQueues(\AMQPChannel $channel): void
     {
-        if (!isset($this->options['queue']) && !isset($this->options['queues'])) {
+        // The queue name is resolved here and handed to setupSingleQueue(),
+        // rather than re-read from the raw options there: the guarantee that it
+        // exists is established right here, so it should travel with the value.
+        if ($this->queues !== []) {
+            $this->setupMultipleQueues($channel);
+
+            return;
+        }
+
+        $queueName = $this->options['queue'] ?? null;
+        if ($queueName === null) {
             throw new \InvalidArgumentException('either queue or queues option is required to declare consumer topology');
         }
 
-        if (isset($this->options['queues'])) {
-            $this->setupMultipleQueues($channel, $exchange);
-        } else {
-            $this->setupSingleQueue($channel, $exchange);
-        }
+        $this->setupSingleQueue($channel, $queueName);
     }
 
-    private function setupSingleQueue(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    private function setupSingleQueue(\AMQPChannel $channel, string $queueName): void
     {
         $queue = $this->factory->createQueue($channel);
-        $queue->setName($this->options['queue']);
+        $queue->setName($queueName);
         $queue->setFlags($this->resolveFlags('queue_flags'));
         if (isset($this->options['queue_arguments'])) {
             $queue->setArguments($this->options['queue_arguments']);
@@ -201,15 +246,15 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         $queue->declareQueue();
 
         $bindingKeys = $this->options['binding_keys'] ?? [$this->options['routing_key'] ?? ''];
-        $bindingArguments = $this->options['binding_arguments'] ?? [];
+        $bindingArguments = $this->bindingArguments;
         foreach ($bindingKeys as $bindingKey) {
-            $queue->bind($exchange->getName(), $bindingKey, $bindingArguments);
+            $queue->bind($this->exchange, $bindingKey, $bindingArguments);
         }
     }
 
-    private function setupMultipleQueues(\AMQPChannel $channel, \AMQPExchange $exchange): void
+    private function setupMultipleQueues(\AMQPChannel $channel): void
     {
-        foreach ($this->options['queues'] as $queueName => $queueConfig) {
+        foreach ($this->queues as $queueName => $queueConfig) {
             $queue = $this->factory->createQueue($channel);
             $queue->setName($queueName);
             $queue->setFlags($this->resolveFlags('queue_flags'));
@@ -223,15 +268,22 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             $bindingKeys = $queueConfig['binding_keys'] ?? [''];
             $bindingArguments = $queueConfig['binding_arguments'] ?? [];
             foreach ($bindingKeys as $bindingKey) {
-                $queue->bind($exchange->getName(), $bindingKey, $bindingArguments);
+                $queue->bind($this->exchange, $bindingKey, $bindingArguments);
             }
         }
     }
 
     /**
+     * Validates the `queues` option and returns it in its known-good shape.
+     *
+     * Returning the validated value (instead of only asserting on it) lets the
+     * constructor store it in a typed property, so setupMultipleQueues() does
+     * not have to re-derive the shape from the raw options array.
+     *
+     * @return array<string, array<string, mixed>>
      * @throws \InvalidArgumentException
      */
-    private function validateQueues(mixed $queues): void
+    private function validateQueues(mixed $queues): array
     {
         if (!is_array($queues)) {
             throw new \InvalidArgumentException('queues option must be an array');
@@ -270,6 +322,8 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
                 throw new \InvalidArgumentException(sprintf('queues[%s].arguments must be an array', $name));
             }
         }
+
+        return $queues;
     }
 
     private function setupExchangeBindings(\AMQPExchange $exchange): void

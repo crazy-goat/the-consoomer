@@ -15,21 +15,14 @@ use Symfony\Component\Messenger\Stamp\NonSendableStampInterface;
 final readonly class AmqpStamp implements NonSendableStampInterface
 {
     /**
-     * @param array{
-     *     content_type?: string,
-     *     content_encoding?: string,
-     *     message_id?: string,
-     *     delivery_mode?: int,
-     *     priority?: int,
-     *     timestamp?: int,
-     *     app_id?: string,
-     *     user_id?: string,
-     *     expiration?: string,
-     *     type?: string,
-     *     reply_to?: string,
-     *     correlation_id?: string,
-     *     headers?: array<string, mixed>,
-     * } $attributes
+     * @param array<string, mixed> $attributes Any attribute bag. The well-known
+     *        AMQP attribute names are `content_type` (string), `content_encoding`
+     *        (string), `message_id` (string), `delivery_mode` (int), `priority`
+     *        (int), `timestamp` (int), `app_id` (string), `user_id` (string),
+     *        `expiration` (string), `type` (string), `reply_to` (string),
+     *        `correlation_id` (string) and `headers` (array<string, mixed>), but
+     *        the bag is deliberately open: {@see withAttribute()} takes any key
+     *        and any value, so the shape is not restricted to that list.
      */
     public function __construct(
         private ?string $routingKey = null,
@@ -49,21 +42,8 @@ final readonly class AmqpStamp implements NonSendableStampInterface
     }
 
     /**
-     * @return array{
-     *     content_type?: string,
-     *     content_encoding?: string,
-     *     message_id?: string,
-     *     delivery_mode?: int,
-     *     priority?: int,
-     *     timestamp?: int,
-     *     app_id?: string,
-     *     user_id?: string,
-     *     expiration?: string,
-     *     type?: string,
-     *     reply_to?: string,
-     *     correlation_id?: string,
-     *     headers?: array<string, mixed>,
-     * }
+     * @return array<string, mixed> The attribute bag, with the same open key set
+     *         as the {@see __construct()} parameter.
      */
     public function getAttributes(): array
     {
@@ -93,21 +73,8 @@ final readonly class AmqpStamp implements NonSendableStampInterface
      *
      * Routing key and flags from the original stamp are preserved.
      *
-     * @param array{
-     *     content_type?: string,
-     *     content_encoding?: string,
-     *     message_id?: string,
-     *     delivery_mode?: int,
-     *     priority?: int,
-     *     timestamp?: int,
-     *     app_id?: string,
-     *     user_id?: string,
-     *     expiration?: string,
-     *     type?: string,
-     *     reply_to?: string,
-     *     correlation_id?: string,
-     *     headers?: array<string, mixed>,
-     * } $attributes
+     * @param array<string, mixed> $attributes Any attribute bag; the same open
+     *        key set as {@see __construct()}.
      */
     public static function createWithAttributes(array $attributes, ?self $stamp = null): self
     {

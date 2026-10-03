@@ -10,9 +10,15 @@ final class FrozenClockTest extends TestCase
 {
     public function testDefaultConstruction(): void
     {
+        $before = new \DateTimeImmutable();
         $clock = new FrozenClock();
+        $now = $clock->now();
 
-        $this->assertInstanceOf(\DateTimeImmutable::class, $clock->now());
+        // The default is "now", which is the property worth asserting. An
+        // instanceof check against the declared return type would tell the
+        // analyser nothing and prove nothing at run time either.
+        $this->assertGreaterThanOrEqual($before->getTimestamp(), $now->getTimestamp());
+        $this->assertLessThanOrEqual((new \DateTimeImmutable())->getTimestamp(), $now->getTimestamp());
     }
 
     public function testCustomTimeConstruction(): void
@@ -75,8 +81,13 @@ final class FrozenClockTest extends TestCase
     public function testMonotonicReturnsFloat(): void
     {
         $clock = new FrozenClock();
+        $monotonic = $clock->monotonic();
 
-        $this->assertIsFloat($clock->monotonic());
+        // The default is hrtime() in seconds, so assert that relationship: an
+        // is_float() check on the declared float return type is a tautology for
+        // the analyser and would pass even for a broken implementation.
+        $this->assertGreaterThan(0.0, $monotonic);
+        $this->assertEqualsWithDelta(hrtime(true) / 1e9, $monotonic, 5.0);
     }
 
     public function testMonotonicIncreasesWithPositiveAdvance(): void

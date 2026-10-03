@@ -101,13 +101,19 @@ class RetryMetricsTest extends TestCase
         $metrics->recordAttempt();
         $metrics->recordSuccess();
 
-        $array = $metrics->toArray();
-
-        $this->assertArrayHasKey('total_attempts', $array);
-        $this->assertArrayHasKey('successful_retries', $array);
-        $this->assertArrayHasKey('failed_retries', $array);
-        $this->assertArrayHasKey('circuit_breaker_opens', $array);
-        $this->assertArrayHasKey('retry_success_rate', $array);
+        // The whole snapshot in one assertion: it pins every key *and* every
+        // value, so a wrong counter or a renamed key fails here instead of only
+        // being noticed by a consumer of the array.
+        $this->assertSame([
+            'total_attempts' => 1,
+            'successful_retries' => 1,
+            'failed_retries' => 0,
+            'circuit_breaker_opens' => 0,
+            'retry_success_rate' => 100.0,
+            'successful_operations' => 0,
+            'failed_operations' => 0,
+            'operation_success_rate' => 0.0,
+        ], $metrics->toArray());
     }
 
     /**
@@ -192,10 +198,15 @@ class RetryMetricsTest extends TestCase
         $metrics->recordSuccessfulOperation();
         $metrics->recordFailedOperation();
 
-        $array = $metrics->toArray();
-
-        $this->assertArrayHasKey('successful_operations', $array);
-        $this->assertArrayHasKey('failed_operations', $array);
-        $this->assertArrayHasKey('operation_success_rate', $array);
+        $this->assertSame([
+            'total_attempts' => 0,
+            'successful_retries' => 0,
+            'failed_retries' => 0,
+            'circuit_breaker_opens' => 0,
+            'retry_success_rate' => 0.0,
+            'successful_operations' => 1,
+            'failed_operations' => 1,
+            'operation_success_rate' => 50.0,
+        ], $metrics->toArray());
     }
 }

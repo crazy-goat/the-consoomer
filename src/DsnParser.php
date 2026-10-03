@@ -45,6 +45,12 @@ final class DsnParser
 
     /**
      * @param string $dsn DSN in format: amqp-consoomer://host/vhost/exchange?query=params
+     *
+     * Every flag is typed `bool|int`, not `bool`: query values go through
+     * {@see normalizeValue()}, so `?retry=1` yields `int(1)` and only
+     * `?retry=true` / `?retry=false` yield a real bool. Callers must therefore
+     * keep treating these options as truthy values, not compare them to `true`.
+     *
      * @return array{
      *     host: string,
      *     port: int,
@@ -52,7 +58,7 @@ final class DsnParser
      *     password: string,
      *     vhost: string,
      *     exchange: string,
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     timeout?: float|int,
      *     read_timeout?: float|int,
      *     write_timeout?: float|int,
@@ -69,20 +75,20 @@ final class DsnParser
      *     max_unacked_messages?: int,
      *     batch_size?: int,
      *     max_body_bytes?: int,
-     *     auto_setup?: bool,
-     *     redeclare_on_reconnect?: bool,
-     *     retry?: bool,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
+     *     retry?: bool|int,
      *     retry_count?: int,
      *     retry_delay?: int,
-     *     retry_backoff?: bool,
+     *     retry_backoff?: bool|int,
      *     retry_max_delay?: int,
-     *     retry_jitter?: bool,
-     *     retry_circuit_breaker?: bool,
+     *     retry_jitter?: bool|int,
+     *     retry_circuit_breaker?: bool|int,
      *     retry_circuit_breaker_threshold?: int,
      *     retry_circuit_breaker_timeout?: int,
      *     retry_circuit_breaker_success_threshold?: int,
      *     heartbeat?: int,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|int,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,
@@ -92,11 +98,11 @@ final class DsnParser
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
-     *     ssl_verify?: bool,
+     *     ssl_verify?: bool|int,
      *     exchange_flags?: int,
      *     queue_flags?: int,
-     *     persistent?: bool,
-     *     durable?: bool,
+     *     persistent?: bool|int,
+     *     durable?: bool|int,
      * }
      */
     public function parse(string $dsn): array
@@ -118,13 +124,22 @@ final class DsnParser
 
         $pathOptions = $this->parsePath($info['path'] ?? '');
 
+        // The authority and path values, kept in locals so they can be
+        // re-asserted after the query string has been merged in (see below).
+        $host = $info['host'] ?? 'localhost';
+        $port = $info['port'] ?? 5672;
+        $user = rawurldecode($info['user'] ?? 'guest');
+        $password = rawurldecode($info['pass'] ?? 'guest');
+        $vhost = $pathOptions['vhost'];
+        $exchange = $pathOptions['exchange'];
+
         $result = [
-            'host' => $info['host'] ?? 'localhost',
-            'port' => $info['port'] ?? 5672,
-            'user' => rawurldecode($info['user'] ?? 'guest'),
-            'password' => rawurldecode($info['pass'] ?? 'guest'),
-            'vhost' => $pathOptions['vhost'],
-            'exchange' => $pathOptions['exchange'],
+            'host' => $host,
+            'port' => $port,
+            'user' => $user,
+            'password' => $password,
+            'vhost' => $vhost,
+            'exchange' => $exchange,
         ];
 
         $scheme = $info['scheme'] ?? '';
@@ -133,6 +148,7 @@ final class DsnParser
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
+                $port = 5671;
             }
         } elseif ($scheme === 'amqps') {
             // @deprecated Legacy amqps:// scheme — no longer claimed by AmqpTransportFactory::supports().
@@ -145,6 +161,7 @@ final class DsnParser
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
+                $port = 5671;
             }
         }
 
@@ -195,7 +212,15 @@ final class DsnParser
                 // ssl=true on a TLS scheme is a no-op; ignore other values and keep ssl=true.
                 continue;
             }
-            $result[$key] = $this->normalizeValue($value);
+            // parse_str() types a purely numeric query parameter name as an integer
+            // key (`?0=x` -> [0 => 'x']), while every comparison above already
+            // treats the key as a string. Cast it so the option name is written
+            // as the string it is. Note that PHP itself turns a purely numeric
+            // string back into an int key, so this expresses the intent for the
+            // static type rather than changing what PHP stores; an option named
+            // "0" cannot collide with anything, because it matches no reserved
+            // key and no consumer looks an option up by number.
+            $result[(string) $key] = $this->normalizeValue($value);
         }
 
         if (isset($result['queues']) && is_array($result['queues'])) {
@@ -210,7 +235,20 @@ final class DsnParser
 
         $this->validateOptionTypes($result);
 
-        return $this->validateParsedOptions($result);
+        // Re-assert the authority and path values. The loop above refuses any
+        // query key that collides with them (RESERVED_KEYS, #207), so nothing
+        // can have replaced them - writing them back states that guarantee
+        // locally instead of leaving it to the fact that the keys are refused.
+        $result['host'] = $host;
+        $result['port'] = $port;
+        $result['user'] = $user;
+        $result['password'] = $password;
+        $result['vhost'] = $vhost;
+        $result['exchange'] = $exchange;
+
+        $this->validateParsedOptions($result);
+
+        return $result;
     }
 
     /**
@@ -230,32 +268,10 @@ final class DsnParser
      *
      * Checks for required exchange name and validates exchange_type if provided.
      *
-     * @param array{
-     *     host: string,
-     *     port: int,
-     *     user: string,
-     *     password: string,
-     *     vhost: string,
-     *     exchange: string,
-     *     ssl?: bool,
-     *     exchange_type?: string,
-     *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool,
-     *     confirm_timeout?: float|int,
-     * } $options
-     * @return array{
-     *     host: string,
-     *     port: int,
-     *     user: string,
-     *     password: string,
-     *     vhost: string,
-     *     exchange: string,
-     *     ssl?: bool,
-     *     exchange_type?: string,
-     *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool,
-     *     confirm_timeout?: float|int,
-     * }
+     * @param array<string, mixed> $options Parsed options; only `exchange` and
+     *        `exchange_type` are inspected here - the authority and path values
+     *        are built by parse() itself and are not re-checked.
+     * @return array<string, mixed> The same options, unchanged
      * @throws \InvalidArgumentException When exchange is missing or exchange_type is invalid
      */
     private function validateParsedOptions(array $options): array
@@ -465,19 +481,7 @@ final class DsnParser
     }
 
     /**
-     * @param array{
-     *     host: string,
-     *     port: int,
-     *     user: string,
-     *     password: string,
-     *     vhost: string,
-     *     exchange: string,
-     *     ssl?: bool,
-     *     exchange_type?: string,
-     *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool,
-     *     confirm_timeout?: float|int,
-     * } $options
+     * @param array<string, mixed> $options Parsed options, as produced by parse()
      * @deprecated This method is deprecated and will be removed in 1.0.
      *             Validation now happens automatically in parse().
      *             Returns true when the options are valid, false when

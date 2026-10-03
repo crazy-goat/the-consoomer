@@ -14,6 +14,8 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
  *
  * Supports both Symfony Messenger transport factory interface and
  * direct instantiation via static create() method.
+ *
+ * @implements TransportFactoryInterface<TransportInterface>
  */
 class AmqpTransportFactory implements TransportFactoryInterface
 {
@@ -27,8 +29,8 @@ class AmqpTransportFactory implements TransportFactoryInterface
     /**
      * {@inheritdoc}
      *
-     * @param string $dsn     DSN string
-     * @param array  $options Additional options
+     * @param string              $dsn     DSN string
+     * @param array<string, mixed> $options Additional options
      * @return bool True if DSN is supported (amqp-consoomer:// or amqps-consoomer://)
      */
     public function supports(string $dsn, array $options): bool
@@ -39,9 +41,9 @@ class AmqpTransportFactory implements TransportFactoryInterface
     /**
      * {@inheritdoc}
      *
-     * @param string              $dsn        DSN string
-     * @param array               $options    Additional options
-     * @param SerializerInterface $serializer Message serializer
+     * @param string                 $dsn        DSN string
+     * @param array<string, mixed>   $options    Additional options
+     * @param SerializerInterface    $serializer Message serializer
      */
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
     {
@@ -64,7 +66,7 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
      *     routing_key?: string,
      *     default_publish_routing_key?: string,
-     *     publisher_confirms?: bool,
+     *     publisher_confirms?: bool|string|int,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,
@@ -83,29 +85,29 @@ class AmqpTransportFactory implements TransportFactoryInterface
      *     max_unacked_messages?: int,
      *     batch_size?: int,
      *     max_body_bytes?: int,
-     *     auto_setup?: bool,
-     *     redeclare_on_reconnect?: bool,
-     *     retry?: bool,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
+     *     retry?: bool|int,
      *     retry_count?: int,
      *     retry_delay?: int,
-     *     retry_backoff?: bool,
+     *     retry_backoff?: bool|int,
      *     retry_max_delay?: int,
-     *     retry_jitter?: bool,
-     *     retry_circuit_breaker?: bool,
+     *     retry_jitter?: bool|int,
+     *     retry_circuit_breaker?: bool|int,
      *     retry_circuit_breaker_threshold?: int,
      *     retry_circuit_breaker_timeout?: int,
      *     retry_circuit_breaker_success_threshold?: int,
      *     heartbeat?: int,
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
-     *     ssl_verify?: bool,
-     *     allow_insecure_verify?: bool,
+     *     ssl_verify?: bool|string|int,
+     *     allow_insecure_verify?: bool|string|int,
      *     exchange_flags?: int,
      *     queue_flags?: int,
-     *     persistent?: bool,
-     *     durable?: bool,
+     *     persistent?: bool|int,
+     *     durable?: bool|int,
      * } $options
      * @param SerializerInterface  $serializer Message serializer
      * @param AmqpFactoryInterface|null $factory    AMQP factory (optional)
@@ -191,13 +193,13 @@ class AmqpTransportFactory implements TransportFactoryInterface
      * Creates retry configuration based on options.
      *
      * @param array{
-     *     retry?: bool,
+     *     retry?: bool|int,
      *     retry_count?: int,
      *     retry_delay?: int,
-     *     retry_backoff?: bool,
+     *     retry_backoff?: bool|int,
      *     retry_max_delay?: int,
-     *     retry_jitter?: bool,
-     *     retry_circuit_breaker?: bool,
+     *     retry_jitter?: bool|int,
+     *     retry_circuit_breaker?: bool|int,
      *     retry_circuit_breaker_threshold?: int,
      *     retry_circuit_breaker_timeout?: int,
      *     retry_circuit_breaker_success_threshold?: int,

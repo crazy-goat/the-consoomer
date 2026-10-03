@@ -256,12 +256,14 @@ final class ConnectionRetry implements ConnectionRetryInterface
 
         $this->logger?->error('Retry failed after max attempts', [
             'max_attempts' => $this->maxAttempts,
-            'error' => $lastException?->getMessage(),
+            'error' => $lastException->getMessage(),
         ]);
 
-        throw $lastException instanceof \AMQPException
-            ? RetryExhaustedException::fromPrevious($lastException)
-            : new RetryExhaustedException();
+        // The constructor rejects maxAttempts < 1, so the loop above always runs
+        // at least once and can only be left with an AMQPException recorded: the
+        // Throwable branch converts every other failure into an
+        // UnexpectedOperationException before it can reach this point.
+        throw RetryExhaustedException::fromPrevious($lastException);
     }
 
     /**

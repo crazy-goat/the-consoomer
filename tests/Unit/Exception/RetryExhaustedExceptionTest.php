@@ -32,7 +32,7 @@ class RetryExhaustedExceptionTest extends TestCase
         $this->assertSame('Queue not found', $exception->getMessage());
         $this->assertSame(0, $exception->getCode());
         $this->assertSame($previous, $exception->getPrevious());
-        $this->assertSame(404, $exception->getPrevious()?->getCode());
+        $this->assertSame(404, $exception->getPrevious()->getCode());
     }
 
     public function testFromPreviousZerosANonZeroCode(): void

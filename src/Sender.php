@@ -98,10 +98,10 @@ final class Sender implements SenderInterface
      * @param array{
      *     exchange?: string,
      *     default_publish_routing_key?: string,
-     *     auto_setup?: bool,
-     *     redeclare_on_reconnect?: bool,
-     *     retry?: bool,
-     *     publisher_confirms?: bool,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
+     *     retry?: bool|int,
+     *     publisher_confirms?: bool|string|int,
      *     confirm_timeout?: float|int,
      *     delay?: array{
      *         exchange_name?: string,
@@ -152,7 +152,7 @@ final class Sender implements SenderInterface
         }
 
         $resolved = filter_var($explicit, \FILTER_VALIDATE_BOOLEAN, \FILTER_NULL_ON_FAILURE);
-        if ($resolved === null) {
+        if (!is_bool($resolved)) {
             throw new \InvalidArgumentException(sprintf(
                 'Option "publisher_confirms" must be a boolean, got "%s".',
                 get_debug_type($explicit),
@@ -165,15 +165,20 @@ final class Sender implements SenderInterface
     /**
      * Initializes AMQP exchange connection.
      * Idempotent - safe to call multiple times.
+     *
+     * Returns the exchange so callers publish through a value that is known to
+     * be non-null instead of re-reading the nullable property.
      */
-    private function connect(): void
+    private function connect(): \AMQPExchange
     {
         if ($this->exchange instanceof \AMQPExchange) {
-            return;
+            return $this->exchange;
         }
 
         $this->exchange = $this->factory->createExchange($this->connection->getChannel());
         $this->exchange->setName($this->options['exchange'] ?? '');
+
+        return $this->exchange;
     }
 
     /**
@@ -319,7 +324,10 @@ final class Sender implements SenderInterface
             $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
                 $channel = $this->confirmChannel();
 
-                $this->exchange->publish(
+                // Read the exchange at publish time, not when the closure was
+                // built: a retry can reconnect in between, which replaces
+                // $this->exchange with one bound to the new channel (#273/#308).
+                $this->connect()->publish(
                     $data['body'],
                     $routingKey,
                     $flags,
@@ -385,10 +393,14 @@ final class Sender implements SenderInterface
         return $envelope;
     }
 
-    private function ensureDelayExchange(): void
+    /**
+     * Declares the delay exchange once and returns it, so the caller publishes
+     * through a value known to be non-null.
+     */
+    private function ensureDelayExchange(): \AMQPExchange
     {
         if ($this->delayExchange instanceof \AMQPExchange) {
-            return;
+            return $this->delayExchange;
         }
 
         $this->delayExchange = $this->factory->createExchange($this->connection->getChannel());
@@ -396,8 +408,14 @@ final class Sender implements SenderInterface
         $this->delayExchange->setType(\AMQP_EX_TYPE_DIRECT);
         $this->delayExchange->setFlags(\AMQP_DURABLE);
         $this->delayExchange->declareExchange();
+
+        return $this->delayExchange;
     }
 
+    /**
+     * @param array{body: string, headers?: array<string, string>} $data       Encoded envelope
+     * @param array<string, mixed>                              $attributes AMQP message attributes
+     */
     private function sendWithDelay(
         array $data,
         string $routingKey,
@@ -406,7 +424,7 @@ final class Sender implements SenderInterface
         AmqpDelayStamp $delayStamp,
         string $delayQueueName,
     ): void {
-        $this->ensureDelayExchange();
+        $delayExchange = $this->ensureDelayExchange();
 
         if (!isset($this->delayQueuesCreated[$delayQueueName])) {
             $this->createDelayQueue($delayQueueName, $delayStamp->getDelay(), $routingKey);
@@ -420,7 +438,7 @@ final class Sender implements SenderInterface
         // Publish with the message's own routing key (#276). The delay queue has
         // only `x-dead-letter-exchange` set, so on TTL expiry the broker
         // dead-letters with this same key — no per-queue routing key to freeze.
-        $this->delayExchange->publish(
+        $delayExchange->publish(
             $data['body'],
             $routingKey,
             $flags,
@@ -539,10 +557,10 @@ final class Sender implements SenderInterface
         $this->delayQueuesCreated[$queueName] = true;
 
         if (count($this->delayQueuesCreated) > $this->maxTrackedDelayQueues) {
+            // The map is non-empty (its count exceeds maxTrackedDelayQueues >= 1),
+            // so array_key_first() cannot return null here.
             $oldest = array_key_first($this->delayQueuesCreated);
-            if ($oldest !== null) {
-                unset($this->delayQueuesCreated[$oldest], $this->delayQueueBindings[$oldest]);
-            }
+            unset($this->delayQueuesCreated[$oldest], $this->delayQueueBindings[$oldest]);
         }
 
         $this->trackDelayBinding($queueName, $routingKey);
@@ -560,10 +578,9 @@ final class Sender implements SenderInterface
         $this->delayQueueBindings[$queueName][$routingKey] = true;
 
         while (count($this->delayQueueBindings[$queueName]) > $this->maxTrackedDelayQueues) {
+            // The assignment above always creates the key, so the map is
+            // non-empty while its count exceeds maxTrackedDelayQueues >= 1.
             $oldest = array_key_first($this->delayQueueBindings[$queueName]);
-            if ($oldest === null) {
-                break;
-            }
             unset($this->delayQueueBindings[$queueName][$oldest]);
         }
     }

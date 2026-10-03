@@ -15,18 +15,48 @@ use PHPUnit\Framework\TestCase;
 
 class ConnectionRetryTest extends TestCase
 {
+    /**
+     * Asserts that a guarded try/catch caught the expected exception.
+     *
+     * The parameter is `mixed` on purpose: it is `null` when nothing was
+     * thrown, and that case has to surface as a normal assertion failure
+     * rather than as a fatal error on `null->getMessage()`. It also keeps the
+     * check a genuine run-time one — the test verifies what the retry actually
+     * threw instead of restating what the analyser can already infer from the
+     * closure that always throws.
+     *
+     * @param class-string $expectedClass
+     */
+    private function assertCaught(mixed $caught, string $expectedClass, string $message): void
+    {
+        self::assertInstanceOf($expectedClass, $caught, $message);
+    }
+
     public function testJitterVariationFactorConstant(): void
     {
-        $this->assertSame(0.25, ConnectionRetry::JITTER_VARIATION_FACTOR);
+        // Read through reflection on purpose: the analyser knows every constant
+        // value already, so an inline comparison is a tautology for it. The
+        // run-time check is the point - it catches a retuned constant.
+        $factor = (new \ReflectionClass(ConnectionRetry::class))->getConstant('JITTER_VARIATION_FACTOR');
+
+        $this->assertIsFloat($factor);
+        $this->assertSame(0.25, $factor);
+        // It scales the base delay, so it has to stay a usable fraction.
+        $this->assertGreaterThan(0.0, $factor);
+        $this->assertLessThanOrEqual(1.0, $factor);
     }
 
     public function testSuccessfulOperationNoRetry(): void
     {
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $result = $retry->withRetry(fn(): string => 'success');
+        $payload = new \stdClass();
+        $result = $retry->withRetry(fn(): \stdClass => $payload);
 
-        $this->assertSame('success', $result);
+        // Identity rather than a string: withRetry() has to hand back the very
+        // object the operation returned, which also proves nothing was retried
+        // or wrapped on the way through.
+        $this->assertSame($payload, $result);
     }
 
     public function testMaxAttemptsZeroThrowsInvalidArgumentException(): void
@@ -42,14 +72,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $caught = null;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
+            $this->assertSame(3, $attempt);
+        }
 
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPConnectionException('Connection failed');
-        });
-
-        $this->assertSame(3, $attempt);
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetrySucceedsOnSecondAttempt(): void
@@ -57,15 +91,16 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $result = $retry->withRetry(function () use (&$attempt): string {
+        $payload = new \stdClass();
+        $result = $retry->withRetry(function () use (&$attempt, $payload): \stdClass {
             $attempt++;
             if ($attempt < 2) {
                 throw new \AMQPConnectionException('Connection failed');
             }
-            return 'success';
+            return $payload;
         });
 
-        $this->assertSame('success', $result);
+        $this->assertSame($payload, $result);
         $this->assertSame(2, $attempt);
     }
 
@@ -74,14 +109,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 1, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $caught = null;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
+            $this->assertSame(1, $attempt);
+        }
 
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPConnectionException('Connection failed');
-        });
-
-        $this->assertSame(1, $attempt);
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testMaxAttemptsTwoExecutesExactlyTwoAttempts(): void
@@ -89,14 +128,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 2, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $caught = null;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPConnectionException('Connection failed');
+            });
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
+            $this->assertSame(2, $attempt);
+        }
 
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPConnectionException('Connection failed');
-        });
-
-        $this->assertSame(2, $attempt);
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testNoRetryOnOtherException(): void
@@ -115,14 +158,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $caught = null;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPChannelException('Channel closed unexpectedly');
+            });
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
+            $this->assertSame(3, $attempt);
+        }
 
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPChannelException('Channel closed unexpectedly');
-        });
-
-        $this->assertSame(3, $attempt);
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetryOnExchangeExceptionWithoutReplyCode(): void
@@ -130,16 +177,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPExchangeException('Exchange error');
             });
-            $this->fail('Expected RetryExhaustedException to be thrown');
         } catch (RetryExhaustedException $e) {
+            $caught = $e;
             $this->assertSame(3, $attempt, 'Exchange exception without a reply code is transient and must be retried (#285)');
             $this->assertInstanceOf(\AMQPExchangeException::class, $e->getPrevious());
         }
+
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     /**
@@ -151,16 +201,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPQueueException('Consumer timeout exceed');
             });
-            $this->fail('Expected RetryExhaustedException to be thrown');
         } catch (RetryExhaustedException $e) {
+            $caught = $e;
             $this->assertSame(3, $attempt, 'A queue read timeout must be retried, not treated as permanent (#285)');
             $this->assertInstanceOf(\AMQPQueueException::class, $e->getPrevious());
         }
+
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetryOnQueueExceptionWithoutReplyCode(): void
@@ -168,16 +221,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPQueueException('Queue error');
             });
-            $this->fail('Expected RetryExhaustedException to be thrown');
         } catch (RetryExhaustedException $e) {
+            $caught = $e;
             $this->assertSame(3, $attempt, 'Queue exception without a reply code is transient and must be retried (#285)');
             $this->assertInstanceOf(\AMQPQueueException::class, $e->getPrevious());
         }
+
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetryOnConnectionExceptionWithPermanentCode(): void
@@ -185,14 +241,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $caught = null;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPConnectionException('Connection lost', 404);
+            });
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
+            $this->assertSame(3, $attempt, 'Connection exception with code 404 should be transient, not permanent');
+        }
 
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPConnectionException('Connection lost', 404);
-        });
-
-        $this->assertSame(3, $attempt, 'Connection exception with code 404 should be transient, not permanent');
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetryOnChannelExceptionWithPermanentCode(): void
@@ -200,14 +260,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $caught = null;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPChannelException('Channel error', 404);
+            });
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
+            $this->assertSame(3, $attempt, 'Channel exception with code 404 should be transient, not permanent');
+        }
 
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPChannelException('Channel error', 404);
-        });
-
-        $this->assertSame(3, $attempt, 'Channel exception with code 404 should be transient, not permanent');
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetryOnQueueExceptionWithZeroCode(): void
@@ -215,15 +279,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPQueueException('Queue not found', 0);
             });
-            $this->fail('Expected RetryExhaustedException to be thrown');
-        } catch (RetryExhaustedException) {
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
             $this->assertSame(3, $attempt, 'Queue exception with code 0 carries no proof of permanence and must be retried (#285)');
         }
+
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetryOnExchangeExceptionWithZeroCode(): void
@@ -231,15 +298,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPExchangeException('Exchange not found', 0);
             });
-            $this->fail('Expected RetryExhaustedException to be thrown');
-        } catch (RetryExhaustedException) {
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
             $this->assertSame(3, $attempt, 'Exchange exception with code 0 carries no proof of permanence and must be retried (#285)');
         }
+
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     /**
@@ -251,16 +321,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPQueueException("NOT_FOUND - no queue 'foo' in vhost '/'", 0);
             });
-            $this->fail('Expected AMQPQueueException to be thrown');
         } catch (\AMQPQueueException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'A NOT_FOUND reply code must remain permanent (#285)');
             $this->assertStringContainsString('NOT_FOUND', $e->getMessage());
         }
+
+        $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException to be thrown');
     }
 
     public function testNoRetryOnExchangeExceptionWithPreconditionKeyword(): void
@@ -268,15 +341,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPExchangeException('PRECONDITION_FAILED - inequivalent exchange', 0);
             });
-            $this->fail('Expected AMQPExchangeException to be thrown');
-        } catch (\AMQPExchangeException) {
+        } catch (\AMQPExchangeException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'A PRECONDITION_FAILED reply code must remain permanent (#285)');
         }
+
+        $this->assertCaught($caught, \AMQPExchangeException::class, 'Expected AMQPExchangeException to be thrown');
     }
 
     public function testRetryOnGenericAmqpExceptionWithZeroCode(): void
@@ -284,14 +360,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $this->expectException(RetryExhaustedException::class);
+        $caught = null;
+        try {
+            $retry->withRetry(function () use (&$attempt): void {
+                $attempt++;
+                throw new \AMQPException('Generic error', 0);
+            });
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
+            $this->assertSame(3, $attempt, 'Generic AMQPException with code 0 should be transient');
+        }
 
-        $retry->withRetry(function () use (&$attempt): void {
-            $attempt++;
-            throw new \AMQPException('Generic error', 0);
-        });
-
-        $this->assertSame(3, $attempt, 'Generic AMQPException with code 0 should be transient');
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
     }
 
     public function testRetrySucceedsOnSecondAttemptWithChannelException(): void
@@ -299,15 +379,16 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
-        $result = $retry->withRetry(function () use (&$attempt): string {
+        $payload = new \stdClass();
+        $result = $retry->withRetry(function () use (&$attempt, $payload): \stdClass {
             $attempt++;
             if ($attempt < 2) {
                 throw new \AMQPChannelException('Channel closed');
             }
-            return 'success';
+            return $payload;
         });
 
-        $this->assertSame('success', $result);
+        $this->assertSame($payload, $result);
         $this->assertSame(2, $attempt);
     }
 
@@ -316,16 +397,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPQueueException('Queue not found', 404);
             });
-            $this->fail('Expected AMQPQueueException to be thrown');
         } catch (\AMQPQueueException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
             $this->assertSame('Queue not found', $e->getMessage());
         }
+
+        $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException to be thrown');
     }
 
     public function testNoRetryOnExchangeNotFound(): void
@@ -333,16 +417,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPExchangeException('Exchange not found', 404);
             });
-            $this->fail('Expected AMQPExchangeException to be thrown');
         } catch (\AMQPExchangeException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
             $this->assertSame('Exchange not found', $e->getMessage());
         }
+
+        $this->assertCaught($caught, \AMQPExchangeException::class, 'Expected AMQPExchangeException to be thrown');
     }
 
     public function testNoRetryOnAccessDenied(): void
@@ -350,16 +437,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPException('Access refused', 403);
             });
-            $this->fail('Expected AMQPException to be thrown');
         } catch (\AMQPException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
             $this->assertSame(403, $e->getCode());
         }
+
+        $this->assertCaught($caught, \AMQPException::class, 'Expected AMQPException to be thrown');
     }
 
     public function testNoRetryOnPreconditionFailed(): void
@@ -367,16 +457,19 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPException('Precondition failed', 406);
             });
-            $this->fail('Expected AMQPException to be thrown');
         } catch (\AMQPException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
             $this->assertSame(406, $e->getCode());
         }
+
+        $this->assertCaught($caught, \AMQPException::class, 'Expected AMQPException to be thrown');
     }
 
     public function testCircuitBreakerOpensAfterThreshold(): void
@@ -460,9 +553,10 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $result = $retry->withRetry(fn(): string => 'success');
+        $payload = new \stdClass();
+        $result = $retry->withRetry(fn(): \stdClass => $payload);
 
-        $this->assertSame('success', $result);
+        $this->assertSame($payload, $result);
     }
 
     public function testJitterNeverExceedsMaxDelay(): void
@@ -570,6 +664,8 @@ class ConnectionRetryTest extends TestCase
 
     public function testJitterAddsRandomVariation(): void
     {
+        $elapsed = [];
+
         for ($i = 0; $i < 10; $i++) {
             $retry = new ConnectionRetry(
                 maxAttempts: 2,
@@ -578,17 +674,44 @@ class ConnectionRetryTest extends TestCase
                 retryJitter: true,
             );
 
-            $attempt = 0;
+            $attempts = new AttemptCounter();
+            $caught = null;
+            $start = microtime(true);
             try {
-                $retry->withRetry(function () use (&$attempt): void {
-                    $attempt++;
+                $retry->withRetry(function () use ($attempts): void {
+                    $attempts->bump();
                     throw new \AMQPConnectionException('Connection failed');
                 });
-            } catch (RetryExhaustedException) {
+            } catch (RetryExhaustedException $e) {
+                $caught = $e;
             }
+            $elapsed[] = microtime(true) - $start;
+
+            $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
+            $this->assertSame(2, $attempts->count());
         }
 
-        $this->assertTrue(true);
+        // The sleep is the base delay scaled by a random factor, so the ten
+        // durations must actually spread. Measured over ten runs on this
+        // machine: with jitter the spread is ~46ms, without it ~4ms (plain
+        // scheduler noise). A 20ms threshold sits well clear of that noise and
+        // well inside the jittered spread.
+        //
+        // This assertion used to be assertTrue(true), which verified nothing at
+        // all, and an earlier version only compared the durations for
+        // inequality - which passes even with jitter removed, because two real
+        // sleeps practically never take the identical number of microseconds.
+        $spread = (max($elapsed) - min($elapsed)) * 1_000_000;
+
+        $this->assertGreaterThan(
+            20_000,
+            $spread,
+            sprintf(
+                'Jittered sleeps must differ far more than scheduler noise; measured spread %.0fus over %s',
+                $spread,
+                implode(', ', array_map(static fn(float $s): int => (int) ($s * 1_000_000), $elapsed)),
+            ),
+        );
     }
 
     public function testResetsCircuitBreaker(): void
@@ -839,37 +962,46 @@ class ConnectionRetryTest extends TestCase
 
         $clock->advance(3);
 
-        $attempt = 0;
-        $permanent = function () use (&$attempt): void {
-            $attempt++;
+        $attempts = new AttemptCounter();
+        $permanent = function () use ($attempts): void {
+            $attempts->bump();
             throw new \AMQPQueueException('Queue not found', 404);
         };
 
+        $caught = null;
         try {
             $retry->withRetry($permanent);
-            $this->fail('Expected AMQPQueueException');
-        } catch (\AMQPQueueException) {
+        } catch (\AMQPQueueException $e) {
+            $caught = $e;
         }
-        $this->assertSame(1, $attempt);
+
+        $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException');
+        $this->assertSame(1, $attempts->count());
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
 
         // Within the timeout the next call is rejected without touching the broker.
         $clock->advance(1);
+        $caught = null;
         try {
             $retry->withRetry($permanent);
-            $this->fail('Expected CircuitBreakerOpenException');
-        } catch (CircuitBreakerOpenException) {
+        } catch (CircuitBreakerOpenException $e) {
+            $caught = $e;
         }
-        $this->assertSame(1, $attempt, 'No probe may run during the cool-down (#357)');
+
+        $this->assertCaught($caught, CircuitBreakerOpenException::class, 'Expected CircuitBreakerOpenException');
+        $this->assertSame(1, $attempts->count(), 'No probe may run during the cool-down (#357)');
 
         // After the timeout a new probe is allowed.
         $clock->advance(3);
+        $caught = null;
         try {
             $retry->withRetry($permanent);
-            $this->fail('Expected AMQPQueueException');
-        } catch (\AMQPQueueException) {
+        } catch (\AMQPQueueException $e) {
+            $caught = $e;
         }
-        $this->assertSame(2, $attempt);
+
+        $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException');
+        $this->assertSame(2, $attempts->count());
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState());
     }
 
@@ -1064,15 +1196,18 @@ class ConnectionRetryTest extends TestCase
         $attempt = 0;
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPQueueException('Queue not found', 404);
             });
-            $this->fail('Expected AMQPQueueException to be thrown');
-        } catch (\AMQPQueueException) {
+        } catch (\AMQPQueueException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
         }
+
+        $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException to be thrown');
 
         $metrics = $retry->getMetrics();
 
@@ -1193,10 +1328,11 @@ class ConnectionRetryTest extends TestCase
         // After the probe cool-down (#357) the next operation probes again;
         // success closes it after threshold.
         $clock->advance(61);
-        $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
+        $payload = new \stdClass();
+        $this->assertSame($payload, $retry->withRetry(fn(): \stdClass => $payload));
         $this->assertSame(CircuitState::HALF_OPEN, $retry->getState(), 'One success below successThreshold keeps HALF_OPEN');
 
-        $this->assertSame('ok', $retry->withRetry(fn(): string => 'ok'));
+        $this->assertSame($payload, $retry->withRetry(fn(): \stdClass => $payload));
         $this->assertSame(CircuitState::CLOSED, $retry->getState(), 'Reaching successThreshold closes the circuit');
     }
 
@@ -1226,15 +1362,18 @@ class ConnectionRetryTest extends TestCase
         $retry = new ConnectionRetry(maxAttempts: 3, retryDelay: 1000);
 
         $attempt = 0;
+        $caught = null;
         try {
             $retry->withRetry(function () use (&$attempt): void {
                 $attempt++;
                 throw new \AMQPQueueException('Queue not found', 404);
             });
-            $this->fail('Expected AMQPQueueException to be thrown');
-        } catch (\AMQPQueueException) {
+        } catch (\AMQPQueueException $e) {
+            $caught = $e;
             $this->assertSame(1, $attempt, 'Permanent failure should not trigger retry');
         }
+
+        $this->assertCaught($caught, \AMQPQueueException::class, 'Expected AMQPQueueException to be thrown');
 
         $metrics = $retry->getMetrics();
 
@@ -1276,13 +1415,16 @@ class ConnectionRetryTest extends TestCase
     {
         $retry = new ConnectionRetry(maxAttempts: 2, retryDelay: 1000);
 
+        $caught = null;
         try {
             $retry->withRetry(function (): void {
                 throw new \AMQPConnectionException('Connection failed');
             });
-            $this->fail('Expected RetryExhaustedException to be thrown');
-        } catch (RetryExhaustedException) {
+        } catch (RetryExhaustedException $e) {
+            $caught = $e;
         }
+
+        $this->assertCaught($caught, RetryExhaustedException::class, 'Expected RetryExhaustedException to be thrown');
 
         $metrics = $retry->getMetrics();
 

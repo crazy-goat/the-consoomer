@@ -27,7 +27,13 @@ class AmqpStampTest extends TestCase
     {
         $stamp = new AmqpStamp('test');
 
-        $this->assertInstanceOf(\Symfony\Component\Messenger\Stamp\NonSendableStampInterface::class, $stamp);
+        // Checked through class_implements() rather than instanceof: the analyser knows
+        // the declaration and reports the instanceof form as a tautology, while this
+        // still fails at run time if the interface is ever dropped from the class.
+        $this->assertContains(
+            \Symfony\Component\Messenger\Stamp\NonSendableStampInterface::class,
+            class_implements($stamp),
+        );
     }
 
     public function testConstructorWithFlags(): void
