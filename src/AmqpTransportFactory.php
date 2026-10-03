@@ -15,6 +15,61 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
  * Supports both Symfony Messenger transport factory interface and
  * direct instantiation via static create() method.
  *
+ * @phpstan-type AmqpOptions array{
+ *     host?: string,
+ *     port?: int,
+ *     user?: string,
+ *     password?: string,
+ *     vhost?: string,
+ *     exchange?: string,
+ *     queue?: string,
+ *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
+ *     routing_key?: string,
+ *     default_publish_routing_key?: string,
+ *     publisher_confirms?: bool|string|int,
+ *     confirm_timeout?: float|int,
+ *     delay?: array{
+ *         exchange_name?: string,
+ *         queue_name_pattern?: string,
+ *         max_tracked_queues?: int,
+ *     },
+ *     timeout?: float|int,
+ *     read_timeout?: float|int,
+ *     write_timeout?: float|int,
+ *     connect_timeout?: float|int,
+ *     exchange_type?: string,
+ *     queue_arguments?: array<string, mixed>,
+ *     binding_keys?: list<string>,
+ *     binding_arguments?: array<string, mixed>,
+ *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
+ *     max_unacked_messages?: int,
+ *     batch_size?: int,
+ *     max_body_bytes?: int,
+ *     auto_setup?: bool|int,
+ *     redeclare_on_reconnect?: bool|int,
+ *     retry?: bool|int,
+ *     retry_count?: int,
+ *     retry_delay?: int,
+ *     retry_backoff?: bool|int,
+ *     retry_max_delay?: int,
+ *     retry_jitter?: bool|int,
+ *     retry_circuit_breaker?: bool|int,
+ *     retry_circuit_breaker_threshold?: int,
+ *     retry_circuit_breaker_timeout?: int,
+ *     retry_circuit_breaker_success_threshold?: int,
+ *     heartbeat?: int,
+ *     ssl?: bool|int,
+ *     ssl_cert?: string,
+ *     ssl_key?: string,
+ *     ssl_cacert?: string,
+ *     ssl_verify?: bool|string|int,
+ *     allow_insecure_verify?: bool|string|int,
+ *     exchange_flags?: int,
+ *     queue_flags?: int,
+ *     persistent?: bool|int,
+ *     durable?: bool|int,
+ * }
+ *
  * @implements TransportFactoryInterface<TransportInterface>
  */
 class AmqpTransportFactory implements TransportFactoryInterface
@@ -41,9 +96,19 @@ class AmqpTransportFactory implements TransportFactoryInterface
     /**
      * {@inheritdoc}
      *
-     * @param string                 $dsn        DSN string
-     * @param array<string, mixed>   $options    Additional options
-     * @param SerializerInterface    $serializer Message serializer
+     * The options carry the contract {@see create()} documents - one option
+     * vocabulary for both entry points. Symfony's TransportFactoryInterface
+     * types them as `array<string, mixed>`, so the shape has to be stated here
+     * rather than inherited: without it the two entry points of the same class
+     * disagree about what an option is, and an option outside this shape is a
+     * configuration error that surfaces where it is read.
+     *
+     * @phpstan-import-type AmqpOptions from self
+     *
+     * @param string              $dsn        DSN string
+     * @param SerializerInterface $serializer Message serializer
+     *
+     * @phpstan-param AmqpOptions $options Additional options
      */
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
     {
@@ -54,64 +119,15 @@ class AmqpTransportFactory implements TransportFactoryInterface
      * Convenience method for direct instantiation outside Symfony DI.
      * Use createTransport() when integrating with Symfony Messenger transport factory system.
      *
+     * @phpstan-import-type AmqpOptions from self
+     *
      * @param string                 $dsn        DSN string
-     * @param array{
-     *     host?: string,
-     *     port?: int,
-     *     user?: string,
-     *     password?: string,
-     *     vhost?: string,
-     *     exchange?: string,
-     *     queue?: string,
-     *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
-     *     routing_key?: string,
-     *     default_publish_routing_key?: string,
-     *     publisher_confirms?: bool|string|int,
-     *     confirm_timeout?: float|int,
-     *     delay?: array{
-     *         exchange_name?: string,
-     *         queue_name_pattern?: string,
-     *         max_tracked_queues?: int,
-     *     },
-     *     timeout?: float|int,
-     *     read_timeout?: float|int,
-     *     write_timeout?: float|int,
-     *     connect_timeout?: float|int,
-     *     exchange_type?: string,
-     *     queue_arguments?: array<string, mixed>,
-     *     binding_keys?: list<string>,
-     *     binding_arguments?: array<string, mixed>,
-     *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
-     *     max_unacked_messages?: int,
-     *     batch_size?: int,
-     *     max_body_bytes?: int,
-     *     auto_setup?: bool|int,
-     *     redeclare_on_reconnect?: bool|int,
-     *     retry?: bool|int,
-     *     retry_count?: int,
-     *     retry_delay?: int,
-     *     retry_backoff?: bool|int,
-     *     retry_max_delay?: int,
-     *     retry_jitter?: bool|int,
-     *     retry_circuit_breaker?: bool|int,
-     *     retry_circuit_breaker_threshold?: int,
-     *     retry_circuit_breaker_timeout?: int,
-     *     retry_circuit_breaker_success_threshold?: int,
-     *     heartbeat?: int,
-     *     ssl?: bool|int,
-     *     ssl_cert?: string,
-     *     ssl_key?: string,
-     *     ssl_cacert?: string,
-     *     ssl_verify?: bool|string|int,
-     *     allow_insecure_verify?: bool|string|int,
-     *     exchange_flags?: int,
-     *     queue_flags?: int,
-     *     persistent?: bool|int,
-     *     durable?: bool|int,
-     * } $options
-     * @param SerializerInterface  $serializer Message serializer
+     * @param SerializerInterface    $serializer Message serializer
      * @param AmqpFactoryInterface|null $factory    AMQP factory (optional)
      * @param LoggerInterface|null      $logger     Logger (optional)
+     *
+     * @phpstan-param AmqpOptions $options Transport options
+     *
      * @throws \InvalidArgumentException When DSN is invalid
      */
     public static function create(
