@@ -78,8 +78,8 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *     max_unacked_messages?: int,
      *     batch_size?: int,
      *     max_body_bytes?: int|string,
-     *     auto_setup?: bool,
-     *     redeclare_on_reconnect?: bool,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
      *     routing_key?: string,
      * } $options
      */

@@ -98,9 +98,9 @@ final class Sender implements SenderInterface
      * @param array{
      *     exchange?: string,
      *     default_publish_routing_key?: string,
-     *     auto_setup?: bool,
-     *     redeclare_on_reconnect?: bool,
-     *     retry?: bool,
+     *     auto_setup?: bool|int,
+     *     redeclare_on_reconnect?: bool|int,
+     *     retry?: bool|int,
      *     publisher_confirms?: bool|string|int,
      *     confirm_timeout?: float|int,
      *     delay?: array{
@@ -399,8 +399,8 @@ final class Sender implements SenderInterface
     }
 
     /**
-     * @param array{body: string, headers: array<string, mixed>} $data       Encoded envelope
-     * @param array<string, mixed>                            $attributes AMQP message attributes
+     * @param array{body: string, headers?: array<string, string>} $data       Encoded envelope
+     * @param array<string, mixed>                              $attributes AMQP message attributes
      */
     private function sendWithDelay(
         array $data,

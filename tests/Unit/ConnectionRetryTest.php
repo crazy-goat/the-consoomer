@@ -25,6 +25,7 @@ class ConnectionRetryTest extends TestCase
      * threw instead of restating what the analyser can already infer from the
      * closure that always throws.
      */
+    /** @param class-string $expectedClass */
     private function assertCaught(mixed $caught, string $expectedClass, string $message): void
     {
         self::assertInstanceOf($expectedClass, $caught, $message);

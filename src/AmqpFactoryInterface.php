@@ -44,7 +44,7 @@ interface AmqpFactoryInterface
      *
      * @param \AMQPConnection      $connection AMQP connection
      * @param array{
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,

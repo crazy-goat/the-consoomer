@@ -124,13 +124,22 @@ final class DsnParser
 
         $pathOptions = $this->parsePath($info['path'] ?? '');
 
+        // The authority and path values, kept in locals so they can be
+        // re-asserted after the query string has been merged in (see below).
+        $host = $info['host'] ?? 'localhost';
+        $port = $info['port'] ?? 5672;
+        $user = rawurldecode($info['user'] ?? 'guest');
+        $password = rawurldecode($info['pass'] ?? 'guest');
+        $vhost = $pathOptions['vhost'];
+        $exchange = $pathOptions['exchange'];
+
         $result = [
-            'host' => $info['host'] ?? 'localhost',
-            'port' => $info['port'] ?? 5672,
-            'user' => rawurldecode($info['user'] ?? 'guest'),
-            'password' => rawurldecode($info['pass'] ?? 'guest'),
-            'vhost' => $pathOptions['vhost'],
-            'exchange' => $pathOptions['exchange'],
+            'host' => $host,
+            'port' => $port,
+            'user' => $user,
+            'password' => $password,
+            'vhost' => $vhost,
+            'exchange' => $exchange,
         ];
 
         $scheme = $info['scheme'] ?? '';
@@ -139,6 +148,7 @@ final class DsnParser
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
+                $port = 5671;
             }
         } elseif ($scheme === 'amqps') {
             // @deprecated Legacy amqps:// scheme — no longer claimed by AmqpTransportFactory::supports().
@@ -151,6 +161,7 @@ final class DsnParser
             $result['ssl'] = true;
             if (!isset($info['port'])) {
                 $result['port'] = 5671;
+                $port = 5671;
             }
         }
 
@@ -201,7 +212,12 @@ final class DsnParser
                 // ssl=true on a TLS scheme is a no-op; ignore other values and keep ssl=true.
                 continue;
             }
-            $result[$key] = $this->normalizeValue($value);
+            // parse_str() turns a purely numeric query key into an integer one
+            // (`?0=x` -> [0 => 'x']). Every comparison above already treats the
+            // key as a string, so store it as one: a query parameter is named by
+            // a string, and an int key here would leak into the merged options
+            // array as something the transport options shapes cannot describe.
+            $result[(string) $key] = $this->normalizeValue($value);
         }
 
         if (isset($result['queues']) && is_array($result['queues'])) {
@@ -216,7 +232,20 @@ final class DsnParser
 
         $this->validateOptionTypes($result);
 
-        return $this->validateParsedOptions($result);
+        // Re-assert the authority and path values. The loop above refuses any
+        // query key that collides with them (RESERVED_KEYS, #207), so nothing
+        // can have replaced them - writing them back states that guarantee
+        // locally instead of leaving it to the fact that the keys are refused.
+        $result['host'] = $host;
+        $result['port'] = $port;
+        $result['user'] = $user;
+        $result['password'] = $password;
+        $result['vhost'] = $vhost;
+        $result['exchange'] = $exchange;
+
+        $this->validateParsedOptions($result);
+
+        return $result;
     }
 
     /**
@@ -236,32 +265,10 @@ final class DsnParser
      *
      * Checks for required exchange name and validates exchange_type if provided.
      *
-     * @param array{
-     *     host: string,
-     *     port: int,
-     *     user: string,
-     *     password: string,
-     *     vhost: string,
-     *     exchange: string,
-     *     ssl?: bool|int,
-     *     exchange_type?: string,
-     *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool|int,
-     *     confirm_timeout?: float|int,
-     * } $options
-     * @return array{
-     *     host: string,
-     *     port: int,
-     *     user: string,
-     *     password: string,
-     *     vhost: string,
-     *     exchange: string,
-     *     ssl?: bool|int,
-     *     exchange_type?: string,
-     *     queue_arguments?: array<string, mixed>,
-     *     publisher_confirms?: bool|int,
-     *     confirm_timeout?: float|int,
-     * }
+     * @param array<string, mixed> $options Parsed options; only `exchange` and
+     *        `exchange_type` are inspected here - the authority and path values
+     *        are built by parse() itself and are not re-checked.
+     * @return array<string, mixed> The same options, unchanged
      * @throws \InvalidArgumentException When exchange is missing or exchange_type is invalid
      */
     private function validateParsedOptions(array $options): array

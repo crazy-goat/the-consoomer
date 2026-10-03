@@ -70,7 +70,7 @@ class AmqpFactory implements AmqpFactoryInterface
      *
      * @param \AMQPConnection      $connection AMQP connection to configure
      * @param array{
-     *     ssl?: bool,
+     *     ssl?: bool|int,
      *     ssl_cert?: string,
      *     ssl_key?: string,
      *     ssl_cacert?: string,
