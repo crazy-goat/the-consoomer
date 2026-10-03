@@ -1745,6 +1745,59 @@ class SenderTest extends TestCase
     }
 
     /**
+     * A mid-retry reconnect replaces the exchange with one bound to the new
+     * channel, so the publish has to go through that fresh object. Capturing the
+     * exchange when the closure was built would publish on the dead channel and
+     * silently lose the message (#273/#308).
+     *
+     * This deliberately uses two distinct exchange mocks; the test above reuses
+     * one mock for both, so it cannot tell the two apart. The Sender is built
+     * directly rather than through createSenderWithRetry(), because that helper
+     * pre-seeds the exchange property and so would skip the first
+     * createExchange() call this test depends on.
+     */
+    public function testRetryPublishesThroughTheExchangeFromAfterTheReconnect(): void
+    {
+        $options = ['exchange' => 'test_exchange', 'retry' => true, 'auto_setup' => true, 'redeclare_on_reconnect' => true];
+
+        $staleExchange = $this->createMock(\AMQPExchange::class);
+        $freshExchange = $this->createMock(\AMQPExchange::class);
+
+        $this->connection->method('checkHeartbeat')->willReturn(false);
+        // First attempt finds the broker down; the retry is connected.
+        $this->connection->method('isConnected')->willReturn(false, true);
+        $this->connection->expects($this->once())->method('reconnect');
+        $this->connection->method('getChannel')->willReturn($this->createMock(\AMQPChannel::class));
+
+        $this->setup->expects($this->exactly(2))->method('setupExchange');
+        $this->connection->expects($this->once())->method('updateActivity');
+
+        // send() creates the exchange, then the mid-retry reconnect creates a new one.
+        $this->factory
+            ->expects($this->exactly(2))
+            ->method('createExchange')
+            ->willReturn($staleExchange, $freshExchange);
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => []]);
+
+        // The publish must land on the exchange created after the reconnect.
+        $staleExchange->expects($this->never())->method('publish');
+        $freshExchange->expects($this->once())->method('publish');
+
+        $retry = $this->createMock(ConnectionRetryInterface::class);
+        $retry
+            ->method('withRetry')
+            ->willReturnCallback(function (callable $callback): void {
+                $callback();
+            });
+
+        $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);
+        $sender->send(new Envelope(new \stdClass()));
+    }
+
+    /**
      * A publisher-controlled routing key with characters that are unsafe for
      * AMQP entity names must be rejected before any declaration (#289).
      */

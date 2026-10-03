@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Changed
-- PHPStan raised from level 3 to level 8 with no baseline and no suppressed findings; every error it reported was fixed in code (#411)
+- PHPStan raised from level 3 to level 8 with no baseline and no suppressed findings; every error it reported was fixed in code. Along the way three error paths became explicit instead of surfacing as an opaque `TypeError` from ext-amqp: `Receiver::reject()` on an envelope with no delivery tag, and an `InfrastructureSetup` `exchange` option that is not a string, both throw `InvalidArgumentException`; `CircuitBreaker` constructed with `clock: null` now falls back to the system clock instead of failing on the first `recordFailure()` (#411)
 
 ### Fixed
 - A permanent-type failure of a half-open probe (#355) no longer removes all backpressure: the circuit stays HALF_OPEN but rejects further calls with `CircuitBreakerOpenException` for `retry_circuit_breaker_timeout` seconds before probing again, instead of running a guaranteed-to-fail broker operation on every call (#357)

@@ -295,10 +295,7 @@ final class Sender implements SenderInterface
     public function send(Envelope $envelope): Envelope
     {
         $this->ensureConnected();
-        // Publish through the exchange connect() hands back, so the retry
-        // closure below captures a known exchange instead of re-reading the
-        // nullable property on every attempt.
-        $exchange = $this->connect();
+        $this->connect();
 
         $stamp = $envelope->last(AmqpStamp::class);
 
@@ -324,10 +321,13 @@ final class Sender implements SenderInterface
                 $this->sendWithDelay($data, $routingKey, $flags, $attributes, $delayStamp, $delayQueueName);
             };
         } else {
-            $publishCallback = function () use ($exchange, $data, $routingKey, $flags, $attributes): void {
+            $publishCallback = function () use ($data, $routingKey, $flags, $attributes): void {
                 $channel = $this->confirmChannel();
 
-                $exchange->publish(
+                // Read the exchange at publish time, not when the closure was
+                // built: a retry can reconnect in between, which replaces
+                // $this->exchange with one bound to the new channel (#273/#308).
+                $this->connect()->publish(
                     $data['body'],
                     $routingKey,
                     $flags,

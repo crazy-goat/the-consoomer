@@ -467,6 +467,29 @@ class InfrastructureSetupTest extends TestCase
         $setup->setup();
     }
 
+    public function testConstructorThrowsWhenExchangeIsNotAString(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('exchange must be a string');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 42,
+            'queue' => 'test_queue',
+        ]);
+    }
+
+    public function testConstructorThrowsWhenBindingArgumentsIsNotAnArray(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('binding_arguments must be an array');
+
+        new InfrastructureSetup($this->factory, $this->connection, [
+            'exchange' => 'test_exchange',
+            'queue' => 'test_queue',
+            'binding_arguments' => 'not-an-array',
+        ]);
+    }
+
     public function testConstructorThrowsWhenQueuesIsNotAnArray(): void
     {
         $this->expectException(\InvalidArgumentException::class);

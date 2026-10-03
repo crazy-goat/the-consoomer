@@ -6,6 +6,7 @@ namespace CrazyGoat\TheConsoomer\Tests\Unit;
 
 use CrazyGoat\TheConsoomer\CircuitBreaker;
 use CrazyGoat\TheConsoomer\CircuitState;
+use CrazyGoat\TheConsoomer\ClockInterface;
 use CrazyGoat\TheConsoomer\Tests\Unit\Clock\FrozenClock;
 use PHPUnit\Framework\TestCase;
 
@@ -87,6 +88,27 @@ class CircuitBreakerTest extends TestCase
             ],
             $states,
         );
+    }
+
+    /**
+     * Every elapsed-time check needs a clock, so an explicit null must fall back
+     * to the system clock rather than leaving a landmine that fails on the first
+     * recordFailure().
+     */
+    public function testNullClockFallsBackToTheSystemClock(): void
+    {
+        $cb = new CircuitBreaker(threshold: 1, timeout: 60, clock: null);
+
+        $reflection = new \ReflectionClass(CircuitBreaker::class);
+        $clockProperty = $reflection->getProperty('clock');
+
+        $clock = $clockProperty->getValue($cb);
+        $this->assertInstanceOf(ClockInterface::class, $clock);
+
+        // The breaker still works end to end on the fallback clock.
+        $cb->recordFailure();
+        $this->assertSame(CircuitState::OPEN, $cb->getState());
+        $this->assertFalse($cb->acquire());
     }
 
     public function testCustomSuccessThresholdRequiresMoreSuccesses(): void

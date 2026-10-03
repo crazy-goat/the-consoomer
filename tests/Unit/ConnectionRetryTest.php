@@ -24,8 +24,9 @@ class ConnectionRetryTest extends TestCase
      * check a genuine run-time one — the test verifies what the retry actually
      * threw instead of restating what the analyser can already infer from the
      * closure that always throws.
+     *
+     * @param class-string $expectedClass
      */
-    /** @param class-string $expectedClass */
     private function assertCaught(mixed $caught, string $expectedClass, string $message): void
     {
         self::assertInstanceOf($expectedClass, $caught, $message);
@@ -691,17 +692,26 @@ class ConnectionRetryTest extends TestCase
         }
 
         // A retry sleeps for the base delay scaled by a random factor, so ten
-        // runs cannot all take the same time. This assertion used to be
-        // assertTrue(true), which verified nothing about jitter at all.
-        $distinct = array_unique(array_map(
-            static fn(float $seconds): int => (int) ($seconds * 1_000_000),
-            $elapsed,
-        ));
+        // The sleep is the base delay scaled by a random factor, so the ten
+        // durations must actually spread. Measured over ten runs on this
+        // machine: with jitter the spread is ~46ms, without it ~4ms (plain
+        // scheduler noise). A 20ms threshold sits well clear of that noise and
+        // well inside the jittered spread.
+        //
+        // This assertion used to be assertTrue(true), which verified nothing at
+        // all, and an earlier version only compared the durations for
+        // inequality - which passes even with jitter removed, because two real
+        // sleeps practically never take the identical number of microseconds.
+        $spread = (max($elapsed) - min($elapsed)) * 1_000_000;
 
         $this->assertGreaterThan(
-            1,
-            count($distinct),
-            'Jitter must produce different sleep times across runs, got: ' . implode(', ', $distinct),
+            20_000,
+            $spread,
+            sprintf(
+                'Jittered sleeps must differ far more than scheduler noise; measured spread %.0fus over %s',
+                $spread,
+                implode(', ', array_map(static fn(float $s): int => (int) ($s * 1_000_000), $elapsed)),
+            ),
         );
     }
 

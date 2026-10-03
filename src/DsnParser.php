@@ -212,11 +212,14 @@ final class DsnParser
                 // ssl=true on a TLS scheme is a no-op; ignore other values and keep ssl=true.
                 continue;
             }
-            // parse_str() turns a purely numeric query key into an integer one
-            // (`?0=x` -> [0 => 'x']). Every comparison above already treats the
-            // key as a string, so store it as one: a query parameter is named by
-            // a string, and an int key here would leak into the merged options
-            // array as something the transport options shapes cannot describe.
+            // parse_str() types a purely numeric query parameter name as an integer
+            // key (`?0=x` -> [0 => 'x']), while every comparison above already
+            // treats the key as a string. Cast it so the option name is written
+            // as the string it is. Note that PHP itself turns a purely numeric
+            // string back into an int key, so this expresses the intent for the
+            // static type rather than changing what PHP stores; an option named
+            // "0" cannot collide with anything, because it matches no reserved
+            // key and no consumer looks an option up by number.
             $result[(string) $key] = $this->normalizeValue($value);
         }
 

@@ -329,6 +329,34 @@ class ReceiverTest extends TestCase
         $receiver->reject($envelope);
     }
 
+    /**
+     * ext-amqp reports no delivery tag for an envelope that was never
+     * delivered. Rejecting it is impossible; the guard must say so instead of
+     * handing null to AMQPQueue::reject(int) and surfacing a bare TypeError.
+     */
+    public function testRejectThrowsWhenTheEnvelopeCarriesNoDeliveryTag(): void
+    {
+        $options = ['queue' => 'test_queue'];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope
+            ->method('getDeliveryTag')
+            ->willReturn(null);
+
+        $envelope = new Envelope(new \stdClass(), [new AmqpReceivedStamp($amqpEnvelope, 'test_queue')]);
+
+        $this->queue
+            ->expects($this->never())
+            ->method('reject');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('carries no AMQP delivery tag');
+
+        $receiver->reject($envelope);
+    }
+
     public function testMaxUnackedMessagesConfigurationDefaultsTo100(): void
     {
         $options = ['queue' => 'test_queue'];
