@@ -51,6 +51,19 @@ final class DsnParser
      * `?retry=true` / `?retry=false` yield a real bool. Callers must therefore
      * keep treating these options as truthy values, not compare them to `true`.
      *
+     * Only the six authority/path values are promised a type here, and only
+     * because parse() re-asserts them after the query string has been merged
+     * (#207 refuses any query key that collides with them). Everything after
+     * the `...` is whatever the query string contained: the option vocabulary
+     * and the type each option carries are documented by
+     * {@see self::INT_OPTIONS}, {@see self::FLOAT_OPTIONS},
+     * {@see self::BOOL_OPTIONS} and by the option shape in
+     * {@see AmqpTransportFactory::create()}, and
+     * {@see validateOptionTypes()} enforces the first three groups here.
+     * Declaring the rest as a closed shape would describe a guarantee this
+     * method cannot make — `?queue[]=a` and `?queues[q][x]=1` both produce
+     * structures no per-key shape describes.
+     *
      * @return array{
      *     host: string,
      *     port: int,
@@ -58,51 +71,7 @@ final class DsnParser
      *     password: string,
      *     vhost: string,
      *     exchange: string,
-     *     ssl?: bool|int,
-     *     timeout?: float|int,
-     *     read_timeout?: float|int,
-     *     write_timeout?: float|int,
-     *     connect_timeout?: float|int,
-     *     exchange_type?: string,
-     *     queue?: string,
-     *     routing_key?: string,
-     *     default_publish_routing_key?: string,
-     *     queues?: array<string, array{binding_keys?: list<string>}>,
-     *     queue_arguments?: array<string, mixed>,
-     *     binding_keys?: list<string>,
-     *     binding_arguments?: array<string, mixed>,
-     *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
-     *     max_unacked_messages?: int,
-     *     batch_size?: int,
-     *     max_body_bytes?: int,
-     *     auto_setup?: bool|int,
-     *     redeclare_on_reconnect?: bool|int,
-     *     retry?: bool|int,
-     *     retry_count?: int,
-     *     retry_delay?: int,
-     *     retry_backoff?: bool|int,
-     *     retry_max_delay?: int,
-     *     retry_jitter?: bool|int,
-     *     retry_circuit_breaker?: bool|int,
-     *     retry_circuit_breaker_threshold?: int,
-     *     retry_circuit_breaker_timeout?: int,
-     *     retry_circuit_breaker_success_threshold?: int,
-     *     heartbeat?: int,
-     *     publisher_confirms?: bool|int,
-     *     confirm_timeout?: float|int,
-     *     delay?: array{
-     *         exchange_name?: string,
-     *         queue_name_pattern?: string,
-     *         max_tracked_queues?: int,
-     *     },
-     *     ssl_cert?: string,
-     *     ssl_key?: string,
-     *     ssl_cacert?: string,
-     *     ssl_verify?: bool|int,
-     *     exchange_flags?: int,
-     *     queue_flags?: int,
-     *     persistent?: bool|int,
-     *     durable?: bool|int,
+     *     ...
      * }
      */
     public function parse(string $dsn): array
@@ -289,7 +258,11 @@ final class DsnParser
                 throw new \InvalidArgumentException(
                     sprintf(
                         'Invalid exchange_type "%s". Valid types are: %s',
-                        $options['exchange_type'],
+                        // describeValue() rather than a bare %s: a non-string
+                        // value fails the strict in_array() above too, and
+                        // describing it beats an "Array to string conversion"
+                        // notice from sprintf().
+                        $this->describeValue($options['exchange_type']),
                         implode(', ', self::$validExchangeTypes),
                     ),
                 );
@@ -379,8 +352,15 @@ final class DsnParser
     }
 
     /**
-     * @param array<mixed> $queues
-     * @return array<string, array{binding_keys?: list<string>}>
+     * Reshapes the `queues` query parameter into name => configuration.
+     *
+     * `?queues[name]=` and `?queues[name][binding_keys][]=key` both arrive as
+     * nested arrays, so the per-queue configuration is copied through
+     * untouched: its shape depends on the query string and is validated by
+     * {@see InfrastructureSetup}, which is the class that reads it.
+     *
+     * @param array<array-key, mixed> $queues
+     * @return array<string, array<array-key, mixed>>
      */
     private function normalizeQueuesFromDsn(array $queues): array
     {
