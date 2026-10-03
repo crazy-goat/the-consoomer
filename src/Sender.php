@@ -108,7 +108,11 @@ final class Sender implements SenderInterface
      *         queue_name_pattern?: string,
      *         max_tracked_queues?: int,
      *     },
-     * } $options
+     *     routing_key?: string,
+     * } $options `routing_key` belongs to the transport (Receiver consumes it)
+     *     and reaches this constructor through the merged option array, where it
+     *     is deliberately ignored - {@see getRoutingKeyForMessage()} uses the
+     *     stamp and `default_publish_routing_key` only.
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,
