@@ -75,7 +75,7 @@ class AmqpFactory implements AmqpFactoryInterface
      *     ssl_key?: string,
      *     ssl_cacert?: string,
      *     ssl_verify?: bool|string|int,
-     *     allow_insecure_verify?: bool,
+     *     allow_insecure_verify?: bool|string|int,
      * } $options SSL configuration options
      *
      * `ssl_verify` is accepted as bool|string|int on purpose: options reach this

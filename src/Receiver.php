@@ -77,7 +77,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      *     exchange?: string,
      *     max_unacked_messages?: int,
      *     batch_size?: int,
-     *     max_body_bytes?: int,
+     *     max_body_bytes?: int|string,
      *     auto_setup?: bool,
      *     redeclare_on_reconnect?: bool,
      *     routing_key?: string,

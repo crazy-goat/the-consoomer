@@ -30,24 +30,31 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     /**
      * The option array comes straight from the transport factory, i.e. from
      * DSN query parameters merged with programmatic options. Those are untyped
-     * input, so `exchange`, `binding_arguments` and the flag options are
-     * declared as the union of what can actually arrive and are validated here.
+     * input, and validating them is this constructor's job: every option listed
+     * as `mixed` below is checked here (or by validateQueues() /
+     * validateExchangeBindings() / validateBindingKeys()) and is stored in a
+     * typed property once it passes. Declaring them any narrower would only
+     * describe the happy path and hide the guards that produce the readable
+     * InvalidArgumentException instead of a TypeError further down.
+     *
+     * `exchange_type` is not validated here, so it stays typed; `null` is
+     * accepted and falls back to `direct`.
      *
      * @param array{
      *     exchange?: mixed,
      *     queue?: string,
-     *     queues?: array<string, array{binding_keys?: list<string>, binding_arguments?: array<string, mixed>, arguments?: array<string, mixed>}>,
-     *     exchange_type?: string,
+     *     queues?: mixed,
+     *     exchange_type?: string|null,
      *     routing_key?: string,
-     *     binding_keys?: list<string>,
+     *     binding_keys?: mixed,
      *     binding_arguments?: mixed,
      *     queue_arguments?: array<string, mixed>,
      *     exchange_flags?: mixed,
      *     queue_flags?: mixed,
-     *     exchange_bindings?: array<array{target: string, routing_keys?: list<string>}>,
+     *     exchange_bindings?: mixed,
      *     durable?: bool,
      * } $options
-     * @throws \InvalidArgumentException When exchange is missing or the option types are wrong
+     * @throws \InvalidArgumentException When exchange is missing or an option has the wrong type
      */
     public function __construct(
         private readonly AmqpFactoryInterface $factory,

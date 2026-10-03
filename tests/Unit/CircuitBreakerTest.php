@@ -57,19 +57,36 @@ class CircuitBreakerTest extends TestCase
             successThreshold: 2,
         );
 
+        // Record the state at each step and assert the whole transition sequence in
+        // one go. Asserting each step separately makes the analyser narrow
+        // getState() to the first value and never invalidate it, even though
+        // acquire() and recordSuccess() both change the state - which turned
+        // correct assertions into "always false" / "unresolvable type".
+        $states = [];
+
         $cb->recordFailure();
-        $this->assertSame(CircuitState::OPEN, $cb->getState());
+        $states[] = $cb->getState();
 
         usleep(1100000);
 
         $this->assertTrue($cb->acquire());
-        $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
+        $states[] = $cb->getState();
 
         $cb->recordSuccess();
-        $this->assertSame(CircuitState::HALF_OPEN, $cb->getState());
+        $states[] = $cb->getState();
 
         $cb->recordSuccess();
-        $this->assertSame(CircuitState::CLOSED, $cb->getState());
+        $states[] = $cb->getState();
+
+        $this->assertSame(
+            [
+                CircuitState::OPEN,
+                CircuitState::HALF_OPEN,
+                CircuitState::HALF_OPEN,
+                CircuitState::CLOSED,
+            ],
+            $states,
+        );
     }
 
     public function testCustomSuccessThresholdRequiresMoreSuccesses(): void
