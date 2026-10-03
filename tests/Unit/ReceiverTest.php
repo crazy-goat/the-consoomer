@@ -33,6 +33,7 @@ class ReceiverTest extends TestCase
         $this->setup = $this->createMock(InfrastructureSetupInterface::class);
     }
 
+    /** @param array<string, mixed> $options */
     private function createReceiverWithQueue(array $options): Receiver
     {
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup);
@@ -47,6 +48,7 @@ class ReceiverTest extends TestCase
         return $receiver;
     }
 
+    /** @param array<string, mixed> $options */
     private function createReceiverWithQueueAndRetry(array $options, \CrazyGoat\TheConsoomer\ConnectionRetryInterface $retry): Receiver
     {
         $receiver = new Receiver($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);

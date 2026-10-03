@@ -25,6 +25,8 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      * not have to re-check the raw option array.
      */
     private readonly string $exchange;
+
+    /** @var array<string, mixed> */
     private readonly array $bindingArguments;
 
     /**

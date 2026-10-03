@@ -109,6 +109,8 @@ class SenderTest extends TestCase
     }
 
     /**
+     * @param array<string, mixed> $options
+     *
      * @dataProvider routingKeyPrecedenceProvider
      */
     public function testSendRoutingKeyPrecedence(
@@ -1885,6 +1887,7 @@ class SenderTest extends TestCase
         $this->assertSame(2, $attempts);
     }
 
+    /** @param array<string, mixed> $options */
     private function createSender(array $options): Sender
     {
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup);
@@ -1896,6 +1899,7 @@ class SenderTest extends TestCase
         return $sender;
     }
 
+    /** @param array<string, mixed> $options */
     private function createSenderWithRetry(array $options, ConnectionRetryInterface $retry): Sender
     {
         $sender = new Sender($this->factory, $this->connection, $this->serializer, $options, $this->setup, $retry);

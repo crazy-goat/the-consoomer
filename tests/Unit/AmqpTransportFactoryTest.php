@@ -40,6 +40,9 @@ class AmqpTransportFactoryTest extends TestCase
         $this->assertFalse($result);
     }
 
+    /**
+     * @return array{AmqpFactoryInterface&\PHPUnit\Framework\MockObject\MockObject, \AMQPConnection&\PHPUnit\Framework\MockObject\MockObject}
+     */
     private function createMockFactoryAndConnection(): array
     {
         $factory = $this->createMock(AmqpFactoryInterface::class);

@@ -14,6 +14,8 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
  *
  * Supports both Symfony Messenger transport factory interface and
  * direct instantiation via static create() method.
+ *
+ * @implements TransportFactoryInterface<TransportInterface>
  */
 class AmqpTransportFactory implements TransportFactoryInterface
 {
@@ -27,8 +29,8 @@ class AmqpTransportFactory implements TransportFactoryInterface
     /**
      * {@inheritdoc}
      *
-     * @param string $dsn     DSN string
-     * @param array  $options Additional options
+     * @param string              $dsn     DSN string
+     * @param array<string, mixed> $options Additional options
      * @return bool True if DSN is supported (amqp-consoomer:// or amqps-consoomer://)
      */
     public function supports(string $dsn, array $options): bool
@@ -39,9 +41,9 @@ class AmqpTransportFactory implements TransportFactoryInterface
     /**
      * {@inheritdoc}
      *
-     * @param string              $dsn        DSN string
-     * @param array               $options    Additional options
-     * @param SerializerInterface $serializer Message serializer
+     * @param string                 $dsn        DSN string
+     * @param array<string, mixed>   $options    Additional options
+     * @param SerializerInterface    $serializer Message serializer
      */
     public function createTransport(string $dsn, array $options, SerializerInterface $serializer): TransportInterface
     {

@@ -398,6 +398,10 @@ final class Sender implements SenderInterface
         $this->delayExchange->declareExchange();
     }
 
+    /**
+     * @param array{body: string, headers: array<string, mixed>} $data       Encoded envelope
+     * @param array<string, mixed>                            $attributes AMQP message attributes
+     */
     private function sendWithDelay(
         array $data,
         string $routingKey,
