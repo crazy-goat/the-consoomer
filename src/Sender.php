@@ -267,7 +267,21 @@ final class Sender implements SenderInterface
         $attributes = $stamp?->getAttributes() ?? [];
         $serializerHeaders = $data['headers'] ?? [];
 
-        $headers = ($attributes['headers'] ?? []) + $serializerHeaders;
+        // `headers` is one of the documented AMQP attributes, but the attribute
+        // bag is deliberately open (see AmqpStamp::__construct()), so
+        // withAttribute('headers', ...) can put anything in there. Merging a
+        // non-table value fails as "Unsupported operand types: string + array"
+        // from inside the merge, with nothing naming the offending attribute,
+        // so it is refused here instead.
+        $stampHeaders = $attributes['headers'] ?? [];
+        if (!is_array($stampHeaders)) {
+            throw new \InvalidArgumentException(sprintf(
+                'AMQP attribute "headers" must be an array, got "%s".',
+                get_debug_type($stampHeaders),
+            ));
+        }
+
+        $headers = $stampHeaders + $serializerHeaders;
         unset($attributes['headers']);
 
         if (!isset($attributes['content_type']) && isset($headers['Content-Type'])) {
@@ -291,6 +305,7 @@ final class Sender implements SenderInterface
      * @throws RetryExhaustedException When retries are exhausted (retry enabled)
      * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
      * @throws UnexpectedOperationException When a non-AMQP failure is wrapped (retry enabled)
+     * @throws \InvalidArgumentException When a stamp sets the AMQP `headers` attribute to a non-array value
      */
     public function send(Envelope $envelope): Envelope
     {

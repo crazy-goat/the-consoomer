@@ -586,6 +586,35 @@ class SenderTest extends TestCase
         $sender->send($envelope);
     }
 
+    /**
+     * The attribute bag is open (withAttribute() takes any value), so `headers`
+     * can hold a non-table. Merging it used to fail as "Unsupported operand
+     * types: string + array" from inside the `+`, naming neither the attribute
+     * nor the message.
+     */
+    public function testSendRefusesANonArrayHeadersAttribute(): void
+    {
+        $options = ['exchange' => 'test_exchange'];
+        $stamp = (new AmqpStamp('key'))->withAttribute('headers', 'not-an-array');
+
+        $this->serializer
+            ->method('encode')
+            ->willReturn(['body' => 'test', 'headers' => ['x-other' => 'other']]);
+
+        // Nothing may reach the broker: the attribute bag is refused before
+        // any publish attempt.
+        $this->exchange->expects($this->never())->method('publish');
+
+        $this->connection
+            ->method('checkHeartbeat')
+            ->willReturn(false);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('AMQP attribute "headers" must be an array, got "string".');
+
+        $this->createSender($options)->send(new Envelope(new \stdClass(), [$stamp]));
+    }
+
     public function testSendWithConfirmTimeoutEnablesConfirms(): void
     {
         $options = ['exchange' => 'test_exchange', 'confirm_timeout' => 5];
