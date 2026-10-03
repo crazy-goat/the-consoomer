@@ -26,11 +26,37 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      */
     private readonly string $exchange;
 
-    /** @var array<string, mixed> */
+    /**
+     * AMQP argument table shared by every single-queue binding.
+     *
+     * `is_array()` is the only check {@see validateQueues()} applies to a
+     * `binding_arguments` value, so the key type is deliberately not promised
+     * here: ext-amqp accepts the table and drops an entry whose key is not a
+     * string ("Ignoring non-string header field"), and narrowing this property
+     * to `array<string, mixed>` would describe a promise the constructor does
+     * not keep.
+     *
+     * @var array<array-key, mixed>
+     */
     private readonly array $bindingArguments;
 
-    /** @var array<string, array<string, mixed>> Validated by validateQueues() */
+    /** @var array<array-key, string> Validated by validateBindingKeys() */
+    private readonly array $bindingKeys;
+
+    /**
+     * Per-queue configuration in the shape validateQueues() proved: every
+     * present key has been checked and narrowed.
+     *
+     * @var array<string, array{
+     *     binding_keys?: array<array-key, string>,
+     *     binding_arguments?: array<array-key, mixed>,
+     *     arguments?: array<array-key, mixed>,
+     * }>
+     */
     private readonly array $queues;
+
+    /** @var list<array{target: string, routing_keys: array<array-key, string>}> Validated by validateExchangeBindings() */
+    private readonly array $exchangeBindings;
 
     /**
      * The option array comes straight from the transport factory, i.e. from
@@ -43,7 +69,9 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      * InvalidArgumentException instead of a TypeError further down.
      *
      * `exchange_type` is not validated here, so it stays typed; `null` is
-     * accepted and falls back to `direct`.
+     * accepted and falls back to `direct`. The two `*_flags` options are read
+     * with an `(int)` cast ({@see resolveFlags()}), so they accept an int or a
+     * numeric string but promise nothing beyond that.
      *
      * @param array{
      *     exchange?: mixed,
@@ -54,8 +82,8 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      *     binding_keys?: mixed,
      *     binding_arguments?: mixed,
      *     queue_arguments?: array<string, mixed>,
-     *     exchange_flags?: mixed,
-     *     queue_flags?: mixed,
+     *     exchange_flags?: int|string,
+     *     queue_flags?: int|string,
      *     exchange_bindings?: mixed,
      *     durable?: bool|int,
      * } $options
@@ -93,13 +121,13 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             ? $this->validateQueues($options['queues'])
             : [];
 
-        if (isset($options['exchange_bindings'])) {
-            $this->validateExchangeBindings($options['exchange_bindings']);
-        }
+        $this->exchangeBindings = isset($options['exchange_bindings'])
+            ? $this->validateExchangeBindings($options['exchange_bindings'])
+            : [];
 
-        if (isset($options['binding_keys'])) {
-            $this->validateBindingKeys($options['binding_keys']);
-        }
+        $this->bindingKeys = isset($options['binding_keys'])
+            ? $this->validateBindingKeys($options['binding_keys'])
+            : [($options['routing_key'] ?? '')];
 
         foreach (self::ALLOWED_OPTION_KEYS as $key) {
             // Read the flag once: the guard below has to look at the same value
@@ -193,7 +221,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             ExchangeType::HEADERS => \AMQP_EX_TYPE_HEADERS,
             default => \AMQP_EX_TYPE_DIRECT,
         });
-        $exchange->setFlags($this->resolveFlags('exchange_flags'));
+        $exchange->setFlags($this->resolveFlags($this->options['exchange_flags'] ?? 0));
 
         return $exchange;
     }
@@ -239,16 +267,14 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
     {
         $queue = $this->factory->createQueue($channel);
         $queue->setName($queueName);
-        $queue->setFlags($this->resolveFlags('queue_flags'));
+        $queue->setFlags($this->resolveFlags($this->options['queue_flags'] ?? 0));
         if (isset($this->options['queue_arguments'])) {
             $queue->setArguments($this->options['queue_arguments']);
         }
         $queue->declareQueue();
 
-        $bindingKeys = $this->options['binding_keys'] ?? [$this->options['routing_key'] ?? ''];
-        $bindingArguments = $this->bindingArguments;
-        foreach ($bindingKeys as $bindingKey) {
-            $queue->bind($this->exchange, $bindingKey, $bindingArguments);
+        foreach ($this->bindingKeys as $bindingKey) {
+            $queue->bind($this->exchange, $bindingKey, $this->bindingArguments);
         }
     }
 
@@ -257,7 +283,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
         foreach ($this->queues as $queueName => $queueConfig) {
             $queue = $this->factory->createQueue($channel);
             $queue->setName($queueName);
-            $queue->setFlags($this->resolveFlags('queue_flags'));
+            $queue->setFlags($this->resolveFlags($this->options['queue_flags'] ?? 0));
 
             $queueArgs = $queueConfig['arguments'] ?? $this->options['queue_arguments'] ?? null;
             if ($queueArgs !== null) {
@@ -278,9 +304,15 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
      *
      * Returning the validated value (instead of only asserting on it) lets the
      * constructor store it in a typed property, so setupMultipleQueues() does
-     * not have to re-derive the shape from the raw options array.
+     * not have to re-derive the shape from the raw options array. The narrowed
+     * array is rebuilt rather than returned as-is because the checks narrow the
+     * individual values, not the array's value types.
      *
-     * @return array<string, array<string, mixed>>
+     * @return array<string, array{
+     *     binding_keys?: array<array-key, string>,
+     *     binding_arguments?: array<array-key, mixed>,
+     *     arguments?: array<array-key, mixed>,
+     * }>
      * @throws \InvalidArgumentException
      */
     private function validateQueues(mixed $queues): array
@@ -293,6 +325,7 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             throw new \InvalidArgumentException('queues option must not be empty');
         }
 
+        $validated = [];
         foreach ($queues as $name => $config) {
             if (!is_string($name) || $name === '') {
                 throw new \InvalidArgumentException('Each queue name must be a non-empty string');
@@ -302,56 +335,77 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
                 throw new \InvalidArgumentException(sprintf('queues[%s] must be an array', $name));
             }
 
+            $queue = [];
+
             if (isset($config['binding_keys'])) {
-                if (!is_array($config['binding_keys'])) {
+                $bindingKeys = $config['binding_keys'];
+                if (!is_array($bindingKeys)) {
                     throw new \InvalidArgumentException(sprintf('queues[%s].binding_keys must be an array', $name));
                 }
 
-                foreach ($config['binding_keys'] as $keyIndex => $key) {
+                $keys = [];
+                foreach ($bindingKeys as $keyIndex => $key) {
                     if (!is_string($key)) {
                         throw new \InvalidArgumentException(sprintf('queues[%s].binding_keys[%d] must be a string', $name, $keyIndex));
                     }
+                    $keys[$keyIndex] = $key;
                 }
+                $queue['binding_keys'] = $keys;
             }
 
-            if (isset($config['binding_arguments']) && !is_array($config['binding_arguments'])) {
-                throw new \InvalidArgumentException(sprintf('queues[%s].binding_arguments must be an array', $name));
+            if (isset($config['binding_arguments'])) {
+                $bindingArguments = $config['binding_arguments'];
+                if (!is_array($bindingArguments)) {
+                    throw new \InvalidArgumentException(sprintf('queues[%s].binding_arguments must be an array', $name));
+                }
+                $queue['binding_arguments'] = $bindingArguments;
             }
 
-            if (isset($config['arguments']) && !is_array($config['arguments'])) {
-                throw new \InvalidArgumentException(sprintf('queues[%s].arguments must be an array', $name));
+            if (isset($config['arguments'])) {
+                $arguments = $config['arguments'];
+                if (!is_array($arguments)) {
+                    throw new \InvalidArgumentException(sprintf('queues[%s].arguments must be an array', $name));
+                }
+                $queue['arguments'] = $arguments;
             }
+
+            $validated[$name] = $queue;
         }
 
-        return $queues;
+        return $validated;
     }
 
     private function setupExchangeBindings(\AMQPExchange $exchange): void
     {
-        $bindings = $this->options['exchange_bindings'] ?? [];
-
-        foreach ($bindings as $binding) {
-            $target = $binding['target'];
-            $routingKeys = $binding['routing_keys'] ?? [''];
-
-            foreach ($routingKeys as $routingKey) {
-                $exchange->bind($target, $routingKey);
+        foreach ($this->exchangeBindings as $binding) {
+            foreach ($binding['routing_keys'] as $routingKey) {
+                $exchange->bind($binding['target'], $routingKey);
             }
         }
     }
 
-    private function resolveFlags(string $optionName): int
-    {
-        $flags = (int) ($this->options[$optionName] ?? 0);
-        if ($this->options['durable'] ?? true) {
-            $flags |= \AMQP_DURABLE;
-        }
-        return $flags;
-    }
     /**
+     * Flags for the exchange or the queue: the configured bitmask, plus
+     * AMQP_DURABLE unless `durable` is turned off.
+     *
+     * Takes the value rather than the option name so the read happens against a
+     * literal key — that is what gives the `(int)` cast a typed operand instead
+     * of an unchecked `mixed`.
+     */
+    private function resolveFlags(int|string $flags): int
+    {
+        $resolved = (int) $flags;
+        if ($this->options['durable'] ?? true) {
+            $resolved |= \AMQP_DURABLE;
+        }
+        return $resolved;
+    }
+
+    /**
+     * @return array<array-key, string>
      * @throws \InvalidArgumentException
      */
-    private function validateBindingKeys(mixed $bindingKeys): void
+    private function validateBindingKeys(mixed $bindingKeys): array
     {
         if (!is_array($bindingKeys)) {
             throw new \InvalidArgumentException('binding_keys must be an array');
@@ -361,46 +415,67 @@ final class InfrastructureSetup implements InfrastructureSetupInterface
             throw new \InvalidArgumentException('binding_keys must not be empty');
         }
 
+        $validated = [];
         foreach ($bindingKeys as $index => $key) {
             if (!is_string($key)) {
                 throw new \InvalidArgumentException(sprintf('binding_keys[%d] must be a string', $index));
             }
+            $validated[$index] = $key;
         }
+
+        return $validated;
     }
 
     /**
+     * Validates the `exchange_bindings` option and returns it with every field
+     * narrowed, so setupExchangeBindings() reads typed values instead of
+     * re-deriving them from the raw options array.
+     *
+     * @return list<array{target: string, routing_keys: array<array-key, string>}>
      * @throws \InvalidArgumentException
      */
-    private function validateExchangeBindings(mixed $bindings): void
+    private function validateExchangeBindings(mixed $bindings): array
     {
         if (!is_array($bindings)) {
             throw new \InvalidArgumentException('exchange_bindings must be an array');
         }
 
+        $validated = [];
         foreach ($bindings as $index => $binding) {
             if (!is_array($binding)) {
                 throw new \InvalidArgumentException(sprintf('exchange_bindings[%d] must be an array', $index));
             }
 
-            if (!isset($binding['target']) || !is_string($binding['target']) || $binding['target'] === '') {
+            $target = $binding['target'] ?? null;
+            if (!is_string($target) || $target === '') {
                 throw new \InvalidArgumentException(sprintf('exchange_bindings[%d].target must be a non-empty string', $index));
             }
 
-            if (isset($binding['routing_keys'])) {
-                if (!is_array($binding['routing_keys'])) {
+            $routingKeys = $binding['routing_keys'] ?? null;
+            if ($routingKeys === null) {
+                $routingKeys = [''];
+            } else {
+                if (!is_array($routingKeys)) {
                     throw new \InvalidArgumentException(sprintf('exchange_bindings[%d].routing_keys must be an array', $index));
                 }
 
-                if ($binding['routing_keys'] === []) {
+                if ($routingKeys === []) {
                     throw new \InvalidArgumentException(sprintf('exchange_bindings[%d].routing_keys must not be empty', $index));
                 }
 
-                foreach ($binding['routing_keys'] as $keyIndex => $key) {
+                $keys = [];
+                foreach ($routingKeys as $keyIndex => $key) {
                     if (!is_string($key)) {
                         throw new \InvalidArgumentException(sprintf('exchange_bindings[%d].routing_keys[%d] must be a string', $index, $keyIndex));
                     }
+                    $keys[$keyIndex] = $key;
                 }
+                $routingKeys = $keys;
             }
+
+            $validated[] = ['target' => $target, 'routing_keys' => $routingKeys];
         }
+
+        return $validated;
     }
 }
