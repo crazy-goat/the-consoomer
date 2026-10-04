@@ -7,6 +7,7 @@
 - `AmqpStamp::headers` is now validated before it is merged with the serializer's headers. A message stamped with e.g. `->withAttribute('headers', 'x')` used to fail with `TypeError: Unsupported operand types: string + array` from inside the merge, naming neither the attribute nor the message; it now throws `InvalidArgumentException` naming the attribute and the type it received, before anything is published (#422)
 
 ### Fixed
+- `Receiver::ack()` no longer sends delivery tag `0` for an envelope that carries no AMQP delivery tag. The `(int)` cast turned ext-amqp's `null` into `0`, which `AMQPQueue::ack()` passes on without raising anything; the broker then answers `406 PRECONDITION_FAILED - unknown delivery tag 0` and closes the channel, discarding every other ack buffered on it. Such an envelope is now refused with an `InvalidArgumentException` naming the queue, matching `reject()` (#425)
 - A permanent-type failure of a half-open probe (#355) no longer removes all backpressure: the circuit stays HALF_OPEN but rejects further calls with `CircuitBreakerOpenException` for `retry_circuit_breaker_timeout` seconds before probing again, instead of running a guaranteed-to-fail broker operation on every call (#357)
 
 ### Added
