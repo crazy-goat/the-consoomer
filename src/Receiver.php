@@ -440,6 +440,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * and becomes a no-op (#220).
      *
      * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
+     * @throws \InvalidArgumentException When the envelope carries no AMQP delivery tag
      * @throws RetryExhaustedException When the ack flush exhausts retries (retry enabled)
      * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
      * @throws UnexpectedOperationException When the ack flush wraps a non-AMQP failure (retry enabled)
@@ -479,6 +480,7 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
      * activity is refreshed and a stale-generation envelope is a no-op (#220).
      *
      * @throws MissingStampException When the envelope carries no AmqpReceivedStamp
+     * @throws \InvalidArgumentException When the envelope carries no AMQP delivery tag
      * @throws RetryExhaustedException When the reject or ack flush exhausts retries (retry enabled)
      * @throws CircuitBreakerOpenException When the circuit breaker is open (retry circuit breaker enabled)
      * @throws UnexpectedOperationException When the reject wraps a non-AMQP failure (retry enabled)
@@ -646,7 +648,19 @@ final class Receiver implements ReceiverInterface, MessageCountAwareInterface
             return;
         }
 
-        $deliveryTag = (int) $message->getDeliveryTag();
+        $deliveryTag = $message->getDeliveryTag();
+        if ($deliveryTag === null) {
+            // ext-amqp reports no delivery tag for an envelope that was never
+            // delivered, and (int) null is 0. ack(0, ...) is accepted silently
+            // by ext-amqp and answered by the broker with 406
+            // PRECONDITION_FAILED - unknown delivery tag 0, which closes the
+            // channel and discards every other ack buffered on it (#425).
+            throw new \InvalidArgumentException(sprintf(
+                'Cannot acknowledge the message received from queue "%s": it carries no AMQP delivery tag',
+                $queueName,
+            ));
+        }
+
         $this->pendingAcks[$queueName][] = $deliveryTag;
         $this->unacked[$queueName] = ($this->unacked[$queueName] ?? 0) + 1;
 

@@ -52,11 +52,12 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
      * mean the broker has acknowledged the message yet.
      *
      * Delegates to {@see Receiver::ack()}, which throws MissingStampException
-     * when the envelope carries no AmqpReceivedStamp. That is documented on
-     * Receiver rather than as a throws tag here, because `$receiver` is typed
-     * as Symfony's ReceiverInterface and that interface makes no such promise:
-     * a throws tag would be a claim about a foreign interface, not about this
-     * method.
+     * when the envelope carries no AmqpReceivedStamp, and
+     * InvalidArgumentException when it carries no AMQP delivery tag (#425).
+     * That is documented on Receiver rather than as a throws tag here, because
+     * `$receiver` is typed as Symfony's ReceiverInterface and that interface
+     * makes no such promise: a throws tag would be a claim about a foreign
+     * interface, not about this method.
      */
     public function ack(Envelope $envelope): void
     {
@@ -67,8 +68,10 @@ final readonly class AmqpTransport implements TransportInterface, MessageCountAw
      * {@inheritdoc}
      *
      * Delegates to {@see Receiver::reject()}, which throws MissingStampException
-     * when the envelope carries no AmqpReceivedStamp — see {@see ack()} for why
-     * that is documented on Receiver and not as a throws tag.
+     * when the envelope carries no AmqpReceivedStamp, and
+     * InvalidArgumentException when it carries no AMQP delivery tag (#425) —
+     * see {@see ack()} for why that is documented on Receiver and not as a
+     * throws tag.
      */
     public function reject(Envelope $envelope): void
     {

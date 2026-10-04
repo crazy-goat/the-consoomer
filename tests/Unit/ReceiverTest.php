@@ -303,6 +303,58 @@ class ReceiverTest extends TestCase
         $receiver->ack($envelope);
     }
 
+    /**
+     * ext-amqp reports no delivery tag for an envelope that was never
+     * delivered, and (int) null is 0. Buffering that 0 makes the flush send
+     * ack(0, AMQP_MULTIPLE), which ext-amqp returns from silently: the broker
+     * only answers 406 PRECONDITION_FAILED - unknown delivery tag 0, and that
+     * closes the channel, taking every other ack buffered on it with it. The
+     * guard must refuse the envelope instead of queueing the poisoned tag —
+     * the mirror image of the reject() guard added in #411.
+     */
+    public function testAckThrowsWhenTheEnvelopeCarriesNoDeliveryTag(): void
+    {
+        // max_unacked_messages => 1 flushes on this very ack, so without the
+        // guard the 0 really reaches AMQPQueue::ack().
+        $options = ['queue' => 'test_queue', 'max_unacked_messages' => 1];
+
+        $receiver = $this->createReceiverWithQueue($options);
+
+        $amqpEnvelope = $this->createMock(\AMQPEnvelope::class);
+        $amqpEnvelope
+            ->method('getDeliveryTag')
+            ->willReturn(null);
+
+        $stamp = new AmqpReceivedStamp($amqpEnvelope, 'test_queue');
+        $envelope = new Envelope(new \stdClass(), [$stamp]);
+
+        $this->queue
+            ->expects($this->never())
+            ->method('ack');
+
+        $caught = null;
+        try {
+            $receiver->ack($envelope);
+        } catch (\InvalidArgumentException $e) {
+            $caught = $e;
+        }
+
+        self::assertInstanceOf(\InvalidArgumentException::class, $caught, 'ack() must refuse an envelope that carries no delivery tag');
+        self::assertSame(
+            'Cannot acknowledge the message received from queue "test_queue": it carries no AMQP delivery tag',
+            $caught->getMessage(),
+        );
+
+        // Nothing may be left behind for the flush to send later: the buffer is
+        // where a tag-0 becomes a channel-killing 406, and the flush cannot tell
+        // a poisoned tag from a real one.
+        $reflection = new \ReflectionClass(Receiver::class);
+        $pendingAcks = $reflection->getProperty('pendingAcks')->getValue($receiver);
+        self::assertIsArray($pendingAcks);
+        self::assertArrayNotHasKey('test_queue', $pendingAcks);
+        self::assertSame([], $reflection->getProperty('unacked')->getValue($receiver));
+    }
+
     public function testBatchAckTriggersAfterMaxUnackedMessages(): void
     {
         $options = ['queue' => 'test_queue', 'max_unacked_messages' => 3];
